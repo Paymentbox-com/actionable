@@ -69,6 +69,28 @@ RSpec.describe 'perform_actionable matcher' do
     end
   end
 
+  describe 'skip expectations' do
+    let(:skips) do
+      Class.new(Actionable::Action) do
+        def go = skip!(:not_ready, 'nothing to do')
+        step :go
+      end
+    end
+
+    it 'passes for a skipped action' do
+      expect(skips).to perform_actionable.and_skip
+    end
+
+    it 'matches the skip reason code and message' do
+      expect(skips).to perform_actionable.and_skip(:not_ready, 'nothing to do')
+    end
+
+    it 'does not treat a skip as a success or a failure' do
+      expect(skips).not_to perform_actionable.and_succeed
+      expect(skips).not_to perform_actionable.and_fail
+    end
+  end
+
   describe 'block form' do
     it 'yields the result and exception for extra assertions' do
       expect(succeeds).to perform_actionable.and_succeed do |result, exception|

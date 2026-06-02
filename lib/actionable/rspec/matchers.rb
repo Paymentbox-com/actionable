@@ -47,6 +47,14 @@ module Actionable
         configure(:failure, message, &block)
       end
 
+      # Expect a skipped result, optionally matching the reason +code+ and
+      # +message+ (decision D17).
+      # @return [self]
+      def and_skip(code = nil, message = nil, &block)
+        @expected_code = code
+        configure(:skip, message, &block)
+      end
+
       # Expect the run to raise +error_class+, optionally matching +message+.
       # @return [self]
       def and_raise(error_class = StandardError, message = nil, &block)
@@ -106,6 +114,7 @@ module Actionable
         case @outcome
         when :success then succeeded?
         when :failure then failed?
+        when :skip then skipped?
         when :raise then raised?
         end
       end
@@ -116,6 +125,12 @@ module Actionable
 
       def failed?
         @exception.nil? && @result&.failure? &&
+          (@expected_code.nil? || @expected_code == @result.code) &&
+          message_matches?(@result&.message)
+      end
+
+      def skipped?
+        @exception.nil? && @result&.skipped? &&
           (@expected_code.nil? || @expected_code == @result.code) &&
           message_matches?(@result&.message)
       end
@@ -138,6 +153,7 @@ module Actionable
         case @outcome
         when :success then "succeed#{message_suffix}"
         when :failure then "fail#{code_suffix}#{message_suffix}"
+        when :skip then "skip#{code_suffix}#{message_suffix}"
         when :raise then "raise #{@expected_error}#{message_suffix}"
         end
       end

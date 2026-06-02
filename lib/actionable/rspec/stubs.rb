@@ -30,6 +30,16 @@ module Actionable
         expect_run(action_class, actionable_failure_result(**opts))
       end
 
+      # @return [Skipped] the stubbed result
+      def allow_actionable_skip(action_class, **opts)
+        allow_run(action_class, actionable_skip_result(**opts))
+      end
+
+      # @return [Skipped] the stubbed result
+      def stub_actionable_skip(action_class, **opts)
+        expect_run(action_class, actionable_skip_result(**opts))
+      end
+
       # Build a real {Success} from a hash (no stubbing).
       #
       # @param message [String, nil]
@@ -49,6 +59,16 @@ module Actionable
       # @return [Failure]
       def actionable_failure_result(code: :error, message: nil, output: {}, errors: {})
         apply_errors(Actionable::Failure.new(code: code, message: message, output: output), errors)
+      end
+
+      # Build a real {Skipped} from a hash (no stubbing).
+      #
+      # @param code [Symbol]
+      # @param message [String, nil]
+      # @param output [Hash]
+      # @return [Skipped]
+      def actionable_skip_result(code: :skipped, message: nil, output: {})
+        Actionable::Skipped.new(code: code, message: message, output: output)
       end
 
       private

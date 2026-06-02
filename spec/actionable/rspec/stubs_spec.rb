@@ -35,6 +35,17 @@ RSpec.describe 'actionable rspec stubs' do
     end
   end
 
+  describe 'allow_actionable_skip' do
+    it 'builds a real Skipped with its reason' do
+      allow_actionable_skip(action, code: :not_ready, message: 'later')
+      run = action.run
+
+      expect(run).to be_skipped
+      expect(run.code).to eq(:not_ready)
+      expect(run.message).to eq('later')
+    end
+  end
+
   describe 'stub_actionable_success' do
     it 'sets a call expectation satisfied when the action is run' do
       stub_actionable_success(action, message: 'ok')

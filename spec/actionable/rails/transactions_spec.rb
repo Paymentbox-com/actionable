@@ -55,6 +55,21 @@ RSpec.describe 'Actionable::Rails transactional macro' do
     expect(stub.committed).to be(false)
   end
 
+  it 'commits when the action skips (a skip is not a failure)' do
+    stub = model
+    klass = Class.new(Actionable::Action) do
+      transactional model: stub
+      define_method(:go) { skip!(:not_ready) }
+      step :go
+    end
+
+    result = klass.run
+
+    expect(result).to be_skipped
+    expect(stub.committed).to be(true)
+    expect(stub.rolled_back).to be(false)
+  end
+
   it 'rolls back and propagates a raised exception' do
     stub = model
     klass = Class.new(Actionable::Action) do
