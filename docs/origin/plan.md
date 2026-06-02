@@ -214,17 +214,35 @@ end
 ```
 
 The `output do … end` block builds an anonymous `FieldStruct::Base` subclass stored
-as the action's **output schema**. At the end of a run the runner reads the
-instance variables whose names match declared output fields, builds the output
-struct (coercing/validating through FieldStruct), and assigns it to `result.output`.
+as the action's **output schema** — a *single* schema shared by both outcomes. At
+the end of a run the runner reads the instance variables whose names match declared
+output fields, overlays any `succeed(**output)` keyword arguments (kwargs win on
+conflict), coerces them through FieldStruct, and assigns the struct to
+`result.output`.
 
 - **Ergonomics preserved**: step methods still just set `@invoice = …`. No explicit
-  "expose" call is needed — declaration + ivar name is the contract.
+  "expose" call is needed — declaration + ivar name is the contract. `succeed`'s
+  kwargs are a shorthand overlay on top of the captured ivars.
 - **Convenience delegation**: `result.invoice` delegates to `result.output.invoice`
   for declared fields. Undeclared ivars are *not* surfaced (a deliberate change from
   the old "capture everything" behavior — output is now an explicit, typed contract).
-- An action with no `output` block has an empty output struct; `result.output` is
-  present but field-less.
+- **Asymmetric validation** (revised 2026-06; see note below). On a **success**, the
+  captured output is validated through FieldStruct; if it fails (a `required` field
+  was never set, or a value won't coerce), the run can't truly have succeeded, so it
+  becomes a `Failure` with code `:invalid_output` carrying the validation errors. On a
+  **failure**, output is captured best-effort and **never** validated — callers treat
+  failure output as possibly incomplete (fields that were never set come back `nil`).
+- An action with **no** `output` block is *free-form*: `result.output` keeps whatever
+  was recorded (e.g. the `succeed(**output)` hash, default `{}`), with no schema,
+  coercion, validation, or delegation.
+
+> **Revision note (2026-06, during Slice 6).** D6 originally implied a single schema
+> with uniform handling. Implementation surfaced the success-vs-failure question; the
+> locked outcome is the single-schema, asymmetric-validation design above. A richer
+> "shape per outcome / per failure code" was considered and **deferred** to a future
+> decision, as was the division of labor between a typed *failure output* and the
+> existing structured `errors` collection. For now, failure detail lives in
+> `code` / `message` / `errors`; typed output is primarily a success-path contract.
 
 ### D7. Typed input via an optional schema
 
@@ -420,8 +438,10 @@ vs record-and-halt, last-write-wins, auto-success, and exception propagation.
 Commit: `feat: add fail/succeed control flow with throw/catch halt`
 
 ### Slice 6 — Output schema
-`output do … end` builds a FieldStruct subclass; runner captures matching ivars,
-coerces/validates, assigns `result.output`; result delegates declared fields.
+`output do … end` builds a FieldStruct subclass; runner captures matching ivars
+(overlaid by `succeed` kwargs), coerces, assigns `result.output`, and result
+delegates declared fields. Single schema; validated on success (failure →
+`:invalid_output`), best-effort and unvalidated on failure. See revised D6.
 Commit: `feat: add typed output schema with field_struct`
 
 ### Slice 7 — Lifecycle hooks
