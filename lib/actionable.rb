@@ -18,6 +18,7 @@ require_relative 'actionable/steps/case'
 require_relative 'actionable/steps'
 require_relative 'actionable/runner'
 require_relative 'actionable/action'
+require_relative 'actionable/rbs'
 
 # Actionable: typed, composable Ruby service objects.
 #

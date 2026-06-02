@@ -28,6 +28,103 @@ module Actionable
   # _@return_ — the process-wide action registry
   def self.registry: () -> Registry
 
+  # Generates RBS for a *user* action class — track 2 of the RBS strategy
+  # (decision D13). Sord covers the library's static classes, but it can't see
+  # +CreateInvoice.run(amount:)+ or +result.invoice+: those depend on the
+  # action's declared +input+/+output+ schemas. This walks those schemas (via
+  # FieldStruct's metadata and +ruby_type+ mapping) and emits:
+  # 
+  # * a typed +.run+ signature from the input schema (or +(*untyped)+ when
+  #   free-form);
+  # * a nested +Output+ struct with a typed accessor per output field;
+  # * a nested +Result+ with +output+ and the convenience-delegation readers,
+  #   which +.run+ returns.
+  # 
+  #   class CreateInvoice < Actionable::Action
+  #     input  { required :amount, :integer }
+  #     output { required :invoice, :string }
+  #   end
+  # 
+  #   puts Actionable::RBS.generate(CreateInvoice)
+  #   # class CreateInvoice < ::Actionable::Action
+  #   #   def self.run: (amount: ::Integer) -> Result
+  #   #   class Output < ::FieldStruct::Base ... end
+  #   #   class Result < ::Actionable::Result ... end
+  #   # end
+  # 
+  # The emitted +Result+/+Output+ are generated type aids: at runtime +.run+
+  # returns a {Success}/{Failure}/{Skipped} that responds to these via output
+  # delegation. Referenced field types appear as qualified names (+::Invoice+) —
+  # generate RBS for those (e.g. via +FieldStruct::RBS+) so they resolve.
+  module RBS
+    # Generate RBS source for a user action class.
+    # 
+    # _@param_ `klass`
+    # 
+    # _@return_ — RBS for the action, wrapped in its module nesting
+    def self.generate: (singleton(Actionable::Action) klass) -> String
+
+    # _@param_ `klass`
+    def self.class_block: (singleton(Actionable::Action) klass) -> String
+
+    # _@return_ — the +.run+ signature: typed kwargs from the input schema
+    # (or +(*untyped)+ free-form), returning the generated +Result+ when an
+    # output schema is declared, else +::Actionable::Result+.
+    def self.run_signature: (untyped klass) -> String
+
+    # _@param_ `field`
+    # 
+    # _@return_ — +name: Type+ (required) or +?name: Type+ (optional). The
+    # +?+ prefix carries optionality, so the type itself is not made nullable.
+    def self.run_param: (FieldStruct::Field field) -> String
+
+    # _@param_ `schema` — the output schema
+    # 
+    # _@return_ — the nested +Output+ class block
+    def self.output_block: (singleton(FieldStruct::Base) schema) -> String
+
+    # _@param_ `schema` — the output schema
+    # 
+    # _@return_ — the nested +Result+ class block with output delegation
+    def self.result_block: (singleton(FieldStruct::Base) schema) -> String
+
+    # _@param_ `field`
+    # 
+    # _@return_ — the field's RBS type, made nullable when optional
+    def self.rbs_type: (FieldStruct::Field field) -> String
+
+    # Map a FieldStruct type (plus options, for arrays) to an RBS type — reusing
+    # FieldStruct's +ruby_type+ for the field → Ruby class mapping (D13).
+    # 
+    # _@param_ `type_instance`
+    # 
+    # _@param_ `options`
+    def self.type_expr: (FieldStruct::Types::Base type_instance, ::Hash[Symbol, Object] options) -> String
+
+    # _@param_ `of_type` — an array's element type
+    def self.element_expr: ((Class | FieldStruct::Types::Base)? of_type) -> String
+
+    # _@param_ `klass` — a Ruby class from a +ruby_type+
+    # 
+    # _@return_ — qualified RBS name, or +untyped+ for the value type's +::Object+
+    def self.class_to_rbs: (Class klass) -> String
+
+    # Wrap a class block in the +module … end+ nesting implied by its qualified
+    # name, indenting two spaces per level.
+    # 
+    # _@param_ `full_name`
+    # 
+    # _@param_ `inner`
+    # 
+    # _@return_ — RBS source ending in a trailing newline
+    def self.wrap_namespace: (String full_name, String inner) -> String
+
+    # _@param_ `text`
+    # 
+    # _@return_ — +text+ with every non-blank line indented two spaces
+    def self.indent: (String text) -> String
+  end
+
   # Namespace for the concrete step types an action's pipeline is built from
   # (decision D3): {Steps::Method} now, {Steps::Action} and {Steps::Case} later.
   module Steps
