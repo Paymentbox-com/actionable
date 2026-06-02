@@ -4,6 +4,7 @@
 # core entry point — load it explicitly with `require 'actionable/rails'` (in a
 # Rails app, the Railtie does so during boot). It is the only place that pulls
 # in active_*.
+require_relative '../actionable' # ensure the core is loaded (self-contained entry)
 require 'active_model'
 require 'active_support/core_ext/string/inflections' # camelize/constantize
 
