@@ -61,5 +61,30 @@ module Actionable
     def to_s
       inspect
     end
+
+    # Convenience delegation: a declared output field is readable straight off
+    # the result (+result.invoice+ → +result.output.invoice+). Only fields
+    # declared on a typed output schema delegate; incidental data never does
+    # (decision D6).
+    #
+    # @return [Boolean]
+    def respond_to_missing?(name, include_private = false)
+      delegates_to_output?(name) || super
+    end
+
+    # @see #respond_to_missing?
+    def method_missing(name, *, &)
+      return output.public_send(name, *, &) if delegates_to_output?(name)
+
+      super
+    end
+
+    private
+
+    # @param name [Symbol]
+    # @return [Boolean] whether +name+ is a declared field on a typed output
+    def delegates_to_output?(name)
+      output.is_a?(FieldStruct::Base) && output.attribute_names.include?(name)
+    end
   end
 end

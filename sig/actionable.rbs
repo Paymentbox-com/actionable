@@ -124,6 +124,23 @@ module Actionable
     # collapses to one entry; insertion order is preserved (decision D2).
     def self.steps: () -> ::Set[Steps::Base]
 
+    # Declare the action's typed output schema, or read it back.
+    # 
+    # With a block, builds an anonymous +FieldStruct::Base+ subclass from the
+    # FieldStruct DSL (+required+/+optional+/…) and stores it as this action's
+    # output schema (decision D6). At the end of a run the {Runner} captures
+    # the instance variables whose names match declared fields, coerces them
+    # through the schema, and assigns the struct to +result.output+.
+    # 
+    #   output do
+    #     required :invoice, Invoice
+    #     optional :receipt, Receipt
+    #   end
+    # 
+    # _@return_ — the output schema, or +nil+ when
+    # none has been declared (the free-form path)
+    def self.output: () -> singleton(FieldStruct::Base)?
+
     # Declare a step. The step type is inferred from +target+ (a Symbol or
     # String names an instance method — a {Steps::Method}).
     # 
@@ -196,6 +213,10 @@ module Actionable
     # not an exception (decision D4).
     def halt!: () -> void
 
+    # _@return_ — the declared output schema, or
+    # +nil+ for a free-form action
+    def self.output_schema: () -> singleton(FieldStruct::Base)?
+
     # The result recorded during the run, if any. The control-flow methods
     # (+fail+/+succeed+/+fail!+/+succeed!+) write here; +nil+ means "no explicit
     # result", which the {Runner} turns into an auto-{Success}.
@@ -248,6 +269,21 @@ module Actionable
 
     # _@return_ — same deterministic representation as {#inspect}
     def to_s: () -> String
+
+    # Convenience delegation: a declared output field is readable straight off
+    # the result (+result.invoice+ → +result.output.invoice+). Only fields
+    # declared on a typed output schema delegate; incidental data never does
+    # (decision D6).
+    def respond_to_missing?: (untyped name, ?untyped include_private) -> bool
+
+    # 
+    # _@see_ `#respond_to_missing?`
+    def method_missing: (untyped name) -> untyped
+
+    # _@param_ `name`
+    # 
+    # _@return_ — whether +name+ is a declared field on a typed output
+    def delegates_to_output?: (Symbol name) -> bool
   end
 
   # Executes an action instance's steps and produces the {Result}.
@@ -260,13 +296,39 @@ module Actionable
     # _@param_ `instance` — the action instance to run
     def initialize: (Action _instance) -> void
 
-    # Run the action's steps and return its result.
+    # Run the action's steps and return its finalized result.
     # 
-    # _@return_ — the recorded result, or a fresh {Success} if none was set
+    # _@return_ — the recorded result (or a fresh {Success} if none was
+    # set), with its typed output captured and assigned
     def run: () -> Result
 
     # Run each declared step in order, skipping any whose guard opts out.
     def run_steps: () -> void
+
+    # Build and attach the typed output (decision D6). Free-form actions (no
+    # output schema) keep whatever output was recorded. With a schema, capture
+    # the declared-field ivars overlaid with any +succeed+ kwargs (kwargs win)
+    # and coerce them through the schema. A successful run whose output fails
+    # validation can't really have succeeded — it becomes a +Failure+ with code
+    # +:invalid_output+. Failures are captured best-effort and never validated.
+    # 
+    # _@param_ `result`
+    def finalize: (Result result) -> Result
+
+    # Declared-field ivars from the action instance, overlaid with the recorded
+    # +succeed+ kwargs (kept on +result.output+ as a Hash until now), kwargs
+    # winning on conflict.
+    # 
+    # _@param_ `schema`
+    # 
+    # _@param_ `result`
+    def captured_attributes: (singleton(FieldStruct::Base) schema, Result result) -> ::Hash[Symbol, Object]
+
+    # _@param_ `output` — the invalid output struct
+    # 
+    # _@return_ — code +:invalid_output+, with the output's validation
+    # errors copied onto the failure and the (invalid) output attached
+    def invalid_output_failure: (FieldStruct::Base output) -> Failure
   end
 
   # A failed run's result. Its +code+ is the error symbol describing why the

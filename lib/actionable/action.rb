@@ -22,6 +22,32 @@ module Actionable
         @steps ||= Set.new
       end
 
+      # Declare the action's typed output schema, or read it back.
+      #
+      # With a block, builds an anonymous +FieldStruct::Base+ subclass from the
+      # FieldStruct DSL (+required+/+optional+/…) and stores it as this action's
+      # output schema (decision D6). At the end of a run the {Runner} captures
+      # the instance variables whose names match declared fields, coerces them
+      # through the schema, and assigns the struct to +result.output+.
+      #
+      #   output do
+      #     required :invoice, Invoice
+      #     optional :receipt, Receipt
+      #   end
+      #
+      # @yield the FieldStruct field declarations
+      # @return [Class<FieldStruct::Base>, nil] the output schema, or +nil+ when
+      #   none has been declared (the free-form path)
+      def output(&block)
+        return @output_schema unless block
+
+        @output_schema = Class.new(FieldStruct::Base, &block)
+      end
+
+      # @return [Class<FieldStruct::Base>, nil] the declared output schema, or
+      #   +nil+ for a free-form action
+      attr_reader :output_schema
+
       # Declare a step. The step type is inferred from +target+ (a Symbol or
       # String names an instance method — a {Steps::Method}).
       #
@@ -47,6 +73,7 @@ module Actionable
       def inherited(subclass)
         super
         subclass.instance_variable_set(:@steps, steps.dup)
+        subclass.instance_variable_set(:@output_schema, output_schema)
       end
     end
 
