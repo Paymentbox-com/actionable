@@ -117,6 +117,27 @@ module Actionable
         steps << Steps::Case.define(value_source, **, &)
       end
 
+      # Enable or read the action's measurement mode (decision D10). +:all+
+      # records an execution {History}; +:none+ (the default) records nothing
+      # for zero overhead. A measuring run cascades into the nested actions it
+      # invokes regardless of their own setting.
+      #
+      # @param mode [:all, :none, nil] the mode to set; omit to read
+      # @return [:all, :none] the resolved mode
+      def measure(mode = nil)
+        unless mode.nil?
+          raise ArgumentError, "unknown measure mode #{mode.inspect}" unless %i[all none].include?(mode)
+
+          @measure = mode
+        end
+        @measure ||= :none
+      end
+
+      # @return [Boolean] whether this action records history
+      def measure_all?
+        measure == :all
+      end
+
       # Instantiate the action with the given arguments and run it.
       #
       # @return [Result] the run's {Success} or {Failure}
@@ -136,6 +157,7 @@ module Actionable
         subclass.instance_variable_set(:@success_hooks, success_hooks.dup)
         subclass.instance_variable_set(:@failure_hooks, failure_hooks.dup)
         subclass.instance_variable_set(:@always_hooks, always_hooks.dup)
+        subclass.instance_variable_set(:@measure, measure)
       end
     end
 

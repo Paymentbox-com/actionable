@@ -17,6 +17,10 @@ module Actionable
       def call(instance)
         child = name.run(**input_kwargs(instance))
 
+        # Attach the child's history to the open step record (no-op unless the
+        # parent run is measuring), before any failure propagation unwinds.
+        Measurement.open_step&.nested = child.history if child.history.is_a?(History)
+
         if child.failure?
           # Propagate the child's failure onto the parent and halt — reusing the
           # parent's own control-flow verb keeps the record-and-halt semantics.

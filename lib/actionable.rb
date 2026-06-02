@@ -4,6 +4,8 @@ require 'field_struct'
 
 require_relative 'actionable/version'
 require_relative 'actionable/errors'
+require_relative 'actionable/measurement'
+require_relative 'actionable/history'
 require_relative 'actionable/result'
 require_relative 'actionable/results/success'
 require_relative 'actionable/results/failure'

@@ -303,6 +303,19 @@ module Actionable
     # _@return_ — the updated step set
     def self.case_step: ((Symbol | String) value_source) -> ::Set[Steps::Base]
 
+    # Enable or read the action's measurement mode (decision D10). +:all+
+    # records an execution {History}; +:none+ (the default) records nothing
+    # for zero overhead. A measuring run cascades into the nested actions it
+    # invokes regardless of their own setting.
+    # 
+    # _@param_ `mode` — the mode to set; omit to read
+    # 
+    # _@return_ — the resolved mode
+    def self.measure: (?Symbol? mode) -> Symbol
+
+    # _@return_ — whether this action records history
+    def self.measure_all?: () -> bool
+
     # Instantiate the action with the given arguments and run it.
     # 
     # _@return_ — the run's {Success} or {Failure}
@@ -451,6 +464,10 @@ module Actionable
   # control-flow verbs and +halt!+ stops the remaining hooks. The output is
   # refreshed (re-captured and re-validated) after the main steps and after each
   # hook (decision D6).
+  # 
+  # When the action (or an enclosing measuring run) enables measurement, the
+  # runner records a {History} of every step — section, name, timing, result
+  # code, and nested child history (decision D10).
   class Runner
     # _@param_ `instance` — the action instance to run
     def initialize: (Action _instance) -> void
@@ -458,8 +475,14 @@ module Actionable
     # Run the action's steps and lifecycle hooks, returning the finalized result.
     # 
     # _@return_ — the recorded result (or a fresh {Success} if none was
-    # set), with its typed output captured and assigned
+    # set), with its typed output and (when measuring) history assigned
     def run: () -> Result
+
+    # Run the body, marking measurement active so nested runs cascade.
+    def measured: () -> untyped
+
+    # The main steps, then the outcome and always lifecycle hooks.
+    def perform: () -> untyped
 
     # Run each declared step in order, skipping any whose guard opts out.
     def run_steps: () -> void
@@ -472,11 +495,26 @@ module Actionable
 
     # Run one hook, then adopt any result it recorded and refresh the output.
     # 
+    # _@param_ `section`
+    # 
     # _@param_ `hook`
-    def run_hook: (Steps::Base hook) -> void
+    def run_hook: (Symbol section, Steps::Base hook) -> void
 
+    # Run one main step, skipping it when its guard opts out.
+    # 
+    # _@param_ `section`
+    # 
     # _@param_ `step`
-    def call_step: (Steps::Base step) -> void
+    def call_step: (Symbol section, Steps::Base step) -> void
+
+    # Time and record a step into the history when measuring; otherwise just run
+    # it. The result code is recorded only when the step changed the recorded
+    # result, so steps that merely set ivars carry a nil code.
+    # 
+    # _@param_ `section`
+    # 
+    # _@param_ `step`
+    def record: (Symbol section, Steps::Base step) -> void
 
     # Capture, coerce, and attach the typed output (decision D6). Free-form
     # actions (no schema) keep whatever output was recorded. With a schema,
@@ -498,6 +536,99 @@ module Actionable
     # _@return_ — code +:invalid_output+, with the output's validation
     # errors copied onto the failure and the (invalid) output attached
     def invalid_output_failure: (FieldStruct::Base output) -> Failure
+  end
+
+  # An ordered record of the steps a run executed, when measurement is enabled
+  # (decision D10). Each entry is a {History::Step}; nested action steps carry
+  # their child's +History+.
+  class History
+    def initialize: () -> void
+
+    # Append a recorded step.
+    # 
+    # _@param_ `step`
+    def <<: (Step step) -> self
+
+    # _@return_ — whether any step has been recorded
+    def empty?: () -> bool
+
+    # _@return_ — the summed duration of every recorded step
+    def took: () -> Float
+
+    # _@return_ — each step as a JSON-ready hash
+    def as_json: () -> ::Array[::Hash[untyped, untyped]]
+
+    # _@return_ — the history serialized to JSON via Oj (decision D15).
+    # +:compat+ mode emits plain JSON (string keys, symbols as strings) rather
+    # than Oj's default object-marker encoding.
+    def to_json: () -> String
+
+    # _@return_ — the recorded steps, in execution order
+    attr_reader steps: ::Array[Step]
+
+    # One recorded step: which section it ran in, its name, when it started, how
+    # long it took, the result code it produced (if any), and — for action
+    # steps — the nested child {History}.
+    class Step
+      # _@param_ `section`
+      # 
+      # _@param_ `name`
+      # 
+      # _@param_ `started_at`
+      def initialize: (section: Symbol, name: (Symbol | String | Class), started_at: Time) -> void
+
+      # _@return_ — a JSON-ready hash (nested history recurses)
+      def as_json: () -> ::Hash[Symbol, Object]
+
+      # _@return_ — +:main+, +:success+, +:failure+, or +:always+
+      attr_reader section: Symbol
+
+      # _@return_ — the step's name
+      attr_reader name: (Symbol | String | Class)
+
+      # _@return_ — wall-clock start time
+      attr_reader started_at: Time
+
+      # _@return_ — elapsed seconds (monotonic)
+      attr_accessor duration: Float
+
+      # _@return_ — the result code this step recorded, if it set one
+      attr_accessor code: Symbol?
+
+      # _@return_ — the nested action's history, for action steps
+      attr_accessor nested: History?
+    end
+  end
+
+  # Thread-local measurement context (decision D10). It lets a measuring run
+  # cascade into the nested actions it invokes, and lets an action step attach
+  # its child's history to the step record currently open in the parent runner.
+  # 
+  # All state is per-thread and saved/restored around each scope, so concurrent
+  # runs on different threads never interfere.
+  module Measurement
+    # _@return_ — whether the current thread is inside a measuring run
+    def self.active?: () -> bool
+
+    # _@return_ — the step record nested history attaches to
+    def self.open_step: () -> History::Step?
+
+    # Mark measurement active for the block, so nested runs measure too.
+    # 
+    # _@return_ — the block's value
+    def self.measuring: () -> Object
+
+    # Make +record+ the open step for the block, so a nested action step can
+    # attach its child's history to it.
+    # 
+    # _@param_ `record`
+    # 
+    # _@return_ — the block's value
+    def self.recording: (History::Step record) -> Object
+
+    def self.store: () -> untyped
+
+    def self.with: (untyped changes) -> untyped
   end
 
   # A failed run's result. Its +code+ is the error symbol describing why the
