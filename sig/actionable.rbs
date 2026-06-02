@@ -151,6 +151,36 @@ module Actionable
     # _@return_ — the updated step set
     def self.step: ((Symbol | String) target) -> ::Set[Steps::Base]
 
+    # Lifecycle hooks that run after the main steps when the run succeeds.
+    def self.success_hooks: () -> ::Set[Steps::Base]
+
+    # Lifecycle hooks that run after the main steps when the run fails.
+    def self.failure_hooks: () -> ::Set[Steps::Base]
+
+    # Lifecycle hooks that run after the main steps regardless of outcome.
+    def self.always_hooks: () -> ::Set[Steps::Base]
+
+    # Declare a hook that runs at the end of a run iff it succeeded (D2).
+    # 
+    # _@param_ `target` — the instance method to run
+    # 
+    # _@param_ `options` — step options (e.g. +:if+)
+    def self.on_success: ((Symbol | String) target) -> ::Set[Steps::Base]
+
+    # Declare a hook that runs at the end of a run iff it failed (D2).
+    # 
+    # _@param_ `target` — the instance method to run
+    # 
+    # _@param_ `options` — step options (e.g. +:if+)
+    def self.on_failure: ((Symbol | String) target) -> ::Set[Steps::Base]
+
+    # Declare a hook that runs at the end of a run regardless of outcome (D2).
+    # 
+    # _@param_ `target` — the instance method to run
+    # 
+    # _@param_ `options` — step options (e.g. +:if+)
+    def self.always: ((Symbol | String) target) -> ::Set[Steps::Base]
+
     # Instantiate the action with the given arguments and run it.
     # 
     # _@return_ — the run's {Success} or {Failure}
@@ -292,11 +322,18 @@ module Actionable
   # (+throw Actionable::HALT+) unwinds out of the loop without running the
   # remaining steps. Genuine exceptions are not caught — they propagate to the
   # caller (decision D4). When no step recorded a result, the run auto-succeeds.
+  # 
+  # After the main steps the runner picks the lifecycle hook category from the
+  # outcome (+on_success+ vs +on_failure+) and runs it, then the +always+ hooks
+  # (decision D2). Hooks are ordinary methods: they may record via the
+  # control-flow verbs and +halt!+ stops the remaining hooks. The output is
+  # refreshed (re-captured and re-validated) after the main steps and after each
+  # hook (decision D6).
   class Runner
     # _@param_ `instance` — the action instance to run
     def initialize: (Action _instance) -> void
 
-    # Run the action's steps and return its finalized result.
+    # Run the action's steps and lifecycle hooks, returning the finalized result.
     # 
     # _@return_ — the recorded result (or a fresh {Success} if none was
     # set), with its typed output captured and assigned
@@ -305,24 +342,34 @@ module Actionable
     # Run each declared step in order, skipping any whose guard opts out.
     def run_steps: () -> void
 
-    # Build and attach the typed output (decision D6). Free-form actions (no
-    # output schema) keep whatever output was recorded. With a schema, capture
-    # the declared-field ivars overlaid with any +succeed+ kwargs (kwargs win)
-    # and coerce them through the schema. A successful run whose output fails
-    # validation can't really have succeeded — it becomes a +Failure+ with code
-    # +:invalid_output+. Failures are captured best-effort and never validated.
+    # Run the outcome-appropriate hooks then the +always+ hooks, all inside a
+    # single halt catch so a hook's +halt!+ stops every remaining hook. The
+    # category is fixed by the post-main-steps outcome — it does not re-dispatch
+    # if a hook later flips the result.
+    def run_lifecycle: () -> void
+
+    # Run one hook, then adopt any result it recorded and refresh the output.
     # 
-    # _@param_ `result`
-    def finalize: (Result result) -> Result
+    # _@param_ `hook`
+    def run_hook: (Steps::Base hook) -> void
+
+    # _@param_ `step`
+    def call_step: (Steps::Base step) -> void
+
+    # Capture, coerce, and attach the typed output (decision D6). Free-form
+    # actions (no schema) keep whatever output was recorded. With a schema,
+    # capture the declared-field ivars overlaid with any +succeed+ kwargs
+    # (kwargs win) and coerce them. A successful run whose output fails
+    # validation can't really have succeeded — +@result+ becomes a +Failure+
+    # with code +:invalid_output+. Failures capture best-effort, never validated.
+    def refresh_output: () -> void
 
     # Declared-field ivars from the action instance, overlaid with the recorded
-    # +succeed+ kwargs (kept on +result.output+ as a Hash until now), kwargs
-    # winning on conflict.
+    # +succeed+ kwargs (kept on +@result.output+ as a Hash until captured),
+    # kwargs winning on conflict.
     # 
     # _@param_ `schema`
-    # 
-    # _@param_ `result`
-    def captured_attributes: (singleton(FieldStruct::Base) schema, Result result) -> ::Hash[Symbol, Object]
+    def captured_attributes: (singleton(FieldStruct::Base) schema) -> ::Hash[Symbol, Object]
 
     # _@param_ `output` — the invalid output struct
     # 

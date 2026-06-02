@@ -58,6 +58,48 @@ module Actionable
         steps << Steps.build(target, **)
       end
 
+      # Lifecycle hooks that run after the main steps when the run succeeds.
+      # @return [Set<Steps::Base>]
+      def success_hooks
+        @success_hooks ||= Set.new
+      end
+
+      # Lifecycle hooks that run after the main steps when the run fails.
+      # @return [Set<Steps::Base>]
+      def failure_hooks
+        @failure_hooks ||= Set.new
+      end
+
+      # Lifecycle hooks that run after the main steps regardless of outcome.
+      # @return [Set<Steps::Base>]
+      def always_hooks
+        @always_hooks ||= Set.new
+      end
+
+      # Declare a hook that runs at the end of a run iff it succeeded (D2).
+      # @param target [Symbol, String] the instance method to run
+      # @param options [Hash{Symbol=>Object}] step options (e.g. +:if+)
+      # @return [Set<Steps::Base>]
+      def on_success(target, **)
+        success_hooks << Steps.build(target, **)
+      end
+
+      # Declare a hook that runs at the end of a run iff it failed (D2).
+      # @param target [Symbol, String] the instance method to run
+      # @param options [Hash{Symbol=>Object}] step options (e.g. +:if+)
+      # @return [Set<Steps::Base>]
+      def on_failure(target, **)
+        failure_hooks << Steps.build(target, **)
+      end
+
+      # Declare a hook that runs at the end of a run regardless of outcome (D2).
+      # @param target [Symbol, String] the instance method to run
+      # @param options [Hash{Symbol=>Object}] step options (e.g. +:if+)
+      # @return [Set<Steps::Base>]
+      def always(target, **)
+        always_hooks << Steps.build(target, **)
+      end
+
       # Instantiate the action with the given arguments and run it.
       #
       # @return [Result] the run's {Success} or {Failure}
@@ -74,6 +116,9 @@ module Actionable
         super
         subclass.instance_variable_set(:@steps, steps.dup)
         subclass.instance_variable_set(:@output_schema, output_schema)
+        subclass.instance_variable_set(:@success_hooks, success_hooks.dup)
+        subclass.instance_variable_set(:@failure_hooks, failure_hooks.dup)
+        subclass.instance_variable_set(:@always_hooks, always_hooks.dup)
       end
     end
 
