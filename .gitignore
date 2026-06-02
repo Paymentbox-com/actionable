@@ -7,6 +7,11 @@
 /spec/reports/
 /tmp/
 
+# rbs collection — installed sigs and the derived lock float with the
+# (uncommitted) Gemfile.lock; only rbs_collection.yaml is tracked.
+/.gem_rbs_collection/
+/rbs_collection.lock.yaml
+
 # rspec failure tracking
 .rspec_status
 

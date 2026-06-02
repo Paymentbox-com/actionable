@@ -23,5 +23,9 @@ jobs:
       with:
         ruby-version: ${{ matrix.ruby }}
         bundler-cache: true
+    - name: Install RBS collection (stdlib sigs for sigs:validate)
+      run: bundle exec rbs collection install
     - name: Run the default task
       run: bundle exec rake
+    - name: Type signature guards (staleness + grammar)
+      run: bundle exec rake sigs:check sigs:validate
