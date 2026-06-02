@@ -10,9 +10,9 @@
 A small Ruby library for **service objects**: classes that encapsulate one unit of
 business logic as an ordered sequence of **steps**. You subclass
 `Actionable::Action`, declare steps with a DSL, implement each as a method, and run
-it. A run returns a single **result** value object — `Success` or `Failure` — with
-a `code`, `message`, structured `errors`, a typed `output`, and an execution
-`history`.
+it. A run returns a single **result** value object — `Success`, `Failure`, or
+`Skipped` — with a `code`, `message`, structured `errors`, a typed `output`, and an
+execution `history`.
 
 It exists to pull business logic out of Rails controllers/models, Sidekiq workers,
 and rake tasks into a shared, composable, predictably-shaped layer.
@@ -34,9 +34,10 @@ and rake tasks into a shared, composable, predictably-shaped layer.
 
 See `docs/origin/plan.md` for the authoritative in/out lists. At a glance:
 
-**In:** the step DSL (`step` / `case_step` / `on_success` / `on_failure` / `always`),
-`Action` + `Runner`, `throw`/`catch` control flow (`fail` / `succeed` / `fail!` /
-`succeed!` / `halt!`), FieldStruct-backed `Result`/`Success`/`Failure`, typed
+**In:** the step DSL (`step` / `case_step` / `on_success` / `on_failure` / `on_skip`
+/ `always`), `Action` + `Runner`, `throw`/`catch` control flow (`fail` / `succeed` /
+`skip` / `fail!` / `succeed!` / `skip!` / `halt!`), FieldStruct-backed
+`Result`/`Success`/`Failure`/`Skipped` (the `:skip` outcome, D17), typed
 `output` schema, optional typed `input` schema, nested-action composition with
 `:input`/`:expose`, `History` + `measure`, `Registry`, optional Rails adapter
 (transactions + `ProxyValidator`), optional RSpec integration, and the
@@ -57,12 +58,13 @@ generators, I18n.
 | **Method step** | Calls an instance method on the action. |
 | **Action step** | Runs another action, threading values in (`:input`) and out (`:expose`). |
 | **Case step** | Branches to a target based on a value (`on` / `default`). |
-| **Lifecycle hook** | `on_success` / `on_failure` / `always` — runs at the end based on outcome. |
+| **Lifecycle hook** | `on_success` / `on_failure` / `on_skip` / `always` — runs at the end based on outcome. |
 | **Runner** | Executes steps inside `catch(:actionable_halt)`, runs hooks, optionally wraps a transaction, returns the result. |
-| **Result** | The FieldStruct-backed value object from a run: `Success` or `Failure`. |
+| **Result** | The FieldStruct-backed value object from a run: `Success`, `Failure`, or `Skipped`. Predicates `success?` / `failure?` / `skipped?` / `ok?`. |
+| **Skip** | A third outcome (D17): nothing to do — not a success, not a failure. `Skipped` result via `skip` / `skip!`. |
 | **Output** | The declared, typed result payload (a FieldStruct), populated from matching ivars at run end. |
 | **Input** | The optional declared, typed argument schema (a FieldStruct) enabling typed `.run`. |
-| **Halt** | Early pipeline stop via `throw :actionable_halt` (from the bang methods / `halt!`). Not an exception. |
+| **Halt** | Early pipeline stop via `throw :actionable_halt` (from `fail!` / `succeed!` / `skip!` / `halt!`). Not an exception. |
 | **History** | Per-run step timing/code record; enabled by `measure :all`. |
 | **Registry** | `Actionable.registry` — map of all defined action classes. |
 | **Rails adapter** | Optional `actionable/rails`: transactions + `ProxyValidator`. Core never depends on it. |
@@ -79,7 +81,8 @@ These hold across the codebase. Don't break them without surfacing the change.
    `throw :actionable_halt`. The runner never `rescue`s `Exception` or `StandardError`
    for control flow — genuine errors propagate to the caller.
 3. **Output is an explicit, typed contract.** Only fields declared in `output do … end`
-   are surfaced on the result. No "capture every instance variable" magic.
+   are surfaced on the result. No "capture every instance variable" magic. Only a
+   strict `Success` is output-validated; `Failure`/`Skipped` capture best-effort.
 4. **The core is Rails-free.** Nothing under the core load path requires
    ActiveModel/ActiveSupport/ActiveRecord. Rails concerns live behind
    `require 'actionable/rails'`. RSpec concerns behind `require 'actionable/rspec'`.
@@ -96,6 +99,6 @@ These hold across the codebase. Don't break them without surfacing the change.
 
 ## When in doubt
 
-- Re-read `docs/origin/plan.md` (the locked decisions D1–D16 are authoritative).
+- Re-read `docs/origin/plan.md` (the locked decisions D1–D17 are authoritative).
 - Re-read `docs/origin/first_discussion.md` for the original intent.
 - If the answer isn't in either, ask Adrian before guessing.

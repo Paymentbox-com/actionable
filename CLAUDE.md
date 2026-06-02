@@ -9,7 +9,7 @@ Before starting any work, read these in order:
 
 | Document | Purpose |
 |----------|---------|
-| `docs/origin/plan.md` | **Source of truth.** Phase 1 design decisions (D1–D16), the 16-slice plan, Phase 2+ backlog, glossary. |
+| `docs/origin/plan.md` | **Source of truth.** Phase 1 design decisions (D1–D17), the 16-slice plan, Phase 2+ backlog, glossary. |
 | `.claude/project_intent.md` | What Actionable is/isn't, terminology, design invariants. |
 | `.claude/tdd_guidelines.md` | Test-driven development patterns (non-negotiable). |
 | `.claude/planning_guide.md` | How to plan and build a feature/slice. |
@@ -21,8 +21,10 @@ Before starting any work, read these in order:
 
 **Actionable** is a Ruby gem for **service objects**: subclass `Actionable::Action`,
 declare an ordered list of **steps**, implement each as a method, and run it. A run
-returns a single FieldStruct-backed **result** (`Success` or `Failure`) with a
-`code`, `message`, `errors`, a typed `output`, and an execution `history`.
+returns a single FieldStruct-backed **result** (`Success`, `Failure`, or `Skipped`)
+with a `code`, `message`, `errors`, a typed `output`, and an execution `history`.
+The three outcomes have strict predicates (`success?` / `failure?` / `skipped?`)
+plus `ok?` (≡ "didn't fail"); see decision D17 for the `:skip` outcome.
 
 This is a **clean-slate rebuild** of an older gem of the same name. The redesign
 goals are: full type information (RBS via Sord + YARD), agent-readability, a
@@ -30,7 +32,7 @@ pure-Ruby core with Rails as an optional adapter, and an explicit typed `output`
 instead of the old "capture every instance variable" magic. See `docs/origin/plan.md`
 for the locked decisions.
 
-The library targets **v1.0.0**. The slice plan and decisions D1–D16 are authoritative.
+The library targets **v1.0.0**. The slice plan and decisions D1–D17 are authoritative.
 
 ---
 
@@ -136,5 +138,5 @@ End AI-assisted commits with a `Co-Authored-By:` trailer.
 ## When in doubt
 
 The slice plan in `docs/origin/plan.md` is the authoritative roadmap. Decisions
-D1–D16 are locked unless explicitly revisited. If a question isn't answered there,
+D1–D17 are locked unless explicitly revisited. If a question isn't answered there,
 ask before guessing.

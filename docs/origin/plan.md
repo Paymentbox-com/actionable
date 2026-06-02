@@ -436,11 +436,12 @@ with either loses information for observability, retries, and composition.
 
 ## Slice plan
 
-16 slices, ordered so each is independently testable and unblocks the next.
-Foundation first (results → control flow → steps → action/runner), then output/input
-schemas, lifecycle, composition, ergonomics, the optional adapters, and finally the
-type/doc toolchain and release. Every slice produces one or more atomic commits;
-every test ships with the code it proves.
+16 slices (plus Slice 17, the post-plan `:skip` outcome), ordered so each is
+independently testable and unblocks the next. Foundation first (results → control
+flow → steps → action/runner), then output/input schemas, lifecycle, composition,
+ergonomics, the optional adapters, and finally the type/doc toolchain and release.
+Every slice produces one or more atomic commits; every test ships with the code it
+proves.
 
 ### Slice 1 — Result value objects
 `Actionable::Result` (FieldStruct base) + `Success` / `Failure` with
@@ -532,6 +533,16 @@ CHANGELOG; gemspec metadata (Paymentbox push host); coverage + rubocop + `rake r
 green; tag v1.0.0.
 Commits: `docs: add usage guide and examples`, `chore: fill gemspec metadata`,
 `chore: release v1.0.0`
+
+### Slice 17 — The `:skip` outcome (added post-plan; see D17)
+
+`Actionable::Skipped` + `skip` / `skip!` + `ok?` + `on_skip` hook; skip output is
+best-effort/unvalidated; nested skip continues the parent; skip commits under
+`transactional`; `and_skip` matcher + skip stubs. Not in the original 16; added
+on request and specified by decision **D17**.
+Commits: `feat: add :skip outcome status`,
+`feat: add skip support to the rspec matcher and stubs`,
+`docs: document the :skip outcome (D17)`
 
 ---
 
