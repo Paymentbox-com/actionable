@@ -5,8 +5,17 @@ source "https://rubygems.org"
 # Specify your gem's dependencies in actionable.gemspec
 gemspec
 
-gem "rake", "~> 13.0"
+# Pull field_struct from GitHub rather than RubyGems (overrides the
+# gemspec runtime dependency for development/CI).
+gem 'field_struct', git: 'https://github.com/Paymentbox-com/field_struct'
 
-gem "rspec", "~> 3.0"
+gem 'rake',      '~> 13.0'
+gem 'rspec',     '~> 3.0'
+gem 'rubocop',   '~> 1.21'
+gem 'simplecov', '~> 0.22', require: false
 
-gem "rubocop", "~> 1.21"
+# Type signatures + docs (decision D13)
+gem 'rbs',   '~> 3.0', require: false
+gem 'sord',  '~> 7.0', require: false
+gem 'yard',  '~> 0.9', require: false
+gem 'steep', '~> 1.0', require: false
