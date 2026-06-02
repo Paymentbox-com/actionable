@@ -12,6 +12,9 @@
 /.gem_rbs_collection/
 /rbs_collection.lock.yaml
 
+# Scratch space for notes/reports, not for committing
+/scrap
+
 # rspec failure tracking
 .rspec_status
 
