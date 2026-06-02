@@ -5,6 +5,32 @@
 # adapters (+actionable/rails+, +actionable/rspec+) are separate requires and
 # are deliberately NOT loaded here, keeping the core Rails-free.
 module Actionable
+  # Run +block+ inside the halt catch point.
+  # 
+  # Returns the block's value when nothing is thrown, or the value passed with
+  # +throw Actionable::HALT, value+ when the pipeline halts (+nil+ for a bare
+  # +throw Actionable::HALT+). A raised StandardError is deliberately NOT
+  # caught — it propagates to the caller (decision D4).
+  # 
+  # _@return_ — the block's value, or the thrown halt value
+  def catch_halt: () -> Object
+
+  # Run +block+ inside the halt catch point.
+  # 
+  # Returns the block's value when nothing is thrown, or the value passed with
+  # +throw Actionable::HALT, value+ when the pipeline halts (+nil+ for a bare
+  # +throw Actionable::HALT+). A raised StandardError is deliberately NOT
+  # caught — it propagates to the caller (decision D4).
+  # 
+  # _@return_ — the block's value, or the thrown halt value
+  def self.catch_halt: () -> Object
+
+  # Base class for every error this gem raises. Rescue +Actionable::Error+ to
+  # catch the whole family. Genuine errors are never caught by the runner for
+  # control flow — they propagate to the caller (decision D4).
+  class Error < StandardError
+  end
+
   # The single value object a run returns. {Success} and {Failure} are the
   # concrete subclasses; +Result+ itself is abstract and defines the shared,
   # FieldStruct-backed shape (decision D5).
