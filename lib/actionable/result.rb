@@ -37,6 +37,12 @@ module Actionable
       false
     end
 
+    # @return [Boolean] whether the run was skipped — nothing to do, neither a
+    #   success nor a failure (decision D17). Abstract here; {Skipped} flips it.
+    def skipped?
+      false
+    end
+
     # @return [Boolean] alias of {#success?}
     def successful?
       success?
@@ -45,6 +51,12 @@ module Actionable
     # @return [Boolean] alias of {#failure?}
     def failed?
       failure?
+    end
+
+    # @return [Boolean] whether the run did not fail — true for both a
+    #   {Success} and a {Skipped}. The "happy path didn't error" check.
+    def ok?
+      !failure?
     end
 
     # @return [String] a compact, field-sorted, deterministic representation —

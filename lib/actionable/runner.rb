@@ -70,6 +70,8 @@ module Actionable
       section, hooks =
         if @result.success?
           [:success, @instance.class.success_hooks]
+        elsif @result.skipped?
+          [:skip, @instance.class.skip_hooks]
         else
           [:failure, @instance.class.failure_hooks]
         end
@@ -129,9 +131,10 @@ module Actionable
     # Capture, coerce, and attach the typed output (decision D6). Free-form
     # actions (no schema) keep whatever output was recorded. With a schema,
     # capture the declared-field ivars overlaid with any +succeed+ kwargs
-    # (kwargs win) and coerce them. A successful run whose output fails
-    # validation can't really have succeeded — +@result+ becomes a +Failure+
-    # with code +:invalid_output+. Failures capture best-effort, never validated.
+    # (kwargs win) and coerce them. Only a strict {Success} is validated — its
+    # output failing validation means it can't really have succeeded, so
+    # +@result+ becomes a +Failure(:invalid_output)+. A {Failure} or {Skipped}
+    # captures best-effort and is never validated (decisions D6/D17).
     #
     # @return [void]
     def refresh_output
@@ -140,13 +143,12 @@ module Actionable
 
       output = schema.new(**captured_attributes(schema))
 
-      if @result.failure?
+      unless @result.success?
         @result.output = output
-      elsif output.valid?
-        @result.output = output
-      else
-        @result = invalid_output_failure(output)
+        return
       end
+
+      output.valid? ? (@result.output = output) : (@result = invalid_output_failure(output))
     end
 
     # Declared-field ivars from the action instance, overlaid with the recorded

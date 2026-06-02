@@ -92,6 +92,12 @@ module Actionable
         @failure_hooks ||= Set.new
       end
 
+      # Lifecycle hooks that run after the main steps when the run was skipped.
+      # @return [Set<Steps::Base>]
+      def skip_hooks
+        @skip_hooks ||= Set.new
+      end
+
       # Lifecycle hooks that run after the main steps regardless of outcome.
       # @return [Set<Steps::Base>]
       def always_hooks
@@ -112,6 +118,14 @@ module Actionable
       # @return [Set<Steps::Base>]
       def on_failure(target, **options)
         failure_hooks << Steps.build(target, **options)
+      end
+
+      # Declare a hook that runs at the end of a run iff it was skipped (D17).
+      # @param target [Symbol, String] the instance method to run
+      # @param options [Hash{Symbol=>Object}] step options (e.g. +:if+)
+      # @return [Set<Steps::Base>]
+      def on_skip(target, **options)
+        skip_hooks << Steps.build(target, **options)
       end
 
       # Declare a hook that runs at the end of a run regardless of outcome (D2).
@@ -215,6 +229,7 @@ module Actionable
         subclass.instance_variable_set(:@input_schema, input_schema)
         subclass.instance_variable_set(:@success_hooks, success_hooks.dup)
         subclass.instance_variable_set(:@failure_hooks, failure_hooks.dup)
+        subclass.instance_variable_set(:@skip_hooks, skip_hooks.dup)
         subclass.instance_variable_set(:@always_hooks, always_hooks.dup)
         subclass.instance_variable_set(:@measure, measure)
       end
@@ -292,9 +307,32 @@ module Actionable
       halt!
     end
 
+    # Record a {Skipped} as the run's result without halting — the action had
+    # nothing to do (decision D17). Not a failure; later steps still run and the
+    # final result reflects the most recent record (last write wins).
+    #
+    # @param code [Symbol] the skip reason; defaults to +:skipped+
+    # @param message [String, nil] human-readable description
+    # @return [false] so a step can branch on the call (the run did not succeed here)
+    def skip(code = :skipped, message = nil)
+      @result = Skipped.new(code: code, message: message)
+      false
+    end
+
+    # Record a {Skipped} and halt the run, skipping the remaining steps — the
+    # common "nothing to do, stop here" case (decision D17).
+    #
+    # @param code [Symbol] the skip reason; defaults to +:skipped+
+    # @param message [String, nil] human-readable description
+    # @return [void]
+    def skip!(code = :skipped, message = nil)
+      skip(code, message)
+      halt!
+    end
+
     # Halt the run immediately, keeping whatever result was already recorded
-    # (a prior +fail+/+succeed+, or auto-{Success} if none). Control flow only —
-    # not an exception (decision D4).
+    # (a prior +fail+/+succeed+/+skip+, or auto-{Success} if none). Control flow
+    # only — not an exception (decision D4).
     #
     # @return [void]
     def halt!

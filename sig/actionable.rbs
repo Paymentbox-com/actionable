@@ -286,6 +286,9 @@ module Actionable
     # Lifecycle hooks that run after the main steps when the run fails.
     def self.failure_hooks: () -> ::Set[Steps::Base]
 
+    # Lifecycle hooks that run after the main steps when the run was skipped.
+    def self.skip_hooks: () -> ::Set[Steps::Base]
+
     # Lifecycle hooks that run after the main steps regardless of outcome.
     def self.always_hooks: () -> ::Set[Steps::Base]
 
@@ -302,6 +305,13 @@ module Actionable
     # 
     # _@param_ `options` — step options (e.g. +:if+)
     def self.on_failure: ((Symbol | String) target, **::Hash[Symbol, Object] options) -> ::Set[Steps::Base]
+
+    # Declare a hook that runs at the end of a run iff it was skipped (D17).
+    # 
+    # _@param_ `target` — the instance method to run
+    # 
+    # _@param_ `options` — step options (e.g. +:if+)
+    def self.on_skip: ((Symbol | String) target, **::Hash[Symbol, Object] options) -> ::Set[Steps::Base]
 
     # Declare a hook that runs at the end of a run regardless of outcome (D2).
     # 
@@ -410,9 +420,28 @@ module Actionable
     # _@param_ `output` — the success output payload
     def succeed!: (?String? message, **::Hash[Symbol, Object] output) -> void
 
+    # Record a {Skipped} as the run's result without halting — the action had
+    # nothing to do (decision D17). Not a failure; later steps still run and the
+    # final result reflects the most recent record (last write wins).
+    # 
+    # _@param_ `code` — the skip reason; defaults to +:skipped+
+    # 
+    # _@param_ `message` — human-readable description
+    # 
+    # _@return_ — so a step can branch on the call (the run did not succeed here)
+    def skip: (?Symbol code, ?String? message) -> bool
+
+    # Record a {Skipped} and halt the run, skipping the remaining steps — the
+    # common "nothing to do, stop here" case (decision D17).
+    # 
+    # _@param_ `code` — the skip reason; defaults to +:skipped+
+    # 
+    # _@param_ `message` — human-readable description
+    def skip!: (?Symbol code, ?String? message) -> void
+
     # Halt the run immediately, keeping whatever result was already recorded
-    # (a prior +fail+/+succeed+, or auto-{Success} if none). Control flow only —
-    # not an exception (decision D4).
+    # (a prior +fail+/+succeed+/+skip+, or auto-{Success} if none). Control flow
+    # only — not an exception (decision D4).
     def halt!: () -> void
 
     # _@return_ — the declared output schema, or
@@ -466,11 +495,19 @@ module Actionable
     # _@return_ — whether the run failed.
     def failure?: () -> bool
 
+    # _@return_ — whether the run was skipped — nothing to do, neither a
+    # success nor a failure (decision D17). Abstract here; {Skipped} flips it.
+    def skipped?: () -> bool
+
     # _@return_ — alias of {#success?}
     def successful?: () -> bool
 
     # _@return_ — alias of {#failure?}
     def failed?: () -> bool
+
+    # _@return_ — whether the run did not fail — true for both a
+    # {Success} and a {Skipped}. The "happy path didn't error" check.
+    def ok?: () -> bool
 
     # _@return_ — a compact, field-sorted, deterministic representation —
     # the declared attributes plus the +errors+ collection, sorted by name,
@@ -564,9 +601,10 @@ module Actionable
     # Capture, coerce, and attach the typed output (decision D6). Free-form
     # actions (no schema) keep whatever output was recorded. With a schema,
     # capture the declared-field ivars overlaid with any +succeed+ kwargs
-    # (kwargs win) and coerce them. A successful run whose output fails
-    # validation can't really have succeeded — +@result+ becomes a +Failure+
-    # with code +:invalid_output+. Failures capture best-effort, never validated.
+    # (kwargs win) and coerce them. Only a strict {Success} is validated — its
+    # output failing validation means it can't really have succeeded, so
+    # +@result+ becomes a +Failure(:invalid_output)+. A {Failure} or {Skipped}
+    # captures best-effort and is never validated (decisions D6/D17).
     def refresh_output: () -> void
 
     # Declared-field ivars from the action instance, overlaid with the recorded
@@ -715,6 +753,16 @@ module Actionable
     def code: () -> Symbol
 
     def failure?: () -> bool
+  end
+
+  # A skipped run's result (decision D17): the action had nothing to do — not a
+  # success (no real work), but not a failure either. Its +code+ is the skip
+  # reason (e.g. +:not_ready+), defaulting to +:skipped+.
+  class Skipped < Actionable::Result
+    # _@return_ — the skip reason; defaults to +:skipped+
+    def code: () -> Symbol
+
+    def skipped?: () -> bool
   end
 
   # A successful run's result. Its +code+ defaults to +:success+.
