@@ -119,6 +119,12 @@ Naming/MethodParameterName:
     - rr
     - to
 
+Naming/BlockForwarding:
+  # This gem prioritizes accurate YARD docs that feed Sord (decision D13).
+  # Anonymous block forwarding (&) can't carry a documented parameter name, so
+  # named `&block` is preferred here.
+  Enabled: false
+
 Naming/PredicateMethod:
   # fail/succeed are control-flow DSL verbs (decision D4) that return a Boolean
   # for branching, not predicates — they deliberately don't end in `?`.
@@ -179,6 +185,12 @@ Style/PerlBackrefs:
 
 Style/RegexpLiteral:
   EnforcedStyle: mixed
+
+Style/ArgumentsForwarding:
+  # Named **options / &block forwarding is preferred over anonymous (** / &) so
+  # YARD @param tags stay valid and Sord emits typed keyword args rather than
+  # **untyped (decision D13, accurate docs/types).
+  Enabled: false
 
 Style/SignalException:
   # `fail` is a control-flow DSL verb in this gem (decision D4), not a synonym

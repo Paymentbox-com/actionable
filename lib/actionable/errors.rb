@@ -22,7 +22,7 @@ module Actionable
   # caught — it propagates to the caller (decision D4).
   #
   # @return [Object] the block's value, or the thrown halt value
-  def catch_halt(&)
-    catch(HALT, &)
+  def catch_halt(&block)
+    catch(HALT, &block)
   end
 end

@@ -8,8 +8,8 @@ module Actionable
       # @param name [Symbol, String] the instance method to call; normalized
       #   to a Symbol
       # @param options [Hash{Symbol=>Object}] step options (e.g. +:if+, +:unless+)
-      def initialize(name, **)
-        super(name.to_sym, **)
+      def initialize(name, **options)
+        super(name.to_sym, **options)
       end
 
       # Invoke the named method on the instance.

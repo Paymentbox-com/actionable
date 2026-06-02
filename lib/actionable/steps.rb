@@ -12,13 +12,13 @@ module Actionable
     #   and for action steps +:input+ / +:expose+)
     # @return [Steps::Base] the constructed step
     # @raise [ArgumentError] when the target's type is not supported
-    def self.build(target, **)
+    def self.build(target, **options)
       case target
-      when Symbol, String then Method.new(target, **)
+      when Symbol, String then Method.new(target, **options)
       when Class
         raise ArgumentError, "unsupported step target: #{target.inspect}" unless target < Actionable::Action
 
-        Action.new(target, **)
+        Action.new(target, **options)
       else
         raise ArgumentError, "unsupported step target: #{target.inspect}"
       end

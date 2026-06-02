@@ -73,8 +73,8 @@ module Actionable
     end
 
     # @see #respond_to_missing?
-    def method_missing(name, *, &)
-      return output.public_send(name, *, &) if delegates_to_output?(name)
+    def method_missing(name, *args, &block)
+      return output.public_send(name, *args, &block) if delegates_to_output?(name)
 
       super
     end

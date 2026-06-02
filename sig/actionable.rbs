@@ -41,7 +41,7 @@ module Actionable
     # _@param_ `options` — step options (e.g. +:if+, +:unless+, and for action steps +:input+ / +:expose+)
     # 
     # _@return_ — the constructed step
-    def self.build: ((Symbol | String | singleton(Actionable::Action)) target) -> Steps::Base
+    def self.build: ((Symbol | String | singleton(Actionable::Action)) target, **::Hash[Symbol, Object] options) -> Steps::Base
 
     # Shared behavior for every step: a +name+, an +options+ hash, value
     # identity for Set deduplication (keyed by +[type, name]+, decision D2),
@@ -111,7 +111,7 @@ module Actionable
       # _@param_ `value_source` — the method whose value is switched on
       # 
       # _@param_ `options` — step options (e.g. +:if+, +:unless+)
-      def self.define: ((Symbol | String) value_source) -> Case
+      def self.define: ((Symbol | String) value_source, **::Hash[Symbol, Object] options) -> Case
 
       # _@param_ `value_source` — the method whose value is switched on
       # 
@@ -120,7 +120,12 @@ module Actionable
       # _@param_ `default_step` — the fallback step
       # 
       # _@param_ `options` — step options
-      def initialize: ((Symbol | String) value_source, ::Array[[Object, Steps::Base]] branches, Steps::Base? default_step) -> void
+      def initialize: (
+                        (Symbol | String) value_source,
+                        ::Array[[Object, Steps::Base]] branches,
+                        Steps::Base? default_step,
+                        **::Hash[Symbol, Object] options
+                      ) -> void
 
       # Evaluate the switch value and run the first matching branch (or the
       # default). No-op when nothing matches and no default was declared.
@@ -151,14 +156,14 @@ module Actionable
         # _@param_ `target`
         # 
         # _@param_ `options` — step options for the target
-        def on: ((Object | Regexp | ::Array[untyped]) value, (Symbol | String | singleton(Actionable::Action)) target) -> void
+        def on: ((Object | Regexp | ::Array[untyped]) value, (Symbol | String | singleton(Actionable::Action)) target, **::Hash[Symbol, Object] options) -> void
 
         # Register the fallback branch, run when no +on+ branch matches.
         # 
         # _@param_ `target`
         # 
         # _@param_ `options` — step options for the target
-        def default: ((Symbol | String | singleton(Actionable::Action)) target) -> void
+        def default: ((Symbol | String | singleton(Actionable::Action)) target, **::Hash[Symbol, Object] options) -> void
 
         # _@return_ — ordered [match, step] pairs
         attr_reader branches: ::Array[[Object, Steps::Base]]
@@ -206,7 +211,7 @@ module Actionable
       # _@param_ `name` — the instance method to call; normalized to a Symbol
       # 
       # _@param_ `options` — step options (e.g. +:if+, +:unless+)
-      def initialize: ((Symbol | String) name) -> void
+      def initialize: ((Symbol | String) name, **::Hash[Symbol, Object] options) -> void
 
       # Invoke the named method on the instance.
       # 
@@ -229,7 +234,7 @@ module Actionable
   #   Greet.run # => #<Actionable::Success ...>
   class Action
     # The ordered, deduplicated set of steps declared on this action.
-    # A {Set} keyed by step identity ([type, name]) so a redeclared step
+    # A +Set+ keyed by step identity ([type, name]) so a redeclared step
     # collapses to one entry; insertion order is preserved (decision D2).
     def self.steps: () -> ::Set[Steps::Base]
 
@@ -273,7 +278,7 @@ module Actionable
     # _@param_ `options` — step options (e.g. +:if+, +:unless+)
     # 
     # _@return_ — the updated step set
-    def self.step: ((Symbol | String) target) -> ::Set[Steps::Base]
+    def self.step: ((Symbol | String) target, **::Hash[Symbol, Object] options) -> ::Set[Steps::Base]
 
     # Lifecycle hooks that run after the main steps when the run succeeds.
     def self.success_hooks: () -> ::Set[Steps::Base]
@@ -289,21 +294,21 @@ module Actionable
     # _@param_ `target` — the instance method to run
     # 
     # _@param_ `options` — step options (e.g. +:if+)
-    def self.on_success: ((Symbol | String) target) -> ::Set[Steps::Base]
+    def self.on_success: ((Symbol | String) target, **::Hash[Symbol, Object] options) -> ::Set[Steps::Base]
 
     # Declare a hook that runs at the end of a run iff it failed (D2).
     # 
     # _@param_ `target` — the instance method to run
     # 
     # _@param_ `options` — step options (e.g. +:if+)
-    def self.on_failure: ((Symbol | String) target) -> ::Set[Steps::Base]
+    def self.on_failure: ((Symbol | String) target, **::Hash[Symbol, Object] options) -> ::Set[Steps::Base]
 
     # Declare a hook that runs at the end of a run regardless of outcome (D2).
     # 
     # _@param_ `target` — the instance method to run
     # 
     # _@param_ `options` — step options (e.g. +:if+)
-    def self.always: ((Symbol | String) target) -> ::Set[Steps::Base]
+    def self.always: ((Symbol | String) target, **::Hash[Symbol, Object] options) -> ::Set[Steps::Base]
 
     # Declare a branching step (decision D3). The switch value is read from
     # +value_source+ (an instance method); the block declares branches with
@@ -319,7 +324,7 @@ module Actionable
     # _@param_ `options` — step options (e.g. +:if+, +:unless+)
     # 
     # _@return_ — the updated step set
-    def self.case_step: ((Symbol | String) value_source) -> ::Set[Steps::Base]
+    def self.case_step: ((Symbol | String) value_source, **::Hash[Symbol, Object] options) -> ::Set[Steps::Base]
 
     # Enable or read the action's measurement mode (decision D10). +:all+
     # records an execution {History}; +:none+ (the default) records nothing
@@ -483,7 +488,7 @@ module Actionable
 
     # 
     # _@see_ `#respond_to_missing?`
-    def method_missing: (untyped name) -> untyped
+    def method_missing: (untyped name, *untyped args) -> untyped
 
     # _@param_ `name`
     # 

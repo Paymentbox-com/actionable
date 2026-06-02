@@ -34,8 +34,8 @@ module Actionable
         # @param target [Symbol, String, Class<Actionable::Action>]
         # @param options [Hash{Symbol=>Object}] step options for the target
         # @return [void]
-        def on(value, target, **)
-          @branches << [value, Steps.build(target, **)]
+        def on(value, target, **options)
+          @branches << [value, Steps.build(target, **options)]
         end
 
         # Register the fallback branch, run when no +on+ branch matches.
@@ -43,8 +43,8 @@ module Actionable
         # @param target [Symbol, String, Class<Actionable::Action>]
         # @param options [Hash{Symbol=>Object}] step options for the target
         # @return [void]
-        def default(target, **)
-          @default_step = Steps.build(target, **)
+        def default(target, **options)
+          @default_step = Steps.build(target, **options)
         end
       end
 
@@ -54,18 +54,18 @@ module Actionable
       # @param options [Hash{Symbol=>Object}] step options (e.g. +:if+, +:unless+)
       # @yield the branch declarations (+on+ / +default+)
       # @return [Case]
-      def self.define(value_source, **, &)
+      def self.define(value_source, **options, &block)
         builder = Builder.new
-        builder.instance_eval(&)
-        new(value_source, builder.branches, builder.default_step, **)
+        builder.instance_eval(&block)
+        new(value_source, builder.branches, builder.default_step, **options)
       end
 
       # @param value_source [Symbol, String] the method whose value is switched on
       # @param branches [Array<Array(Object, Steps::Base)>] ordered [match, step] pairs
       # @param default_step [Steps::Base, nil] the fallback step
       # @param options [Hash{Symbol=>Object}] step options
-      def initialize(value_source, branches, default_step, **)
-        super(value_source, **)
+      def initialize(value_source, branches, default_step, **options)
+        super(value_source, **options)
         @branches = branches
         @default_step = default_step
       end

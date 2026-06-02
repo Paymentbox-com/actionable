@@ -14,7 +14,7 @@ module Actionable
   class Action
     class << self
       # The ordered, deduplicated set of steps declared on this action.
-      # A {Set} keyed by step identity ([type, name]) so a redeclared step
+      # A +Set+ keyed by step identity ([type, name]) so a redeclared step
       # collapses to one entry; insertion order is preserved (decision D2).
       #
       # @return [Set<Steps::Base>]
@@ -62,8 +62,8 @@ module Actionable
       #
       # @yield the FieldStruct field declarations
       # @return [Class<FieldStruct::Base>] the input schema
-      def input(&)
-        @input_schema = Class.new(FieldStruct::Base, &)
+      def input(&block)
+        @input_schema = Class.new(FieldStruct::Base, &block)
       end
 
       # @return [Class<FieldStruct::Base>, nil] the declared input schema, or
@@ -76,8 +76,8 @@ module Actionable
       # @param target [Symbol, String] the step target
       # @param options [Hash{Symbol=>Object}] step options (e.g. +:if+, +:unless+)
       # @return [Set<Steps::Base>] the updated step set
-      def step(target, **)
-        steps << Steps.build(target, **)
+      def step(target, **options)
+        steps << Steps.build(target, **options)
       end
 
       # Lifecycle hooks that run after the main steps when the run succeeds.
@@ -102,24 +102,24 @@ module Actionable
       # @param target [Symbol, String] the instance method to run
       # @param options [Hash{Symbol=>Object}] step options (e.g. +:if+)
       # @return [Set<Steps::Base>]
-      def on_success(target, **)
-        success_hooks << Steps.build(target, **)
+      def on_success(target, **options)
+        success_hooks << Steps.build(target, **options)
       end
 
       # Declare a hook that runs at the end of a run iff it failed (D2).
       # @param target [Symbol, String] the instance method to run
       # @param options [Hash{Symbol=>Object}] step options (e.g. +:if+)
       # @return [Set<Steps::Base>]
-      def on_failure(target, **)
-        failure_hooks << Steps.build(target, **)
+      def on_failure(target, **options)
+        failure_hooks << Steps.build(target, **options)
       end
 
       # Declare a hook that runs at the end of a run regardless of outcome (D2).
       # @param target [Symbol, String] the instance method to run
       # @param options [Hash{Symbol=>Object}] step options (e.g. +:if+)
       # @return [Set<Steps::Base>]
-      def always(target, **)
-        always_hooks << Steps.build(target, **)
+      def always(target, **options)
+        always_hooks << Steps.build(target, **options)
       end
 
       # Declare a branching step (decision D3). The switch value is read from
@@ -135,8 +135,8 @@ module Actionable
       # @param options [Hash{Symbol=>Object}] step options (e.g. +:if+, +:unless+)
       # @yield the branch declarations
       # @return [Set<Steps::Base>] the updated step set
-      def case_step(value_source, **, &)
-        steps << Steps::Case.define(value_source, **, &)
+      def case_step(value_source, **options, &block)
+        steps << Steps::Case.define(value_source, **options, &block)
       end
 
       # Enable or read the action's measurement mode (decision D10). +:all+
