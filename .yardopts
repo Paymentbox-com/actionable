@@ -1,6 +1,8 @@
 --readme README.md
 --markup markdown
 --output-dir doc
+--exclude lib/actionable/rails
+--exclude lib/actionable/railtie
 lib/**/*.rb
 -
 CHANGELOG.md

@@ -14,6 +14,10 @@ gem 'rspec', '~> 3.0'
 gem 'rubocop', '~> 1.21'
 gem 'simplecov', '~> 0.22', require: false
 
+# Exercises the optional Rails adapter (actionable/rails) in adapter specs.
+# The core never loads active_*; this is dev/test only (decisions D8/D9).
+gem 'activemodel', '~> 8.0', require: false
+
 # Type signatures + docs (decision D13)
 gem 'rbs', '~> 3.0', require: false
 gem 'sord', '~> 7.0', require: false
