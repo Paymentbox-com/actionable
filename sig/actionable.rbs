@@ -25,6 +25,9 @@ module Actionable
   # _@return_ — the block's value, or the thrown halt value
   def self.catch_halt: () -> Object
 
+  # _@return_ — the process-wide action registry
+  def self.registry: () -> Registry
+
   # Namespace for the concrete step types an action's pipeline is built from
   # (decision D3): {Steps::Method} now, {Steps::Action} and {Steps::Case} later.
   module Steps
@@ -598,6 +601,38 @@ module Actionable
       # _@return_ — the nested action's history, for action steps
       attr_accessor nested: History?
     end
+  end
+
+  # A read-only map of every named action class, keyed by class name (decision
+  # D11). {Action} registers each subclass through its +inherited+ hook;
+  # anonymous subclasses (which have no name) are skipped. Used for discovery
+  # and tooling — e.g. sweeping all actions to generate RBS.
+  class Registry
+    def initialize: () -> void
+
+    # Register an action class under its name. No-op for anonymous classes.
+    # 
+    # _@param_ `klass` — the action subclass
+    def register: (Class klass) -> self
+
+    # _@param_ `name` — an action class name
+    # 
+    # _@return_ — the registered class, or +nil+
+    def []: ((String | Symbol) name) -> Class?
+
+    def each: () ?{ (String name, Class klass) -> void } -> (::Enumerator[untyped] | self)
+
+    # _@return_ — the registered class names
+    def keys: () -> ::Array[String]
+
+    # _@return_ — the registered classes
+    def values: () -> ::Array[Class]
+
+    # _@return_ — the number of registered classes
+    def size: () -> Integer
+
+    # _@return_ — whether nothing is registered
+    def empty?: () -> bool
   end
 
   # Thread-local measurement context (decision D10). It lets a measuring run

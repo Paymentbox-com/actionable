@@ -152,6 +152,7 @@ module Actionable
       # @return [void]
       def inherited(subclass)
         super
+        Actionable.registry.register(subclass)
         subclass.instance_variable_set(:@steps, steps.dup)
         subclass.instance_variable_set(:@output_schema, output_schema)
         subclass.instance_variable_set(:@success_hooks, success_hooks.dup)
