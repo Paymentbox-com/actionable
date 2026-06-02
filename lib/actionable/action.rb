@@ -100,6 +100,23 @@ module Actionable
         always_hooks << Steps.build(target, **)
       end
 
+      # Declare a branching step (decision D3). The switch value is read from
+      # +value_source+ (an instance method); the block declares branches with
+      # +on(value, target)+ and an optional +default(target)+.
+      #
+      #   case_step :status do
+      #     on 'active', :handle_active
+      #     default :handle_unknown
+      #   end
+      #
+      # @param value_source [Symbol, String] the method whose value is switched on
+      # @param options [Hash{Symbol=>Object}] step options (e.g. +:if+, +:unless+)
+      # @yield the branch declarations
+      # @return [Set<Steps::Base>] the updated step set
+      def case_step(value_source, **, &)
+        steps << Steps::Case.define(value_source, **, &)
+      end
+
       # Instantiate the action with the given arguments and run it.
       #
       # @return [Result] the run's {Success} or {Failure}

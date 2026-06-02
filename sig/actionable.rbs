@@ -91,6 +91,80 @@ module Actionable
       attr_reader options: ::Hash[Symbol, Object]
     end
 
+    # A step that branches to one of several targets based on a value
+    # (decision D3, declared with +case_step+). The switch value is read from
+    # the action via the named method; each branch's target is an ordinary step
+    # (a method or a nested action), so branches compose like any other step.
+    # 
+    #   case_step :status do
+    #     on 'active',          :handle_active
+    #     on %w[trial grace],   :handle_trial      # Array membership
+    #     on(/\A4\d\d\z/,       :handle_client_err # Regexp
+    #     default               :handle_unknown
+    #   end
+    class Case < Actionable::Steps::Base
+      # Build a case step from a +case_step+ declaration.
+      # 
+      # _@param_ `value_source` — the method whose value is switched on
+      # 
+      # _@param_ `options` — step options (e.g. +:if+, +:unless+)
+      def self.define: ((Symbol | String) value_source) -> Case
+
+      # _@param_ `value_source` — the method whose value is switched on
+      # 
+      # _@param_ `branches` — ordered [match, step] pairs
+      # 
+      # _@param_ `default_step` — the fallback step
+      # 
+      # _@param_ `options` — step options
+      def initialize: ((Symbol | String) value_source, ::Array[[Object, Steps::Base]] branches, Steps::Base? default_step) -> void
+
+      # Evaluate the switch value and run the first matching branch (or the
+      # default). No-op when nothing matches and no default was declared.
+      # 
+      # _@param_ `instance`
+      def call: (Actionable::Action _instance) -> void
+
+      # _@param_ `value` — the switch value
+      # 
+      # _@return_ — the first matching branch's step
+      def match: (Object value) -> Steps::Base?
+
+      # _@param_ `branch_value`
+      # 
+      # _@param_ `value`
+      def matches?: ((Object | Regexp | ::Array[untyped]) branch_value, Object value) -> bool
+
+      # Collects +on+/+default+ branch declarations inside a +case_step+ block.
+      class Builder
+        def initialize: () -> void
+
+        # Register a branch. +value+ matches the switch value by +==+, by
+        # +Regexp#match?+ when it is a Regexp, or by membership when it is an
+        # Array. +target+ is any step target (method name or nested action).
+        # 
+        # _@param_ `value`
+        # 
+        # _@param_ `target`
+        # 
+        # _@param_ `options` — step options for the target
+        def on: ((Object | Regexp | ::Array[untyped]) value, (Symbol | String | singleton(Actionable::Action)) target) -> void
+
+        # Register the fallback branch, run when no +on+ branch matches.
+        # 
+        # _@param_ `target`
+        # 
+        # _@param_ `options` — step options for the target
+        def default: ((Symbol | String | singleton(Actionable::Action)) target) -> void
+
+        # _@return_ — ordered [match, step] pairs
+        attr_reader branches: ::Array[[Object, Steps::Base]]
+
+        # _@return_ — the fallback step, if +default+ was declared
+        attr_reader default_step: Steps::Base?
+      end
+    end
+
     # A step that runs another action as part of this one (decision D3,
     # triggered by an action +Class+ step argument).
     # 
@@ -212,6 +286,22 @@ module Actionable
     # 
     # _@param_ `options` — step options (e.g. +:if+)
     def self.always: ((Symbol | String) target) -> ::Set[Steps::Base]
+
+    # Declare a branching step (decision D3). The switch value is read from
+    # +value_source+ (an instance method); the block declares branches with
+    # +on(value, target)+ and an optional +default(target)+.
+    # 
+    #   case_step :status do
+    #     on 'active', :handle_active
+    #     default :handle_unknown
+    #   end
+    # 
+    # _@param_ `value_source` — the method whose value is switched on
+    # 
+    # _@param_ `options` — step options (e.g. +:if+, +:unless+)
+    # 
+    # _@return_ — the updated step set
+    def self.case_step: ((Symbol | String) value_source) -> ::Set[Steps::Base]
 
     # Instantiate the action with the given arguments and run it.
     # 
