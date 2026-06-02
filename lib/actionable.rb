@@ -9,6 +9,9 @@ require_relative 'actionable/results/success'
 require_relative 'actionable/results/failure'
 require_relative 'actionable/steps/base'
 require_relative 'actionable/steps/method'
+require_relative 'actionable/steps'
+require_relative 'actionable/runner'
+require_relative 'actionable/action'
 
 # Actionable: typed, composable Ruby service objects.
 #
