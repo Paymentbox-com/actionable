@@ -8,6 +8,7 @@ require 'active_model'
 require 'active_support/core_ext/string/inflections' # camelize/constantize
 
 require_relative 'rails/transactions'
+require_relative 'rails/proxy_validator'
 
 # Wire the adapter into the core: the transactional macro onto Action, and the
 # transaction-wrapping behavior onto the Runner.
