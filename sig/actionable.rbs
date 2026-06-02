@@ -73,6 +73,77 @@ module Actionable
     def to_s: () -> String
   end
 
+  # Namespace for the concrete step types an action's pipeline is built from
+  # (decision D3): {Steps::Method} now, {Steps::Action} and {Steps::Case} later.
+  module Steps
+    # Shared behavior for every step: a +name+, an +options+ hash, value
+    # identity for Set deduplication (keyed by +[type, name]+, decision D2),
+    # and the +:if+ / +:unless+ skip logic. Subclasses implement {#call}.
+    # 
+    # @abstract Subclass and implement {#call}.
+    class Base
+      # _@param_ `name` — the step name (see {#name})
+      # 
+      # _@param_ `options` — step options
+      def initialize: (Object name, **::Hash[Symbol, Object] options) -> void
+
+      # Run the step against an action instance.
+      # 
+      # _@param_ `_instance` — the action instance the step runs against
+      def call: (Object _instance) -> void
+
+      # Whether this step should be skipped for the given instance, per its
+      # +:if+ / +:unless+ guards. A guard is a Symbol naming a (possibly
+      # private) instance method, or a callable invoked with the instance.
+      # When both guards are present, either one asking to skip wins.
+      # 
+      # _@param_ `instance` — the action instance to evaluate guards against
+      def skip?: (Object _instance) -> bool
+
+      # Value identity: same concrete class AND same name. This keys steps in
+      # the per-action Set so a redeclared step dedups (decision D2).
+      # 
+      # _@param_ `other`
+      def ==: (Object other) -> bool
+
+      # _@return_ — consistent with {#==}, so steps work as Set members
+      def hash: () -> Integer
+
+      # Resolve a guard against the instance. A Symbol/String names an instance
+      # method (called via +__send__+, so private predicates work); anything
+      # else is treated as a callable receiving the instance.
+      # 
+      # _@param_ `guard`
+      # 
+      # _@param_ `instance`
+      def evaluate_guard: ((Symbol | String | untyped) guard, Object _instance) -> bool
+
+      # _@return_ — the step's name — a Symbol for a {Steps::Method},
+      # an action Class for a {Steps::Action}
+      attr_reader name: Object
+
+      # _@return_ — the declared step options (e.g. +:if+,
+      # +:unless+, and step-type-specific keys)
+      attr_reader options: ::Hash[Symbol, Object]
+    end
+
+    # A step that calls an instance method on the action (decision D3,
+    # triggered by a Symbol/String step argument).
+    class Method < Actionable::Steps::Base
+      # _@param_ `name` — the instance method to call; normalized to a Symbol
+      # 
+      # _@param_ `options` — step options (e.g. +:if+, +:unless+)
+      def initialize: ((Symbol | String) name) -> void
+
+      # Invoke the named method on the instance.
+      # 
+      # _@param_ `instance` — the action instance
+      # 
+      # _@return_ — the method's return value
+      def call: (Object _instance) -> Object
+    end
+  end
+
   # A failed run's result. Its +code+ is the error symbol describing why the
   # run failed (e.g. +:not_found+, +:invalid_input+), defaulting to +:error+.
   class Failure < Actionable::Result
