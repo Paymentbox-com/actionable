@@ -151,8 +151,53 @@ module Actionable
     # slice).
     def initialize: (*untyped _args, **untyped _kwargs) -> void
 
+    # Record a {Failure} as the run's result without halting — later steps
+    # still run, and the final result reflects the most recent record (decision
+    # D4, "last write wins").
+    # 
+    # _@param_ `code` — the error code
+    # 
+    # _@param_ `message` — human-readable description
+    # 
+    # _@param_ `errors` — field => message(s) added to the result's errors collection
+    # 
+    # _@return_ — so a step can branch on the call
+    def fail: (Symbol code, ?String? message, **::Hash[Symbol, (String | ::Array[String])] errors) -> bool
+
+    # Record a {Success} as the run's result without halting (decision D4).
+    # 
+    # _@param_ `message` — human-readable description
+    # 
+    # _@param_ `output` — the success output payload
+    # 
+    # _@return_ — so a step can branch on the call
+    def succeed: (?String? message, **::Hash[Symbol, Object] output) -> bool
+
+    # Record a {Failure} and halt the run, skipping the remaining steps
+    # (decision D4).
+    # 
+    # _@param_ `code` — the error code
+    # 
+    # _@param_ `message` — human-readable description
+    # 
+    # _@param_ `errors` — field => message(s)
+    def fail!: (Symbol code, ?String? message, **::Hash[Symbol, (String | ::Array[String])] errors) -> void
+
+    # Record a {Success} and halt the run, skipping the remaining steps
+    # (decision D4).
+    # 
+    # _@param_ `message` — human-readable description
+    # 
+    # _@param_ `output` — the success output payload
+    def succeed!: (?String? message, **::Hash[Symbol, Object] output) -> void
+
+    # Halt the run immediately, keeping whatever result was already recorded
+    # (a prior +fail+/+succeed+, or auto-{Success} if none). Control flow only —
+    # not an exception (decision D4).
+    def halt!: () -> void
+
     # The result recorded during the run, if any. The control-flow methods
-    # (+fail+/+succeed+/…, a later slice) write here; +nil+ means "no explicit
+    # (+fail+/+succeed+/+fail!+/+succeed!+) write here; +nil+ means "no explicit
     # result", which the {Runner} turns into an auto-{Success}.
     attr_reader result: Result?
   end

@@ -58,10 +58,71 @@ module Actionable
     end
 
     # The result recorded during the run, if any. The control-flow methods
-    # (+fail+/+succeed+/…, a later slice) write here; +nil+ means "no explicit
+    # (+fail+/+succeed+/+fail!+/+succeed!+) write here; +nil+ means "no explicit
     # result", which the {Runner} turns into an auto-{Success}.
     #
     # @return [Result, nil]
     attr_reader :result
+
+    private
+
+    # Record a {Failure} as the run's result without halting — later steps
+    # still run, and the final result reflects the most recent record (decision
+    # D4, "last write wins").
+    #
+    # @param code [Symbol] the error code
+    # @param message [String, nil] human-readable description
+    # @param errors [Hash{Symbol=>String, Array<String>}] field => message(s)
+    #   added to the result's errors collection
+    # @return [false] so a step can branch on the call
+    def fail(code, message = nil, **errors)
+      failure = Failure.new(code: code, message: message)
+      errors.each { |field, messages| Array(messages).each { |m| failure.errors.add(field, m) } }
+      @result = failure
+      false
+    end
+
+    # Record a {Success} as the run's result without halting (decision D4).
+    #
+    # @param message [String, nil] human-readable description
+    # @param output [Hash{Symbol=>Object}] the success output payload
+    # @return [true] so a step can branch on the call
+    def succeed(message = nil, **output)
+      @result = Success.new(message: message, output: output)
+      true
+    end
+
+    # Record a {Failure} and halt the run, skipping the remaining steps
+    # (decision D4).
+    #
+    # @param code [Symbol] the error code
+    # @param message [String, nil] human-readable description
+    # @param errors [Hash{Symbol=>String, Array<String>}] field => message(s)
+    # @raise [UncaughtThrowError] never escapes the {Runner}'s halt catch
+    # @return [void]
+    def fail!(code, message = nil, **errors)
+      fail(code, message, **errors)
+      halt!
+    end
+
+    # Record a {Success} and halt the run, skipping the remaining steps
+    # (decision D4).
+    #
+    # @param message [String, nil] human-readable description
+    # @param output [Hash{Symbol=>Object}] the success output payload
+    # @return [void]
+    def succeed!(message = nil, **output)
+      succeed(message, **output)
+      halt!
+    end
+
+    # Halt the run immediately, keeping whatever result was already recorded
+    # (a prior +fail+/+succeed+, or auto-{Success} if none). Control flow only —
+    # not an exception (decision D4).
+    #
+    # @return [void]
+    def halt!
+      throw HALT
+    end
   end
 end

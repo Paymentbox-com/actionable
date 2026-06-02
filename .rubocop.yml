@@ -119,6 +119,13 @@ Naming/MethodParameterName:
     - rr
     - to
 
+Naming/PredicateMethod:
+  # fail/succeed are control-flow DSL verbs (decision D4) that return a Boolean
+  # for branching, not predicates — they deliberately don't end in `?`.
+  AllowedMethods:
+    - fail
+    - succeed
+
 Naming/PredicatePrefix:
   ForbiddenPrefixes: []
 
@@ -172,6 +179,11 @@ Style/PerlBackrefs:
 
 Style/RegexpLiteral:
   EnforcedStyle: mixed
+
+Style/SignalException:
+  # `fail` is a control-flow DSL verb in this gem (decision D4), not a synonym
+  # for `raise`. Enforcing raise-over-fail would mis-autocorrect DSL calls.
+  Enabled: false
 
 Style/SingleLineMethods:
   AllowIfMethodIsEmpty: false
