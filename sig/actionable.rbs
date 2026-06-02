@@ -1,4 +1,66 @@
+# Actionable: typed, composable Ruby service objects.
+# 
+# This is the core entry point. Per decision D14, every core file gets an
+# explicit +require_relative+ here — no autoload, no Zeitwerk. The optional
+# adapters (+actionable/rails+, +actionable/rspec+) are separate requires and
+# are deliberately NOT loaded here, keeping the core Rails-free.
 module Actionable
-  VERSION: String
-  # See the writing guide of rbs: https://github.com/ruby/rbs#guides
+  # The single value object a run returns. {Success} and {Failure} are the
+  # concrete subclasses; +Result+ itself is abstract and defines the shared,
+  # FieldStruct-backed shape (decision D5).
+  # 
+  # @abstract Instantiate {Success} or {Failure}, not +Result+ directly.
+  class Result < FieldStruct::Base
+    # _@return_ — +:success+ for a {Success}; the error symbol for a {Failure}
+    def code: () -> Symbol
+
+    # _@return_ — human-readable description of the outcome
+    def message: () -> String?
+
+    # _@return_ — the run's declared, typed output payload (empty by default).
+    # Firms up into an output FieldStruct once output schemas land (D6).
+    def output: () -> Object
+
+    # _@return_ — the run's execution history (empty by default).
+    # Firms up into a +History+ once measurement lands (D10).
+    def history: () -> Object
+
+    # _@return_ — whether the run succeeded. Abstract here; each
+    # subclass flips the predicate that applies to it.
+    def success?: () -> bool
+
+    # _@return_ — whether the run failed.
+    def failure?: () -> bool
+
+    # _@return_ — alias of {#success?}
+    def successful?: () -> bool
+
+    # _@return_ — alias of {#failure?}
+    def failed?: () -> bool
+
+    # _@return_ — a compact, field-sorted, deterministic representation —
+    # the declared attributes plus the +errors+ collection, sorted by name,
+    # so equal results always render identically.
+    def inspect: () -> String
+
+    # _@return_ — same deterministic representation as {#inspect}
+    def to_s: () -> String
+  end
+
+  # A failed run's result. Its +code+ is the error symbol describing why the
+  # run failed (e.g. +:not_found+, +:invalid_input+), defaulting to +:error+.
+  class Failure < Actionable::Result
+    # _@return_ — the error code; defaults to +:error+
+    def code: () -> Symbol
+
+    def failure?: () -> bool
+  end
+
+  # A successful run's result. Its +code+ defaults to +:success+.
+  class Success < Actionable::Result
+    # _@return_ — always +:success+ unless explicitly overridden
+    def code: () -> Symbol
+
+    def success?: () -> bool
+  end
 end
