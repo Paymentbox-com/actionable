@@ -250,6 +250,21 @@ module Actionable
     # none has been declared (the free-form path)
     def self.output: () -> singleton(FieldStruct::Base)?
 
+    # Declare the action's typed input schema (decision D7). Builds an
+    # anonymous +FieldStruct::Base+ subclass from the FieldStruct DSL; +.run+
+    # then coerces its arguments into this schema, validates them, and exposes
+    # the struct to steps via the instance's +input+ reader. Declaring input
+    # takes over the constructor role — steps read +input.field+ rather than
+    # capturing positional/keyword args in a custom +initialize+.
+    # 
+    #   input do
+    #     required :amount, :big_decimal
+    #     optional :name,   :string
+    #   end
+    # 
+    # _@return_ — the input schema
+    def self.input: () -> singleton(FieldStruct::Base)
+
     # Declare a step. The step type is inferred from +target+ (a Symbol or
     # String names an instance method — a {Steps::Method}).
     # 
@@ -319,10 +334,24 @@ module Actionable
     # _@return_ — whether this action records history
     def self.measure_all?: () -> bool
 
-    # Instantiate the action with the given arguments and run it.
+    # Run the action. With a declared input schema, coerce the arguments
+    # (keyword args, or a single input-schema instance) into the input struct
+    # and validate it — a required input that is missing or won't coerce
+    # short-circuits to a +Failure(:invalid_input)+ without running any steps
+    # (decision D7). Without an input schema, the arguments are forwarded
+    # verbatim to the action's constructor (the free-form path).
     # 
     # _@return_ — the run's {Success} or {Failure}
-    def self.run: () -> Result
+    def self.run: (*untyped args, **untyped kwargs) -> Result
+
+    # Coerce +.run+ arguments into the input struct: pass an existing input
+    # instance through untouched, otherwise build one from the keyword args.
+    def self.build_input: (untyped args, untyped kwargs) -> FieldStruct::Base
+
+    # _@param_ `input` — the invalid input struct
+    # 
+    # _@return_ — code +:invalid_input+, carrying the input's errors
+    def self.invalid_input_failure: (FieldStruct::Base input) -> Failure
 
     # Give each subclass its own copy of the inherited step set, so adding
     # steps to a subclass never mutates the parent's (decision D2).
@@ -385,10 +414,18 @@ module Actionable
     # +nil+ for a free-form action
     def self.output_schema: () -> singleton(FieldStruct::Base)?
 
+    # _@return_ — the declared input schema, or
+    # +nil+ for a free-form action
+    def self.input_schema: () -> singleton(FieldStruct::Base)?
+
     # The result recorded during the run, if any. The control-flow methods
     # (+fail+/+succeed+/+fail!+/+succeed!+) write here; +nil+ means "no explicit
     # result", which the {Runner} turns into an auto-{Success}.
     attr_reader result: Result?
+
+    # The typed input struct for this run, when an +input+ schema is declared
+    # (decision D7); +nil+ for a free-form action. Steps read +input.field+.
+    attr_reader input: FieldStruct::Base?
   end
 
   # Base class for every error this gem raises. Rescue +Actionable::Error+ to

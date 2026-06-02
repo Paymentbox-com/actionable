@@ -48,6 +48,28 @@ module Actionable
       #   +nil+ for a free-form action
       attr_reader :output_schema
 
+      # Declare the action's typed input schema (decision D7). Builds an
+      # anonymous +FieldStruct::Base+ subclass from the FieldStruct DSL; +.run+
+      # then coerces its arguments into this schema, validates them, and exposes
+      # the struct to steps via the instance's +input+ reader. Declaring input
+      # takes over the constructor role — steps read +input.field+ rather than
+      # capturing positional/keyword args in a custom +initialize+.
+      #
+      #   input do
+      #     required :amount, :big_decimal
+      #     optional :name,   :string
+      #   end
+      #
+      # @yield the FieldStruct field declarations
+      # @return [Class<FieldStruct::Base>] the input schema
+      def input(&)
+        @input_schema = Class.new(FieldStruct::Base, &)
+      end
+
+      # @return [Class<FieldStruct::Base>, nil] the declared input schema, or
+      #   +nil+ for a free-form action
+      attr_reader :input_schema
+
       # Declare a step. The step type is inferred from +target+ (a Symbol or
       # String names an instance method — a {Steps::Method}).
       #
@@ -138,12 +160,47 @@ module Actionable
         measure == :all
       end
 
-      # Instantiate the action with the given arguments and run it.
+      # Run the action. With a declared input schema, coerce the arguments
+      # (keyword args, or a single input-schema instance) into the input struct
+      # and validate it — a required input that is missing or won't coerce
+      # short-circuits to a +Failure(:invalid_input)+ without running any steps
+      # (decision D7). Without an input schema, the arguments are forwarded
+      # verbatim to the action's constructor (the free-form path).
       #
       # @return [Result] the run's {Success} or {Failure}
-      def run(...)
-        Runner.new(new(...)).run
+      def run(*args, **kwargs)
+        return Runner.new(new(*args, **kwargs)).run unless input_schema
+
+        input = build_input(args, kwargs)
+        return invalid_input_failure(input) unless input.valid?
+
+        instance = new
+        instance.instance_variable_set(:@input, input)
+        Runner.new(instance).run
       end
+
+      private
+
+      # Coerce +.run+ arguments into the input struct: pass an existing input
+      # instance through untouched, otherwise build one from the keyword args.
+      #
+      # @return [FieldStruct::Base]
+      def build_input(args, kwargs)
+        candidate = args.first
+        return candidate if args.size == 1 && candidate.is_a?(input_schema)
+
+        input_schema.new(**kwargs)
+      end
+
+      # @param input [FieldStruct::Base] the invalid input struct
+      # @return [Failure] code +:invalid_input+, carrying the input's errors
+      def invalid_input_failure(input)
+        failure = Failure.new(code: :invalid_input, message: 'input failed validation')
+        input.errors.to_h.each { |field, messages| messages.each { |m| failure.errors.add(field, m) } }
+        failure
+      end
+
+      public
 
       # Give each subclass its own copy of the inherited step set, so adding
       # steps to a subclass never mutates the parent's (decision D2).
@@ -155,6 +212,7 @@ module Actionable
         Actionable.registry.register(subclass)
         subclass.instance_variable_set(:@steps, steps.dup)
         subclass.instance_variable_set(:@output_schema, output_schema)
+        subclass.instance_variable_set(:@input_schema, input_schema)
         subclass.instance_variable_set(:@success_hooks, success_hooks.dup)
         subclass.instance_variable_set(:@failure_hooks, failure_hooks.dup)
         subclass.instance_variable_set(:@always_hooks, always_hooks.dup)
@@ -175,6 +233,12 @@ module Actionable
     #
     # @return [Result, nil]
     attr_reader :result
+
+    # The typed input struct for this run, when an +input+ schema is declared
+    # (decision D7); +nil+ for a free-form action. Steps read +input.field+.
+    #
+    # @return [FieldStruct::Base, nil]
+    attr_reader :input
 
     private
 
