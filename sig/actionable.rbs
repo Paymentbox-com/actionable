@@ -30,15 +30,15 @@ module Actionable
   module Steps
     # Build the right step type from a +step+ declaration's target, inferring
     # the type from the argument (decision D2): a Symbol/String becomes a
-    # {Steps::Method}. Other targets (an action Class → {Steps::Action}, a
-    # case block → {Steps::Case}) join in later slices.
+    # {Steps::Method}, an action +Class+ becomes a {Steps::Action}. The case
+    # block type ({Steps::Case}) joins in a later slice.
     # 
     # _@param_ `target` — the step target
     # 
-    # _@param_ `options` — step options (e.g. +:if+, +:unless+)
+    # _@param_ `options` — step options (e.g. +:if+, +:unless+, and for action steps +:input+ / +:expose+)
     # 
     # _@return_ — the constructed step
-    def self.build: ((Symbol | String) target) -> Steps::Base
+    def self.build: ((Symbol | String | singleton(Actionable::Action)) target) -> Steps::Base
 
     # Shared behavior for every step: a +name+, an +options+ hash, value
     # identity for Set deduplication (keyed by +[type, name]+, decision D2),
@@ -89,6 +89,38 @@ module Actionable
       # _@return_ — the declared step options (e.g. +:if+,
       # +:unless+, and step-type-specific keys)
       attr_reader options: ::Hash[Symbol, Object]
+    end
+
+    # A step that runs another action as part of this one (decision D3,
+    # triggered by an action +Class+ step argument).
+    # 
+    # +:input+ threads named parent instance variables into the child's +.run+;
+    # +:expose+ limits which of the child's outputs are absorbed back as parent
+    # instance variables (default: all). A child failure fails the parent with
+    # the child's code/message/errors and halts the remaining steps.
+    class Action < Actionable::Steps::Base
+      # Run the nested action, threading input in and absorbing output back.
+      # 
+      # _@param_ `instance` — the parent action instance
+      def call: (Actionable::Action _instance) -> void
+
+      # _@param_ `instance`
+      # 
+      # _@return_ — +{ name => @name }+ for each +:input+ name
+      def input_kwargs: (Actionable::Action _instance) -> ::Hash[Symbol, Object]
+
+      # Copy the child's exposed output fields onto the parent as instance
+      # variables, so the parent's later steps and output capture see them.
+      # 
+      # _@param_ `instance`
+      # 
+      # _@param_ `child`
+      def absorb: (Actionable::Action _instance, Result child) -> void
+
+      # _@param_ `output`
+      # 
+      # _@return_ — the child output as a plain hash
+      def output_hash: ((FieldStruct::Base | ::Hash[untyped, untyped] | Object) output) -> ::Hash[Symbol, Object]
     end
 
     # A step that calls an instance method on the action (decision D3,
