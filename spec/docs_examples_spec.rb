@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
 # Executable documentation (decision D16): every ```ruby block in README.md /
-# USAGE.md preceded by an invisible `<!-- doctest -->` HTML comment is run here,
-# so the published examples can't silently rot.
+# USAGE.md / docs/getting_started.md preceded by an invisible `<!-- doctest -->`
+# HTML comment is run here, so the published examples can't silently rot.
 #
 # Each marked block is evaluated in its own throwaway module — mark only
 # self-contained blocks. Lines of the form `expr # => expected` are asserted by
@@ -74,7 +74,7 @@ module DocExamples
 end
 
 RSpec.describe 'Documentation examples' do
-  %w[README.md USAGE.md].each do |doc|
+  %w[README.md USAGE.md docs/getting_started.md].each do |doc|
     path = File.expand_path("../#{doc}", __dir__)
     blocks = DocExamples.blocks(path)
 
