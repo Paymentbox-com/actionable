@@ -6,4 +6,6 @@
 --exclude lib/actionable/rspec
 lib/**/*.rb
 -
+USAGE.md
+docs/getting_started.md
 CHANGELOG.md
