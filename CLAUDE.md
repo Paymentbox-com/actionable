@@ -151,10 +151,19 @@ commit; each commit independently revertable; the message explains *why*.
 Use descriptive branch names off `develop`.
 
 ### Cutting a release
-A version isn't released until there's a **GitHub Release** — a git tag alone is
-invisible on the Releases page. The full sequence:
+**Only a feature or fix (a user-facing library change) earns a version and tag.**
+Tooling-only changes — docs, `.claude/`, `Rakefile`/CI, hooks, the plugin
+marketplace — **accumulate under `CHANGELOG.md` `[Unreleased]` and ride the next
+feature release**; they do not get their own version bump or tag. (So a run of
+doc/tooling commits on `develop` is normal and stays untagged until real library
+work ships.)
+
+When the next feature/fix is ready, a version isn't released until there's a
+**GitHub Release** — a git tag alone is invisible on the Releases page. The full
+sequence:
 1. Bump `lib/actionable/version.rb`; move `CHANGELOG.md` `[Unreleased]` → a dated
-   `## [x.y.z]` section (leave `[Unreleased]` empty).
+   `## [x.y.z]` section (leave `[Unreleased]` empty). The accumulated tooling
+   entries ship as part of that version.
 2. `bundle exec rake release:check`.
 3. Commit `chore: release vX.Y.Z`; merge `develop` → `main`.
 4. `git tag -a vX.Y.Z`; push `main`, `develop`, and the tag.
