@@ -22,13 +22,20 @@ module Actionable
         @steps ||= Set.new
       end
 
+      # Output field names that would collide with the result's own attributes
+      # (so delegation silently breaks) or with the action's reserved instance
+      # variables (+@result+ / +@input+, which the runner reads). Declaring one
+      # raises a {DefinitionError} (decision D18).
+      RESERVED_OUTPUT_FIELDS = %i[code message output history errors result input].freeze
+
       # Declare the action's typed output schema, or read it back.
       #
       # With a block, builds an anonymous +FieldStruct::Base+ subclass from the
       # FieldStruct DSL (+required+/+optional+/…) and stores it as this action's
       # output schema (decision D6). At the end of a run the {Runner} captures
       # the instance variables whose names match declared fields, coerces them
-      # through the schema, and assigns the struct to +result.output+.
+      # through the schema, and assigns the struct to +result.output+. Field names
+      # in {RESERVED_OUTPUT_FIELDS} raise a {DefinitionError}.
       #
       #   output do
       #     required :invoice, Invoice
@@ -36,12 +43,21 @@ module Actionable
       #   end
       #
       # @yield the FieldStruct field declarations
+      # @raise [DefinitionError] when a field name is reserved
       # @return [Class<FieldStruct::Base>, nil] the output schema, or +nil+ when
       #   none has been declared (the free-form path)
       def output(&block)
         return @output_schema unless block
 
-        @output_schema = Class.new(FieldStruct::Base, &block)
+        schema = Class.new(FieldStruct::Base, &block)
+        conflicting = schema.attribute_names & RESERVED_OUTPUT_FIELDS
+        unless conflicting.empty?
+          raise DefinitionError,
+            "#{name || "action"}: output field(s) #{conflicting.map(&:inspect).join(", ")} " \
+            'conflict with reserved result attributes / instance variables; rename them'
+        end
+
+        @output_schema = schema
       end
 
       # @return [Class<FieldStruct::Base>, nil] the declared output schema, or
@@ -174,6 +190,29 @@ module Actionable
         measure == :all
       end
 
+      # A structured, at-a-glance summary of the action — its name, input/output
+      # field metadata, ordered steps (with type), lifecycle hooks, measurement
+      # mode, and transaction config (decision D18). Lets humans and agents
+      # understand an action without reading its source.
+      #
+      # @return [Hash{Symbol=>Object}]
+      def describe
+        {
+          name: name,
+          input: input_schema&.metadata&.to_h,
+          output: output_schema&.metadata&.to_h,
+          steps: steps.map { |step| {type: step.kind, name: step.name, options: step.options} },
+          hooks: {
+            on_success: success_hooks.map(&:name),
+            on_failure: failure_hooks.map(&:name),
+            on_skip: skip_hooks.map(&:name),
+            always: always_hooks.map(&:name)
+          },
+          measure: measure,
+          transactional: respond_to?(:transaction_config) ? transaction_config : nil
+        }
+      end
+
       # Run the action. With a declared input schema, coerce the arguments
       # (keyword args, or a single input-schema instance) into the input struct
       # and validate it — a required input that is missing or won't coerce
@@ -183,17 +222,39 @@ module Actionable
       #
       # @return [Result] the run's {Success} or {Failure}
       def run(*args, **kwargs)
-        return Runner.new(new(*args, **kwargs)).run unless input_schema
+        if input_schema
+          input = build_input(args, kwargs)
+          return invalid_input_failure(input) unless input.valid?
 
-        input = build_input(args, kwargs)
-        return invalid_input_failure(input) unless input.valid?
+          instance = new
+          instance.instance_variable_set(:@input, input)
+        else
+          instance = new(*args, **kwargs)
+        end
 
-        instance = new
-        instance.instance_variable_set(:@input, input)
+        ensure_steps_implemented!(instance)
         Runner.new(instance).run
       end
 
       private
+
+      # Run-start guard (decision D18): every method a step needs (method steps,
+      # case value sources and method branch targets, hook steps) must exist on
+      # the instance, or raise a clear {DefinitionError} rather than a deep
+      # +NoMethodError+. This is the earliest reliable point — steps are usually
+      # declared above the methods that implement them.
+      #
+      # @param instance [Action]
+      # @return [void]
+      def ensure_steps_implemented!(instance)
+        all = steps.to_a + success_hooks.to_a + failure_hooks.to_a + skip_hooks.to_a + always_hooks.to_a
+        missing = all.flat_map(&:required_methods).uniq.reject { |method| instance.respond_to?(method, true) }
+        return if missing.empty?
+
+        raise DefinitionError,
+          "#{name || "action"} declares step(s) calling #{missing.map(&:inspect).join(", ")} " \
+          'but does not implement them'
+      end
 
       # Coerce +.run+ arguments into the input struct: pass an existing input
       # instance through untouched, otherwise build one from the keyword args.

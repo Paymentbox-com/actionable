@@ -81,15 +81,21 @@ When asked to build one:
 
 ## Mistakes to avoid
 
-- **Don't use `@result` or `@input` as output field names** — they're the
-  action's reserved internal slots. Output fields named `code`/`message`/
-  `output`/`history`/`errors` won't delegate off the result either (use
-  `result.output.<field>`).
+- **Reserved output field names raise `Actionable::DefinitionError`.** An
+  `output` field named `code`/`message`/`output`/`history`/`errors` (result
+  attributes) or `result`/`input` (reserved ivars) is rejected when declared —
+  pick another name. (Input fields are fine; they're read via `input.x`.)
+- **A missing step method raises `DefinitionError` at run start**, naming the
+  action and method — implement every declared step / hook / case method.
 - **A successful run must satisfy its declared output**, or it becomes
   `Failure(:invalid_output)`. Failures/skips capture output best-effort and are
   not validated — so don't rely on output fields being present after a skip.
 - **Don't `require 'actionable/rails'` in the core path.** Transactions and
   `ProxyValidator` are opt-in; the core never loads `active_*`.
+
+To inspect an action's shape (for tooling or to reason about it), call
+`SomeAction.describe` — a Hash of its name, input/output, steps, hooks, measure,
+and transaction config.
 
 ## Testing (`require 'actionable/rspec'`)
 

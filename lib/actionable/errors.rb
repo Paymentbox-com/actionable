@@ -6,6 +6,12 @@ module Actionable
   # control flow — they propagate to the caller (decision D4).
   class Error < StandardError; end
 
+  # Raised when an action is misconfigured — a reserved output field name, or a
+  # declared step whose method isn't implemented. Surfaced early and clearly so
+  # humans and agents get an actionable message instead of a deep +NoMethodError+
+  # (decision D18).
+  class DefinitionError < Error; end
+
   # The throw/catch tag used to unwind an action's step pipeline early.
   # Halting (+fail!+ / +succeed!+ / +halt!+) throws this symbol; the runner
   # catches it via {Actionable.catch_halt}. This is control flow, NOT an

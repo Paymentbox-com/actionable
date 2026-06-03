@@ -2,6 +2,28 @@
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-06-03
+
+Developer-experience improvements (decision D18): fail loudly on misconfiguration
+and make actions self-describing.
+
+### Added
+
+- `Actionable::Action.describe` — a structured summary (name, input/output field
+  metadata, ordered steps with type, hooks, measure mode, transaction config) so
+  humans and agents can understand an action without reading its source.
+- `Actionable::DefinitionError` for misconfigured actions.
+
+### Changed
+
+- A reserved `output` field name — one that shadows a result attribute
+  (`code`/`message`/`output`/`history`/`errors`) or a reserved instance variable
+  (`result`/`input`) — now raises `DefinitionError` when declared, instead of
+  silently returning `nil` or failing deep in the runner.
+- A declared step whose method isn't implemented now raises a clear
+  `DefinitionError` (naming the action and method) at run start, instead of a
+  cryptic `NoMethodError`.
+
 ## [1.0.0] - 2026-06-03
 
 First feature-complete cut of the clean-slate rebuild.

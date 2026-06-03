@@ -231,6 +231,40 @@ Actionable.registry[Registered.name].equal?(Registered) # => true
 `Actionable.registry` is read-only for callers: `[]`, `each`, `keys`, `values`,
 `size`, `empty?`.
 
+## Introspection — `Action.describe`
+
+A structured, at-a-glance summary of an action (name, input/output field
+metadata, ordered steps with type, hooks, measure mode, transaction config) so
+humans and agents can understand it without reading source:
+
+<!-- doctest -->
+```ruby
+class Probe < Actionable::Action
+  output { required :count, :integer }
+  step :compute
+  def compute = @count = 1
+end
+
+Probe.describe[:steps].first[:type] # => :method
+Probe.describe.key?(:output)        # => true
+Probe.describe[:measure]            # => :none
+```
+
+## Guardrails (`DefinitionError`)
+
+Misconfigured actions fail loudly with `Actionable::DefinitionError` instead of a
+cryptic `NoMethodError`:
+
+- **Reserved output field names (at declaration):** an `output` field that
+  shadows a result attribute (`code` / `message` / `output` / `history` /
+  `errors`) or a reserved instance variable (`result` / `input`) raises
+  immediately. Pick another name. (Input fields aren't affected — they're read
+  via `input.x`.)
+- **Missing step methods (at run start):** every method a step needs (method
+  steps, case value sources and method branch targets, hook steps) must be
+  implemented, or the run raises a `DefinitionError` naming the action and the
+  missing method.
+
 ## Rails adapter
 
 `require 'actionable/rails'` (never loaded by the core):

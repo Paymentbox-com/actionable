@@ -81,6 +81,19 @@ module Actionable
         step&.call(instance)
       end
 
+      # @return [Array<Symbol>] the switch-value method plus every branch
+      #   target's required methods
+      def required_methods
+        branch_steps = @branches.map(&:last)
+        branch_steps << @default_step if @default_step
+        ([name] + branch_steps.flat_map(&:required_methods)).uniq
+      end
+
+      # @return [Symbol]
+      def kind
+        :case
+      end
+
       private
 
       # @param value [Object] the switch value

@@ -34,6 +34,21 @@ module Actionable
         raise NotImplementedError, "#{self.class} must implement #call"
       end
 
+      # Instance method names this step needs the action to implement, used by
+      # the run-start definition guard (decision D18). None for the base; concrete
+      # types that call instance methods override this.
+      #
+      # @return [Array<Symbol>]
+      def required_methods
+        []
+      end
+
+      # @return [Symbol] a short tag identifying the step type, for introspection
+      #   (+Actionable::Action.describe+). Concrete types override it.
+      def kind
+        :step
+      end
+
       # Whether this step should be skipped for the given instance, per its
       # +:if+ / +:unless+ guards. A guard is a Symbol naming a (possibly
       # private) instance method, or a callable invoked with the instance.

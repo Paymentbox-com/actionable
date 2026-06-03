@@ -9,7 +9,7 @@ Before starting any work, read these in order:
 
 | Document | Purpose |
 |----------|---------|
-| `docs/origin/plan.md` | **Source of truth.** Phase 1 design decisions (D1–D17), the 16-slice plan, Phase 2+ backlog, glossary. |
+| `docs/origin/plan.md` | **Source of truth.** Phase 1 design decisions (D1–D18), the 16-slice plan, Phase 2+ backlog, glossary. |
 | `.claude/project_intent.md` | What Actionable is/isn't, terminology, design invariants. |
 | `.claude/tdd_guidelines.md` | Test-driven development patterns (non-negotiable). |
 | `.claude/planning_guide.md` | How to plan and build a feature/slice. |
@@ -32,7 +32,7 @@ pure-Ruby core with Rails as an optional adapter, and an explicit typed `output`
 instead of the old "capture every instance variable" magic. See `docs/origin/plan.md`
 for the locked decisions.
 
-The library targets **v1.0.0**. The slice plan and decisions D1–D17 are authoritative.
+The library targets **v1.0.0**. The slice plan and decisions D1–D18 are authoritative.
 
 ---
 
@@ -138,5 +138,5 @@ End AI-assisted commits with a `Co-Authored-By:` trailer.
 ## When in doubt
 
 The slice plan in `docs/origin/plan.md` is the authoritative roadmap. Decisions
-D1–D17 are locked unless explicitly revisited. If a question isn't answered there,
+D1–D18 are locked unless explicitly revisited. If a question isn't answered there,
 ask before guessing.

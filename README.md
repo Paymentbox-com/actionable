@@ -246,13 +246,24 @@ history.took              # total seconds
 history.to_json           # Oj-serialized
 ```
 
-## Registry
+## Registry & introspection
 
-Every named action registers itself for discovery and tooling:
+Every named action registers itself for discovery and tooling, and
+`Action.describe` returns a structured summary (input/output, steps, hooks,
+measure) so humans and agents can understand an action without reading source:
 
 ```ruby
 Actionable.registry['Greet'] # => Greet
+Greet.describe               # => { name: "Greet", steps: [...], output: {...}, ... }
 ```
+
+## Guardrails
+
+Misconfigured actions fail loudly with `Actionable::DefinitionError` rather than
+a cryptic `NoMethodError`: declaring an `output` field that shadows a result
+attribute or reserved ivar is rejected at declaration time, and a declared step
+whose method isn't implemented is caught at run start (naming the action and
+method).
 
 ## Rails adapter (optional)
 

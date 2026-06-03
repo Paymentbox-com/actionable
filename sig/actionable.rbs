@@ -156,6 +156,15 @@ module Actionable
       # _@param_ `_instance` — the action instance the step runs against
       def call: (Object _instance) -> void
 
+      # Instance method names this step needs the action to implement, used by
+      # the run-start definition guard (decision D18). None for the base; concrete
+      # types that call instance methods override this.
+      def required_methods: () -> ::Array[Symbol]
+
+      # _@return_ — a short tag identifying the step type, for introspection
+      # (+Actionable::Action.describe+). Concrete types override it.
+      def kind: () -> Symbol
+
       # Whether this step should be skipped for the given instance, per its
       # +:if+ / +:unless+ guards. A guard is a Symbol naming a (possibly
       # private) instance method, or a callable invoked with the instance.
@@ -230,6 +239,12 @@ module Actionable
       # _@param_ `instance`
       def call: (Actionable::Action _instance) -> void
 
+      # _@return_ — the switch-value method plus every branch
+      # target's required methods
+      def required_methods: () -> ::Array[Symbol]
+
+      def kind: () -> Symbol
+
       # _@param_ `value` — the switch value
       # 
       # _@return_ — the first matching branch's step
@@ -283,6 +298,8 @@ module Actionable
       # _@param_ `instance` — the parent action instance
       def call: (Actionable::Action _instance) -> void
 
+      def kind: () -> Symbol
+
       # _@param_ `instance`
       # 
       # _@return_ — +{ name => @name }+ for each +:input+ name
@@ -316,6 +333,11 @@ module Actionable
       # 
       # _@return_ — the method's return value
       def call: (Object _instance) -> Object
+
+      # _@return_ — the instance method this step calls
+      def required_methods: () -> ::Array[Symbol]
+
+      def kind: () -> Symbol
     end
   end
 
@@ -341,7 +363,8 @@ module Actionable
     # FieldStruct DSL (+required+/+optional+/…) and stores it as this action's
     # output schema (decision D6). At the end of a run the {Runner} captures
     # the instance variables whose names match declared fields, coerces them
-    # through the schema, and assigns the struct to +result.output+.
+    # through the schema, and assigns the struct to +result.output+. Field names
+    # in {RESERVED_OUTPUT_FIELDS} raise a {DefinitionError}.
     # 
     #   output do
     #     required :invoice, Invoice
@@ -446,6 +469,12 @@ module Actionable
     # _@return_ — whether this action records history
     def self.measure_all?: () -> bool
 
+    # A structured, at-a-glance summary of the action — its name, input/output
+    # field metadata, ordered steps (with type), lifecycle hooks, measurement
+    # mode, and transaction config (decision D18). Lets humans and agents
+    # understand an action without reading its source.
+    def self.describe: () -> ::Hash[Symbol, Object]
+
     # Run the action. With a declared input schema, coerce the arguments
     # (keyword args, or a single input-schema instance) into the input struct
     # and validate it — a required input that is missing or won't coerce
@@ -455,6 +484,15 @@ module Actionable
     # 
     # _@return_ — the run's {Success} or {Failure}
     def self.run: (*untyped args, **untyped kwargs) -> Result
+
+    # Run-start guard (decision D18): every method a step needs (method steps,
+    # case value sources and method branch targets, hook steps) must exist on
+    # the instance, or raise a clear {DefinitionError} rather than a deep
+    # +NoMethodError+. This is the earliest reliable point — steps are usually
+    # declared above the methods that implement them.
+    # 
+    # _@param_ `instance`
+    def self.ensure_steps_implemented!: (Action _instance) -> void
 
     # Coerce +.run+ arguments into the input struct: pass an existing input
     # instance through untouched, otherwise build one from the keyword args.
@@ -563,6 +601,13 @@ module Actionable
   # catch the whole family. Genuine errors are never caught by the runner for
   # control flow — they propagate to the caller (decision D4).
   class Error < StandardError
+  end
+
+  # Raised when an action is misconfigured — a reserved output field name, or a
+  # declared step whose method isn't implemented. Surfaced early and clearly so
+  # humans and agents get an actionable message instead of a deep +NoMethodError+
+  # (decision D18).
+  class DefinitionError < Actionable::Error
   end
 
   # The single value object a run returns. {Success} and {Failure} are the

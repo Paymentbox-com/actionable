@@ -438,6 +438,31 @@ with either loses information for observability, retries, and composition.
 - RSpec: `perform_actionable.and_skip(code, message)`, plus
   `allow_actionable_skip` / `stub_actionable_skip`.
 
+### D18. DX guardrails + introspection (added 2026-06)
+
+Serves the core "easily understood by humans and agents" goal by failing loudly
+on misconfiguration and making actions self-describing.
+
+- `Actionable::DefinitionError < Error` for misconfigured actions.
+- **Reserved output field guard (definition time):** declaring an `output`
+  field that shadows a result attribute (`code`/`message`/`output`/`history`/
+  `errors`) or a reserved ivar (`result`/`input`) raises `DefinitionError` when
+  `output` is declared. (Input fields are read via `input.x` and don't collide,
+  so they aren't guarded.)
+- **Missing step method guard (run start):** before running, every method a step
+  needs — method steps, case value sources + method branch targets (via
+  `Steps#required_methods`), and hook steps — must exist on the instance, or a
+  clear `DefinitionError` names the action and method instead of a deep
+  `NoMethodError`. Run-start is the earliest reliable point (steps are declared
+  above the methods that implement them).
+- **`Action.describe`** — a structured Hash summary: name, input/output field
+  metadata, ordered steps (each tagged with `Steps#kind`), hooks by section,
+  measure mode, and transaction config. Complements the Registry and
+  `Actionable::RBS`.
+
+_Considered in this review but **not** taken: `Result#to_h` and documenting the
+`succeed`/`fail`/`skip` signature asymmetry — see `scrap/dx_review.md`._
+
 ---
 
 ## Slice plan

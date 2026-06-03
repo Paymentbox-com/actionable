@@ -19,6 +19,16 @@ module Actionable
       def call(instance)
         instance.public_send(name)
       end
+
+      # @return [Array<Symbol>] the instance method this step calls
+      def required_methods
+        [name]
+      end
+
+      # @return [Symbol]
+      def kind
+        :method
+      end
     end
   end
 end
