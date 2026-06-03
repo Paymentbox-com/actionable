@@ -1,0 +1,18 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(git commit*)",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/docs-check.sh\"",
+            "timeout": 120,
+            "statusMessage": "Checking docs are current (rake docs:check)"
+          }
+        ]
+      }
+    ]
+  }
+}

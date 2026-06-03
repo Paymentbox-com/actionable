@@ -28,6 +28,72 @@ module Actionable
   # _@return_ — the process-wide action registry
   def self.registry: () -> Registry
 
+  # Runs an action inside a background job and maps its result to a queue
+  # disposition: a success or skip is done (+:ack+); a failure either retries
+  # (transient) or is discarded (permanent). Genuine exceptions are never
+  # swallowed — they propagate so the queue's own retry/backoff handles them
+  # (invariant 2).
+  module Job
+    # Map a result to a queue disposition.
+    # 
+    # _@param_ `result` — the action's result
+    # 
+    # _@param_ `permanent` — failure codes treated as non-retryable
+    # 
+    # _@return_ — +:ack+ for a success or skip; +:discard+
+    # for a failure whose code is +permanent+; +:retry+ for any other failure
+    def disposition: (Result result, ?permanent: ::Array[Symbol]) -> Symbol
+
+    # Map a result to a queue disposition.
+    # 
+    # _@param_ `result` — the action's result
+    # 
+    # _@param_ `permanent` — failure codes treated as non-retryable
+    # 
+    # _@return_ — +:ack+ for a success or skip; +:discard+
+    # for a failure whose code is +permanent+; +:retry+ for any other failure
+    def self.disposition: (Result result, ?permanent: ::Array[Symbol]) -> Symbol
+
+    # Raised by {Mixin#run_actionable} for a retryable failure, so the host
+    # queue (Sidekiq / ActiveJob) sees a raised error and applies its retry
+    # policy. Carries the offending result.
+    class RetryableFailure < StandardError
+      # _@param_ `result`
+      def initialize: (Result result) -> void
+
+      # _@return_ — the failed result that triggered the retry
+      attr_reader result: Result
+    end
+
+    # Mix into a Sidekiq worker or ActiveJob job. Call {#run_actionable} from
+    # +perform+; it runs the action, records the result on {#actionable_result},
+    # and raises {RetryableFailure} for a retryable failure (so the queue
+    # retries) — returning normally for +:ack+ and +:discard+.
+    # 
+    #   class ProjectEventJob
+    #     include Sidekiq::Job
+    #     include Actionable::Job::Mixin
+    #     def perform(event_id) = run_actionable(ProjectApiEvent, event_id: event_id)
+    #   end
+    module Mixin
+      # Run +action_class+ with the given arguments, map the outcome, and either
+      # return the result (+:ack+ / +:discard+) or raise {RetryableFailure}
+      # (+:retry+). A genuine exception inside the action propagates unchanged.
+      # 
+      # _@param_ `action_class`
+      # 
+      # _@return_ — the run's result (for an ack/discard outcome)
+      def run_actionable: (singleton(Actionable::Action) action_class, *untyped args, **untyped kwargs) -> Result
+
+      # _@return_ — failure codes this job treats as non-retryable;
+      # override to customize. Defaults to {DEFAULT_PERMANENT_CODES}.
+      def actionable_permanent_codes: () -> ::Array[Symbol]
+
+      # _@return_ — the result of the most recent {#run_actionable}
+      attr_reader actionable_result: Result?
+    end
+  end
+
   # Generates RBS for a *user* action class — track 2 of the RBS strategy
   # (decision D13). Sord covers the library's static classes, but it can't see
   # +CreateInvoice.run(amount:)+ or +result.invoice+: those depend on the
@@ -250,11 +316,6 @@ module Actionable
       # _@return_ — the first matching branch's step
       def match: (Object value) -> Steps::Base?
 
-      # _@param_ `branch_value`
-      # 
-      # _@param_ `value`
-      def matches?: ((Object | Regexp | ::Array[untyped]) branch_value, Object value) -> bool
-
       # Collects +on+/+default+ branch declarations inside a +case_step+ block.
       class Builder
         def initialize: () -> void
@@ -390,6 +451,25 @@ module Actionable
     # _@return_ — the input schema
     def self.input: () -> singleton(FieldStruct::Base)
 
+    # Declare a *discriminated* input schema (decision D19): pick the input
+    # FieldStruct at run time from a discriminator value, instead of a single
+    # fixed schema. The block declares branches with +on(value, Schema)+ and an
+    # optional +default(Schema)+; +.run+ reads the discriminator from its
+    # keyword arguments, chooses the schema, then coerces and validates exactly
+    # like a fixed +input+. An unmatched value with no +default+ short-circuits
+    # to +Failure(:invalid_input)+.
+    # 
+    #   input_for :event_type do
+    #     on 'sale',   SaleShape
+    #     on 'refund', RefundShape
+    #     default      UnknownShape
+    #   end
+    # 
+    # _@param_ `discriminator` — the kwarg whose value selects the schema
+    # 
+    # _@return_ — the stored dispatch
+    def self.input_for: ((Symbol | String) discriminator) -> InputDispatch
+
     # Declare a step. The step type is inferred from +target+ (a Symbol or
     # String names an instance method — a {Steps::Method}).
     # 
@@ -456,24 +536,46 @@ module Actionable
     # _@return_ — the updated step set
     def self.case_step: ((Symbol | String) value_source, **::Hash[Symbol, Object] options) -> ::Set[Steps::Base]
 
-    # Enable or read the action's measurement mode (decision D10). +:all+
-    # records an execution {History}; +:none+ (the default) records nothing
-    # for zero overhead. A measuring run cascades into the nested actions it
-    # invokes regardless of their own setting.
+    # Enable or read the action's measurement mode (decisions D10/D19). +:all+
+    # records an execution {History}; +:none+ (the default) records nothing for
+    # zero overhead; +:sampled+ records on a fraction of runs (+rate:+ between 0
+    # and 1) for low-overhead production observability. A measuring run cascades
+    # into the nested actions it invokes regardless of their own setting.
+    # 
+    #   measure :sampled, rate: 0.1   # record ~10% of runs
     # 
     # _@param_ `mode` — the mode to set; omit to read
     # 
+    # _@param_ `rate` — required for +:sampled+ — the probability (0..1) that a given run is measured
+    # 
     # _@return_ — the resolved mode
-    def self.measure: (?Symbol? mode) -> Symbol
+    def self.measure: (?Symbol? mode, ?rate: Numeric?) -> Symbol
 
-    # _@return_ — whether this action records history
+    # _@return_ — whether this action always records history
     def self.measure_all?: () -> bool
+
+    # _@return_ — whether this action samples history
+    def self.measure_sampled?: () -> bool
+
+    # The per-run sampling decision: true with probability {.measure_rate} when
+    # in +:sampled+ mode, false otherwise. Rolled once per run by the {Runner}.
+    def self.measure_sample_hit?: () -> bool
 
     # A structured, at-a-glance summary of the action — its name, input/output
     # field metadata, ordered steps (with type), lifecycle hooks, measurement
     # mode, and transaction config (decision D18). Lets humans and agents
     # understand an action without reading its source.
     def self.describe: () -> ::Hash[Symbol, Object]
+
+    # A human/agent-readable rendering of {.describe} — the same information as
+    # a multi-line summary instead of a Hash (decision D18). The input/output
+    # field lines reuse FieldStruct's own +Metadata#describe+ (type,
+    # required-ness, and the options each field's type accepts); only hook
+    # sections that have hooks are listed.
+    # 
+    #   Greet.describe_text
+    #   # => "Greet (measure: none)\n  Input: (free-form)\n  ..."
+    def self.describe_text: () -> String
 
     # Run the action. With a declared input schema, coerce the arguments
     # (keyword args, or a single input-schema instance) into the input struct
@@ -484,6 +586,41 @@ module Actionable
     # 
     # _@return_ — the run's {Success} or {Failure}
     def self.run: (*untyped args, **untyped kwargs) -> Result
+
+    # Run the action once per item in +enumerable+, collecting the per-item
+    # results into a {BatchResult} (decision D19). The single most common
+    # batch/ingest shape: each item runs independently (its own {.run}, its own
+    # outcome), so one item's failure never affects another, and the aggregate
+    # is inspectable via {BatchResult#all_ok?} / +#any_failure?+ / +#partial?+.
+    # 
+    # The optional block maps each item to +.run+ arguments: return a Hash for
+    # keyword args, an Array for positional args, or any other value to pass as
+    # a single argument. Without a block, each item is passed to +.run+
+    # directly.
+    # 
+    #   ImportRow.run_each(rows) { |row| {row: row} }
+    #   Charge.run_each(amounts) # => each amount passed to .run
+    # 
+    # _@param_ `enumerable` — the items to run
+    # 
+    # _@return_ — the per-item results
+    def self.run_each: (::Enumerable[untyped] enumerable) ?{ (Object item) -> (::Hash[untyped, untyped] | ::Array[untyped] | Object) } -> BatchResult
+
+    # One {.describe_text} block for an input/output schema: +" (free-form)"+
+    # when none is declared, otherwise the FieldStruct +Metadata#describe+
+    # field lines indented one level under their +Input:+/+Output:+ heading.
+    # 
+    # _@param_ `schema`
+    def self.schema_summary: (singleton(FieldStruct::Base)? schema) -> String
+
+    # The +input+ value for {.describe}: a fixed schema's field metadata, a
+    # discriminated-input descriptor (+discriminated_on+ + +shapes+), or +nil+
+    # for a free-form action.
+    def self.input_descriptor: () -> ::Hash[untyped, untyped]?
+
+    # The +Input:+ block for {.describe_text}: the fixed-schema field lines, a
+    # one-line discriminated-input summary, or +" (free-form)"+.
+    def self.input_summary: () -> String
 
     # Run-start guard (decision D18): every method a step needs (method steps,
     # case value sources and method branch targets, hook steps) must exist on
@@ -496,7 +633,19 @@ module Actionable
 
     # Coerce +.run+ arguments into the input struct: pass an existing input
     # instance through untouched, otherwise build one from the keyword args.
-    def self.build_input: (untyped args, untyped kwargs) -> FieldStruct::Base
+    # With discriminated input ({.input_for}), the schema is chosen from the
+    # discriminator value first; an unmatched value returns a +Failure+.
+    def self.build_input: (untyped args, untyped kwargs) -> (FieldStruct::Base | Failure)
+
+    # Resolve the discriminated schema from the discriminator value, then build
+    # the input the same way {.build_input} does — or return an
+    # +:invalid_input+ {Failure} when nothing matches and there's no default.
+    def self.build_dispatched_input: (untyped args, untyped kwargs) -> (FieldStruct::Base | Failure)
+
+    # _@param_ `value` — the unmatched discriminator value
+    # 
+    # _@return_ — code +:invalid_input+, naming the discriminator
+    def self.unmatched_discriminator_failure: (Object value) -> Failure
 
     # _@param_ `input` — the invalid input struct
     # 
@@ -527,6 +676,33 @@ module Actionable
     # 
     # _@return_ — so a step can branch on the call
     def fail: (Symbol code, ?String? message, **::Hash[Symbol, (String | ::Array[String])] errors) -> bool
+
+    # Record a {Failure} that absorbs an arbitrary FieldStruct's validation
+    # errors, without halting (decision D19). The same machinery
+    # +Failure(:invalid_input)+ / +Failure(:invalid_output)+ use internally,
+    # exposed as a verb so a step can validate a side struct and fail with its
+    # errors directly.
+    # 
+    #   def validate = fail_with(EventShape.new(payload), code: :invalid_event)
+    # 
+    # _@param_ `source` — any object exposing a FieldStruct-style +errors+ collection (typically a +FieldStruct::Base+ instance)
+    # 
+    # _@param_ `code` — the error code; defaults to +:invalid+
+    # 
+    # _@param_ `message` — human-readable description
+    # 
+    # _@return_ — so a step can branch on the call
+    def fail_with: (untyped source, ?code: Symbol, ?message: String?) -> bool
+
+    # Record a {Failure} absorbing +source+'s errors and halt the run
+    # (decision D19). The halting companion to {#fail_with}.
+    # 
+    # _@param_ `source` — see {#fail_with}
+    # 
+    # _@param_ `code` — the error code; defaults to +:invalid+
+    # 
+    # _@param_ `message` — human-readable description
+    def fail_with!: (untyped source, ?code: Symbol, ?message: String?) -> void
 
     # Record a {Success} as the run's result without halting (decision D4).
     # 
@@ -563,8 +739,10 @@ module Actionable
     # 
     # _@param_ `message` — human-readable description
     # 
+    # _@param_ `output` — the skip output payload — captured best-effort like a {Success}'s output, but never validated (decision D17). Lets an idempotent hit return the existing record's data.
+    # 
     # _@return_ — so a step can branch on the call (the run did not succeed here)
-    def skip: (?Symbol code, ?String? message) -> bool
+    def skip: (?Symbol code, ?String? message, **::Hash[Symbol, Object] output) -> bool
 
     # Record a {Skipped} and halt the run, skipping the remaining steps — the
     # common "nothing to do, stop here" case (decision D17).
@@ -572,7 +750,9 @@ module Actionable
     # _@param_ `code` — the skip reason; defaults to +:skipped+
     # 
     # _@param_ `message` — human-readable description
-    def skip!: (?Symbol code, ?String? message) -> void
+    # 
+    # _@param_ `output` — the skip output payload (see {#skip})
+    def skip!: (?Symbol code, ?String? message, **::Hash[Symbol, Object] output) -> void
 
     # Halt the run immediately, keeping whatever result was already recorded
     # (a prior +fail+/+succeed+/+skip+, or auto-{Success} if none). Control flow
@@ -586,6 +766,13 @@ module Actionable
     # _@return_ — the declared input schema, or
     # +nil+ for a free-form action
     def self.input_schema: () -> singleton(FieldStruct::Base)?
+
+    # _@return_ — the discriminated-input dispatch, or +nil+
+    # when input isn't discriminated
+    def self.input_dispatch: () -> InputDispatch?
+
+    # _@return_ — the sampling rate for +:sampled+ mode, else +nil+
+    def self.measure_rate: () -> Float?
 
     # The result recorded during the run, if any. The control-flow methods
     # (+fail+/+succeed+/+fail!+/+succeed!+) write here; +nil+ means "no explicit
@@ -659,6 +846,27 @@ module Actionable
     # _@return_ — same deterministic representation as {#inspect}
     def to_s: () -> String
 
+    # _@return_ — the outcome as a single symbol — +:success+, +:failure+,
+    # or +:skipped+. The coarse-grained companion to the specific {#code}.
+    def status: () -> Symbol
+
+    # A plain-Hash view of the result — +code+, +message+, the +output+ and
+    # +history+ rendered to primitives, and the +errors+ collection as a Hash
+    # (decision D19). The serializable companion to {#inspect}.
+    def to_h: () -> ::Hash[Symbol, Object]
+
+    # A compact element for an HTTP/batch response: the item's position, its
+    # {#status}, the id read off the typed output, and its errors (decision
+    # D19). Lets a controller map a batch of results without hand-rolling the
+    # shape.
+    # 
+    #   results.each_with_index.map { |r, i| r.to_api_h(index: i) }
+    # 
+    # _@param_ `index` — the element's position in a batch
+    # 
+    # _@param_ `id_field` — the output field to surface as +:id+ (default +:id+)
+    def to_api_h: (?index: Integer?, ?id_field: Symbol) -> ::Hash[Symbol, Object]
+
     # Convenience delegation: a declared output field is readable straight off
     # the result (+result.invoice+ → +result.output.invoice+). Only fields
     # declared on a typed output schema delegate; incidental data never does
@@ -673,6 +881,12 @@ module Actionable
     # 
     # _@return_ — whether +name+ is a declared field on a typed output
     def delegates_to_output?: (Symbol name) -> bool
+
+    # Read +name+ off the output — a declared field on a typed output, a key on
+    # a Hash output, or +nil+ when absent.
+    # 
+    # _@param_ `name`
+    def output_field: (Symbol name) -> Object?
   end
 
   # Executes an action instance's steps and produces the {Result}.
@@ -888,6 +1102,155 @@ module Actionable
     def self.with: (untyped changes) -> untyped
   end
 
+  # Shared branch-value matching for the two places Actionable dispatches on a
+  # value: case steps (decision D3) and discriminated input (decision D19). A
+  # branch value matches by Array membership, by +Regexp#match?+ against the
+  # value's string form, or by +==+.
+  module ValueMatch
+    # _@param_ `branch_value` — the declared branch matcher
+    # 
+    # _@param_ `value` — the runtime value being dispatched on
+    # 
+    # _@return_ — whether +value+ matches +branch_value+
+    def matches?: ((Object | ::Array[untyped] | Regexp) branch_value, Object value) -> bool
+
+    # _@param_ `branch_value` — the declared branch matcher
+    # 
+    # _@param_ `value` — the runtime value being dispatched on
+    # 
+    # _@return_ — whether +value+ matches +branch_value+
+    def self.matches?: ((Object | ::Array[untyped] | Regexp) branch_value, Object value) -> bool
+  end
+
+  # The value object returned by {Action.run_each}: an ordered, +Enumerable+
+  # collection of the per-item {Result}s, plus aggregate predicates over them
+  # (decision D19). Each item ran independently — one {Result} per element, in
+  # input order — so a failure in one never affects another.
+  # 
+  #   batch = ImportRow.run_each(rows) { |row| {row: row} }
+  #   batch.all_ok?            # => false
+  #   batch.failures.size      # => 2
+  #   batch.to_api_h           # => [{index: 0, status: :success, ...}, ...]
+  class BatchResult
+    include ::Enumerable[Result]
+
+    # _@param_ `results`
+    def initialize: (::Array[Result] results) -> void
+
+    def each: () ?{ (Result result) -> void } -> (::Enumerator[untyped] | self)
+
+    # _@param_ `index`
+    # 
+    # _@return_ — the result at +index+
+    def []: (Integer index) -> Result?
+
+    # _@return_ — the number of results
+    def size: () -> Integer
+
+    # _@return_ — whether the batch ran no items
+    def empty?: () -> bool
+
+    # _@return_ — whether every result is +ok?+ (success or skip);
+    # vacuously true for an empty batch
+    def all_ok?: () -> bool
+
+    # _@return_ — whether any result is a failure
+    def any_failure?: () -> bool
+
+    # _@return_ — whether the batch is mixed — at least one failure and at
+    # least one +ok?+ result
+    def partial?: () -> bool
+
+    # _@return_ — the successful results
+    def successes: () -> ::Array[Result]
+
+    # _@return_ — the failed results
+    def failures: () -> ::Array[Result]
+
+    # _@return_ — the skipped results
+    def skips: () -> ::Array[Result]
+
+    # The batch as an array of API elements, each tagged with its position
+    # (see {Result#to_api_h}). Ready to render as a JSON array of per-item
+    # statuses.
+    # 
+    # _@param_ `id_field` — the output field to surface as +:id+
+    def to_api_h: (?id_field: Symbol) -> ::Array[::Hash[Symbol, Object]]
+
+    # _@return_ — the per-item results, in input order
+    attr_reader results: ::Array[Result]
+  end
+
+  # Runtime selection of an input schema from a discriminator value (decision
+  # D19, declared with +input_for+). Each branch maps a match value to a
+  # FieldStruct schema; an optional +default+ catches the rest. Lets a
+  # polymorphic payload (e.g. +event_type+ → shape) use typed, validated input.
+  # 
+  #   input_for :event_type do
+  #     on 'sale',   SaleShape
+  #     on 'refund', RefundShape
+  #     default      UnknownShape
+  #   end
+  class InputDispatch
+    # Build a dispatch from an +input_for+ declaration.
+    # 
+    # _@param_ `discriminator` — the kwarg whose value selects the schema
+    def self.define: ((Symbol | String) discriminator) -> InputDispatch
+
+    # _@param_ `discriminator`
+    # 
+    # _@param_ `branches`
+    # 
+    # _@param_ `default_schema`
+    def initialize: (Symbol discriminator, ::Array[[Object, singleton(FieldStruct::Base)]] branches, singleton(FieldStruct::Base)? default_schema) -> void
+
+    # The schema for a discriminator value: the first matching branch, else the
+    # default, else +nil+ (no match and no default).
+    # 
+    # _@param_ `value` — the discriminator value
+    def schema_for: (Object value) -> singleton(FieldStruct::Base)?
+
+    # _@return_ — every distinct schema reachable
+    # through this dispatch (branches plus default)
+    def schemas: () -> ::Array[singleton(FieldStruct::Base)]
+
+    # _@return_ — the branch match values, in declaration order
+    def variants: () -> ::Array[Object]
+
+    # _@return_ — the discriminator field read from +.run+'s kwargs
+    attr_reader discriminator: Symbol
+
+    # _@return_ — ordered [match, schema] pairs
+    attr_reader branches: ::Array[[Object, singleton(FieldStruct::Base)]]
+
+    # _@return_ — the fallback schema
+    attr_reader default_schema: singleton(FieldStruct::Base)?
+
+    # Collects +on+/+default+ branch declarations inside an +input_for+ block.
+    class Builder
+      def initialize: () -> void
+
+      # Register a branch. +value+ matches the discriminator by +==+, by
+      # Array membership, or by +Regexp#match?+ (see {ValueMatch}).
+      # 
+      # _@param_ `value`
+      # 
+      # _@param_ `schema`
+      def on: ((Object | ::Array[untyped] | Regexp) value, singleton(FieldStruct::Base) schema) -> void
+
+      # Register the fallback schema, used when no +on+ branch matches.
+      # 
+      # _@param_ `schema`
+      def default: (singleton(FieldStruct::Base) schema) -> void
+
+      # _@return_ — ordered [match, schema] pairs
+      attr_reader branches: ::Array[[Object, singleton(FieldStruct::Base)]]
+
+      # _@return_ — the fallback schema, if declared
+      attr_reader default_schema: singleton(FieldStruct::Base)?
+    end
+  end
+
   # A failed run's result. Its +code+ is the error symbol describing why the
   # run failed (e.g. +:not_found+, +:invalid_input+), defaulting to +:error+.
   class Failure < Actionable::Result
@@ -895,6 +1258,15 @@ module Actionable
     def code: () -> Symbol
 
     def failure?: () -> bool
+
+    # Copy another object's FieldStruct-style errors onto this failure's own
+    # errors collection. The shared mechanism behind +Failure(:invalid_input)+,
+    # +Failure(:invalid_output)+, and the {Action#fail_with} verb (decision D19).
+    # 
+    # _@param_ `source` — any object whose +errors+ responds to +to_h+ (a +FieldStruct::Base+ instance, or another result)
+    # 
+    # _@return_ — so callers can build-and-absorb in one expression
+    def absorb_errors_from: (untyped source) -> self
   end
 
   # A skipped run's result (decision D17): the action had nothing to do — not a

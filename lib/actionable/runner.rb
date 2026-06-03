@@ -29,7 +29,7 @@ module Actionable
     # @return [Result] the recorded result (or a fresh {Success} if none was
     #   set), with its typed output and (when measuring) history assigned
     def run
-      @measuring = @instance.class.measure_all? || Measurement.active?
+      @measuring = @instance.class.measure_all? || @instance.class.measure_sample_hit? || Measurement.active?
       @history = History.new if @measuring
       measured { perform }
       @result.history = @history if @measuring
@@ -172,7 +172,7 @@ module Actionable
     #   errors copied onto the failure and the (invalid) output attached
     def invalid_output_failure(output)
       failure = Failure.new(code: :invalid_output, message: 'output failed validation')
-      output.errors.to_h.each { |field, messages| messages.each { |m| failure.errors.add(field, m) } }
+        .absorb_errors_from(output)
       failure.output = output
       failure
     end

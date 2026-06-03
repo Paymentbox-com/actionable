@@ -64,6 +64,13 @@ RSpec.describe 'Actionable result value objects' do
       expect(result.errors).not_to be_empty
       expect(result.errors[:name]).to eq(['is required'])
     end
+
+    it 'renders human-readable error sentences via FieldStruct full_messages' do
+      result = described_class.new(code: :invalid)
+      result.errors.add(:first_name, 'is required')
+
+      expect(result.errors.full_messages).to eq(['First name is required'])
+    end
   end
 
   describe 'value semantics' do
@@ -106,6 +113,52 @@ RSpec.describe 'Actionable result value objects' do
 
       expect(a.inspect).to eq(b.inspect)
       expect(a.to_s).to eq(b.to_s)
+    end
+  end
+
+  describe '#to_h' do
+    it 'returns code, message, output, history, and errors as a plain Hash' do
+      result = Actionable::Success.new(code: :success, message: 'done', output: {id: 7})
+
+      expect(result.to_h).to eq(
+        code: :success, message: 'done', output: {id: 7}, history: [], errors: {}
+      )
+    end
+
+    it 'includes the errors collection as a Hash' do
+      result = Actionable::Failure.new(code: :invalid)
+      result.errors.add(:name, 'is required')
+
+      expect(result.to_h[:errors]).to eq(name: ['is required'])
+    end
+
+    it 'renders a FieldStruct output through its own to_h' do
+      shape = Class.new(FieldStruct::Base) { optional :total, :integer }
+      result = Actionable::Success.new(output: shape.new(total: 5))
+
+      expect(result.to_h[:output]).to eq(total: 5)
+    end
+  end
+
+  describe '#to_api_h' do
+    it 'yields an API element with index, status, id, and errors' do
+      shape = Class.new(FieldStruct::Base) { optional :id, :integer }
+      result = Actionable::Success.new(output: shape.new(id: 99))
+
+      expect(result.to_api_h(index: 0)).to eq(index: 0, status: :success, id: 99, errors: {})
+    end
+
+    it 'reports the failure status and errors, with a nil id when absent' do
+      result = Actionable::Failure.new(code: :invalid_input)
+      result.errors.add(:amount, 'is required')
+
+      expect(result.to_api_h(index: 3)).to eq(
+        index: 3, status: :failure, id: nil, errors: {amount: ['is required']}
+      )
+    end
+
+    it 'reports the skipped status' do
+      expect(Actionable::Skipped.new.to_api_h[:status]).to eq(:skipped)
     end
   end
 end

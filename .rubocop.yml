@@ -126,12 +126,14 @@ Naming/BlockForwarding:
   Enabled: false
 
 Naming/PredicateMethod:
-  # fail/succeed/skip are control-flow DSL verbs (decisions D4/D17) that return a
-  # Boolean for branching, not predicates — they deliberately don't end in `?`.
+  # fail/succeed/skip/fail_with are control-flow DSL verbs (decisions D4/D17/D19)
+  # that return a Boolean for branching, not predicates — they deliberately
+  # don't end in `?`.
   AllowedMethods:
     - fail
     - succeed
     - skip
+    - fail_with
 
 Naming/PredicatePrefix:
   ForbiddenPrefixes: []

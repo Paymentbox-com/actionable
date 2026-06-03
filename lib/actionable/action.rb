@@ -86,6 +86,31 @@ module Actionable
       #   +nil+ for a free-form action
       attr_reader :input_schema
 
+      # Declare a *discriminated* input schema (decision D19): pick the input
+      # FieldStruct at run time from a discriminator value, instead of a single
+      # fixed schema. The block declares branches with +on(value, Schema)+ and an
+      # optional +default(Schema)+; +.run+ reads the discriminator from its
+      # keyword arguments, chooses the schema, then coerces and validates exactly
+      # like a fixed +input+. An unmatched value with no +default+ short-circuits
+      # to +Failure(:invalid_input)+.
+      #
+      #   input_for :event_type do
+      #     on 'sale',   SaleShape
+      #     on 'refund', RefundShape
+      #     default      UnknownShape
+      #   end
+      #
+      # @param discriminator [Symbol, String] the kwarg whose value selects the schema
+      # @yield the branch declarations (+on+ / +default+)
+      # @return [InputDispatch] the stored dispatch
+      def input_for(discriminator, &block)
+        @input_dispatch = InputDispatch.define(discriminator, &block)
+      end
+
+      # @return [InputDispatch, nil] the discriminated-input dispatch, or +nil+
+      #   when input isn't discriminated
+      attr_reader :input_dispatch
+
       # Declare a step. The step type is inferred from +target+ (a Symbol or
       # String names an instance method — a {Steps::Method}).
       #
@@ -169,25 +194,52 @@ module Actionable
         steps << Steps::Case.define(value_source, **options, &block)
       end
 
-      # Enable or read the action's measurement mode (decision D10). +:all+
-      # records an execution {History}; +:none+ (the default) records nothing
-      # for zero overhead. A measuring run cascades into the nested actions it
-      # invokes regardless of their own setting.
+      # Enable or read the action's measurement mode (decisions D10/D19). +:all+
+      # records an execution {History}; +:none+ (the default) records nothing for
+      # zero overhead; +:sampled+ records on a fraction of runs (+rate:+ between 0
+      # and 1) for low-overhead production observability. A measuring run cascades
+      # into the nested actions it invokes regardless of their own setting.
       #
-      # @param mode [:all, :none, nil] the mode to set; omit to read
-      # @return [:all, :none] the resolved mode
-      def measure(mode = nil)
+      #   measure :sampled, rate: 0.1   # record ~10% of runs
+      #
+      # @param mode [:all, :none, :sampled, nil] the mode to set; omit to read
+      # @param rate [Numeric, nil] required for +:sampled+ — the probability
+      #   (0..1) that a given run is measured
+      # @raise [ArgumentError] on an unknown mode, or +:sampled+ without a valid rate
+      # @return [:all, :none, :sampled] the resolved mode
+      def measure(mode = nil, rate: nil)
         unless mode.nil?
-          raise ArgumentError, "unknown measure mode #{mode.inspect}" unless %i[all none].include?(mode)
+          raise ArgumentError, "unknown measure mode #{mode.inspect}" unless %i[all none sampled].include?(mode)
+
+          if mode == :sampled && !(rate.is_a?(Numeric) && rate.between?(0, 1))
+            raise ArgumentError, "measure :sampled requires rate: between 0 and 1, got #{rate.inspect}"
+          end
 
           @measure = mode
+          @measure_rate = rate if mode == :sampled
         end
         @measure ||= :none
       end
 
-      # @return [Boolean] whether this action records history
+      # @return [Float, nil] the sampling rate for +:sampled+ mode, else +nil+
+      attr_reader :measure_rate
+
+      # @return [Boolean] whether this action always records history
       def measure_all?
         measure == :all
+      end
+
+      # @return [Boolean] whether this action samples history
+      def measure_sampled?
+        measure == :sampled
+      end
+
+      # The per-run sampling decision: true with probability {.measure_rate} when
+      # in +:sampled+ mode, false otherwise. Rolled once per run by the {Runner}.
+      #
+      # @return [Boolean]
+      def measure_sample_hit?
+        measure_sampled? && rand < measure_rate
       end
 
       # A structured, at-a-glance summary of the action — its name, input/output
@@ -199,7 +251,7 @@ module Actionable
       def describe
         {
           name: name,
-          input: input_schema&.metadata&.to_h,
+          input: input_descriptor,
           output: output_schema&.metadata&.to_h,
           steps: steps.map { |step| {type: step.kind, name: step.name, options: step.options} },
           hooks: {
@@ -213,6 +265,38 @@ module Actionable
         }
       end
 
+      # A human/agent-readable rendering of {.describe} — the same information as
+      # a multi-line summary instead of a Hash (decision D18). The input/output
+      # field lines reuse FieldStruct's own +Metadata#describe+ (type,
+      # required-ness, and the options each field's type accepts); only hook
+      # sections that have hooks are listed.
+      #
+      #   Greet.describe_text
+      #   # => "Greet (measure: none)\n  Input: (free-form)\n  ..."
+      #
+      # @return [String]
+      def describe_text
+        summary = describe
+        transactional = summary[:transactional] ? ', transactional' : ''
+        lines = ["#{summary[:name] || "action"} (measure: #{summary[:measure]}#{transactional})"]
+
+        lines << "  Input:#{input_summary}"
+        lines << "  Output:#{schema_summary(output_schema)}"
+
+        lines << '  Steps:'
+        steps_summary = summary[:steps]
+        lines << '    (none)' if steps_summary.empty?
+        steps_summary.each { |step| lines << "    - #{step[:name]} (#{step[:type]})" }
+
+        present_hooks = summary[:hooks].reject { |_, names| names.empty? }
+        unless present_hooks.empty?
+          lines << '  Hooks:'
+          present_hooks.each { |section, names| lines << "    #{section}: #{names.join(", ")}" }
+        end
+
+        lines.join("\n")
+      end
+
       # Run the action. With a declared input schema, coerce the arguments
       # (keyword args, or a single input-schema instance) into the input struct
       # and validate it — a required input that is missing or won't coerce
@@ -222,8 +306,9 @@ module Actionable
       #
       # @return [Result] the run's {Success} or {Failure}
       def run(*args, **kwargs)
-        if input_schema
+        if input_schema || input_dispatch
           input = build_input(args, kwargs)
+          return input if input.is_a?(Failure) # unmatched discriminator
           return invalid_input_failure(input) unless input.valid?
 
           instance = new
@@ -236,7 +321,71 @@ module Actionable
         Runner.new(instance).run
       end
 
+      # Run the action once per item in +enumerable+, collecting the per-item
+      # results into a {BatchResult} (decision D19). The single most common
+      # batch/ingest shape: each item runs independently (its own {.run}, its own
+      # outcome), so one item's failure never affects another, and the aggregate
+      # is inspectable via {BatchResult#all_ok?} / +#any_failure?+ / +#partial?+.
+      #
+      # The optional block maps each item to +.run+ arguments: return a Hash for
+      # keyword args, an Array for positional args, or any other value to pass as
+      # a single argument. Without a block, each item is passed to +.run+
+      # directly.
+      #
+      #   ImportRow.run_each(rows) { |row| {row: row} }
+      #   Charge.run_each(amounts) # => each amount passed to .run
+      #
+      # @param enumerable [Enumerable] the items to run
+      # @yieldparam item [Object] one element of +enumerable+
+      # @yieldreturn [Hash, Array, Object] the +.run+ arguments for that item
+      # @return [BatchResult] the per-item results
+      def run_each(enumerable, &block)
+        results = enumerable.map do |item|
+          args = block ? block.call(item) : item
+          case args
+          when Hash then run(**args)
+          when Array then run(*args)
+          else run(args)
+          end
+        end
+        BatchResult.new(results)
+      end
+
       private
+
+      # One {.describe_text} block for an input/output schema: +" (free-form)"+
+      # when none is declared, otherwise the FieldStruct +Metadata#describe+
+      # field lines indented one level under their +Input:+/+Output:+ heading.
+      #
+      # @param schema [Class<FieldStruct::Base>, nil]
+      # @return [String]
+      def schema_summary(schema)
+        return ' (free-form)' unless schema
+
+        "\n#{schema.metadata.describe.lines(chomp: true).map { |line| "  #{line}" }.join("\n")}"
+      end
+
+      # The +input+ value for {.describe}: a fixed schema's field metadata, a
+      # discriminated-input descriptor (+discriminated_on+ + +shapes+), or +nil+
+      # for a free-form action.
+      #
+      # @return [Hash, nil]
+      def input_descriptor
+        return input_schema.metadata.to_h if input_schema
+        return nil unless input_dispatch
+
+        {discriminated_on: input_dispatch.discriminator, shapes: input_dispatch.variants}
+      end
+
+      # The +Input:+ block for {.describe_text}: the fixed-schema field lines, a
+      # one-line discriminated-input summary, or +" (free-form)"+.
+      #
+      # @return [String]
+      def input_summary
+        return schema_summary(input_schema) if input_schema || input_dispatch.nil?
+
+        " (discriminated on #{input_dispatch.discriminator}: #{input_dispatch.variants.map(&:inspect).join(", ")})"
+      end
 
       # Run-start guard (decision D18): every method a step needs (method steps,
       # case value sources and method branch targets, hook steps) must exist on
@@ -258,21 +407,49 @@ module Actionable
 
       # Coerce +.run+ arguments into the input struct: pass an existing input
       # instance through untouched, otherwise build one from the keyword args.
+      # With discriminated input ({.input_for}), the schema is chosen from the
+      # discriminator value first; an unmatched value returns a +Failure+.
       #
-      # @return [FieldStruct::Base]
+      # @return [FieldStruct::Base, Failure]
       def build_input(args, kwargs)
+        return build_dispatched_input(args, kwargs) if input_dispatch
+
         candidate = args.first
         return candidate if args.size == 1 && candidate.is_a?(input_schema)
 
         input_schema.new(**kwargs)
       end
 
+      # Resolve the discriminated schema from the discriminator value, then build
+      # the input the same way {.build_input} does — or return an
+      # +:invalid_input+ {Failure} when nothing matches and there's no default.
+      #
+      # @return [FieldStruct::Base, Failure]
+      def build_dispatched_input(args, kwargs)
+        candidate = args.first
+        return candidate if args.size == 1 && input_dispatch.schemas.any? { |schema| candidate.is_a?(schema) }
+
+        value = kwargs[input_dispatch.discriminator]
+        schema = input_dispatch.schema_for(value)
+        return unmatched_discriminator_failure(value) unless schema
+
+        schema.new(**kwargs)
+      end
+
+      # @param value [Object] the unmatched discriminator value
+      # @return [Failure] code +:invalid_input+, naming the discriminator
+      def unmatched_discriminator_failure(value)
+        Failure.new(
+          code: :invalid_input,
+          message: "no input shape for #{input_dispatch.discriminator} #{value.inspect}"
+        )
+      end
+
       # @param input [FieldStruct::Base] the invalid input struct
       # @return [Failure] code +:invalid_input+, carrying the input's errors
       def invalid_input_failure(input)
-        failure = Failure.new(code: :invalid_input, message: 'input failed validation')
-        input.errors.to_h.each { |field, messages| messages.each { |m| failure.errors.add(field, m) } }
-        failure
+        Failure.new(code: :invalid_input, message: 'input failed validation')
+          .absorb_errors_from(input)
       end
 
       public
@@ -288,11 +465,13 @@ module Actionable
         subclass.instance_variable_set(:@steps, steps.dup)
         subclass.instance_variable_set(:@output_schema, output_schema)
         subclass.instance_variable_set(:@input_schema, input_schema)
+        subclass.instance_variable_set(:@input_dispatch, input_dispatch)
         subclass.instance_variable_set(:@success_hooks, success_hooks.dup)
         subclass.instance_variable_set(:@failure_hooks, failure_hooks.dup)
         subclass.instance_variable_set(:@skip_hooks, skip_hooks.dup)
         subclass.instance_variable_set(:@always_hooks, always_hooks.dup)
         subclass.instance_variable_set(:@measure, measure)
+        subclass.instance_variable_set(:@measure_rate, measure_rate)
       end
     end
 
@@ -332,6 +511,36 @@ module Actionable
       errors.each { |field, messages| Array(messages).each { |m| failure.errors.add(field, m) } }
       @result = failure
       false
+    end
+
+    # Record a {Failure} that absorbs an arbitrary FieldStruct's validation
+    # errors, without halting (decision D19). The same machinery
+    # +Failure(:invalid_input)+ / +Failure(:invalid_output)+ use internally,
+    # exposed as a verb so a step can validate a side struct and fail with its
+    # errors directly.
+    #
+    #   def validate = fail_with(EventShape.new(payload), code: :invalid_event)
+    #
+    # @param source [#errors] any object exposing a FieldStruct-style +errors+
+    #   collection (typically a +FieldStruct::Base+ instance)
+    # @param code [Symbol] the error code; defaults to +:invalid+
+    # @param message [String, nil] human-readable description
+    # @return [false] so a step can branch on the call
+    def fail_with(source, code: :invalid, message: nil)
+      @result = Failure.new(code: code, message: message).absorb_errors_from(source)
+      false
+    end
+
+    # Record a {Failure} absorbing +source+'s errors and halt the run
+    # (decision D19). The halting companion to {#fail_with}.
+    #
+    # @param source [#errors] see {#fail_with}
+    # @param code [Symbol] the error code; defaults to +:invalid+
+    # @param message [String, nil] human-readable description
+    # @return [void]
+    def fail_with!(source, code: :invalid, message: nil)
+      fail_with(source, code: code, message: message)
+      halt!
     end
 
     # Record a {Success} as the run's result without halting (decision D4).
@@ -374,9 +583,12 @@ module Actionable
     #
     # @param code [Symbol] the skip reason; defaults to +:skipped+
     # @param message [String, nil] human-readable description
+    # @param output [Hash{Symbol=>Object}] the skip output payload — captured
+    #   best-effort like a {Success}'s output, but never validated (decision
+    #   D17). Lets an idempotent hit return the existing record's data.
     # @return [false] so a step can branch on the call (the run did not succeed here)
-    def skip(code = :skipped, message = nil)
-      @result = Skipped.new(code: code, message: message)
+    def skip(code = :skipped, message = nil, **output)
+      @result = Skipped.new(code: code, message: message, output: output)
       false
     end
 
@@ -385,9 +597,10 @@ module Actionable
     #
     # @param code [Symbol] the skip reason; defaults to +:skipped+
     # @param message [String, nil] human-readable description
+    # @param output [Hash{Symbol=>Object}] the skip output payload (see {#skip})
     # @return [void]
-    def skip!(code = :skipped, message = nil)
-      skip(code, message)
+    def skip!(code = :skipped, message = nil, **output)
+      skip(code, message, **output)
       halt!
     end
 

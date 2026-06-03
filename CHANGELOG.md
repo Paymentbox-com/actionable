@@ -2,6 +2,43 @@
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-06-03
+
+Phase-2 ergonomics and adapters (decision D19), from real-world use fitting
+Actionable into a polymorphic ingestion endpoint. All additive and
+backward-compatible.
+
+### Added
+
+- **`fail_with(source, code: :invalid, message: nil)` / `fail_with!`** — record a
+  `Failure` that absorbs an arbitrary FieldStruct's validation errors mid-step
+  (the mechanism `:invalid_input` / `:invalid_output` use internally, now exposed
+  as a verb via the shared `Failure#absorb_errors_from`).
+- **`Result#to_h`, `#status`, `#to_api_h(index:, id_field:)`** — plain-Hash and
+  HTTP/batch-element views of a result, so controllers don't hand-map the shape.
+- **`Action.run_each(enumerable) { |item| run_args }`** — run the action once per
+  item, collecting a `BatchResult` (Enumerable) with `all_ok?` / `any_failure?` /
+  `partial?`, `successes` / `failures` / `skips`, and `to_api_h`. Items run
+  independently.
+- **`input_for(:discriminator) { on value, Shape; default Shape }`** — pick the
+  input schema at run time from a discriminator value (typed polymorphic input);
+  an unmatched value with no `default` is `Failure(:invalid_input)`. Backed by the
+  shared `Actionable::ValueMatch` (also used by `case_step`).
+- **`require 'actionable/job'`** — a framework-agnostic background-job helper:
+  `Actionable::Job.disposition(result)` maps a result to `:ack` / `:retry` /
+  `:discard`, and `Actionable::Job::Mixin` (included into a Sidekiq worker or
+  ActiveJob job) runs an action in `perform` and raises `RetryableFailure` for a
+  retryable failure.
+
+### Changed
+
+- **`skip` / `skip!` accept `**output` kwargs** (symmetric with `succeed`),
+  captured best-effort and never validated — so an idempotent hit can return the
+  existing record's data.
+- **`measure :sampled, rate:`** — a third measurement mode recording history on a
+  fraction of runs (rate between 0 and 1) for low-overhead production
+  observability, alongside `:all` and `:none`.
+
 ## [1.1.0] - 2026-06-03
 
 Developer-experience improvements (decision D18): fail loudly on misconfiguration

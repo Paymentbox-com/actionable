@@ -54,8 +54,9 @@ Guards take a Symbol naming a (possibly private) predicate, or a callable
 |------|---------|--------|---------|
 | `succeed(message = nil, **output)` | `Success` | no | `true` |
 | `fail(code, message = nil, **errors)` | `Failure` | no | `false` |
-| `skip(code = :skipped, message = nil)` | `Skipped` | no | `false` |
-| `succeed!` / `fail!` / `skip!` | as above | **yes** | — |
+| `fail_with(source, code: :invalid, message: nil)` | `Failure` absorbing `source.errors` | no | `false` |
+| `skip(code = :skipped, message = nil, **output)` | `Skipped` | no | `false` |
+| `succeed!` / `fail!` / `fail_with!` / `skip!` | as above | **yes** | — |
 | `halt!` | keeps current `@result` | **yes** | — |
 
 Plain (non-bang) verbs don't stop the pipeline — the final result reflects the
@@ -76,6 +77,40 @@ LastWins.run.success? # => true
 `fail`'s keyword arguments populate the result's `errors`; `succeed`'s populate
 its `output`. A raised `StandardError` is never caught — it propagates to the
 caller (assert on it with the RSpec matcher's `and_raise`).
+
+`fail_with` absorbs an arbitrary FieldStruct's validation errors into the failure
+— the same machinery `:invalid_input` / `:invalid_output` use internally, exposed
+as a verb for validating a side struct:
+
+<!-- doctest -->
+```ruby
+EventShape = Class.new(FieldStruct::Base) { required :event_type, :string }
+
+class Ingest < Actionable::Action
+  step :validate
+  def validate = fail_with!(EventShape.new, code: :invalid_event)
+end
+
+result = Ingest.run
+result.code               # => :invalid_event
+result.errors[:event_type] # => ["is required"]
+```
+
+`skip` takes output kwargs too (symmetry with `succeed`) — captured best-effort,
+never validated — so an idempotent hit can return the existing record's data:
+
+<!-- doctest -->
+```ruby
+class Dedup < Actionable::Action
+  output { optional :existing_id, :integer }
+  step :check
+  def check = skip!(:duplicate, 'already processed', existing_id: 42)
+end
+
+result = Dedup.run
+result.skipped?    # => true
+result.existing_id # => 42
+```
 
 ## Output
 
@@ -113,6 +148,19 @@ result.code           # => :invalid_output
 result.errors[:total] # => ["is required"]
 ```
 
+`errors` is FieldStruct's own collection, so alongside the per-field
+`errors[:field]` / `errors.to_h` it answers `full_messages` — each message
+rendered as a complete sentence with the humanized field name prepended
+(`:base` messages pass through unprefixed):
+
+<!-- doctest -->
+```ruby
+result = Actionable::Failure.new(code: :invalid)
+result.errors.add(:first_name, 'is required')
+
+result.errors.full_messages # => ["First name is required"]
+```
+
 Declared output fields delegate off the result (`result.total` →
 `result.output.total`), except names that collide with the result's own
 attributes (`code`/`message`/`output`/`history`/`errors`).
@@ -139,6 +187,63 @@ A missing or uncoercible required input yields `Failure(:invalid_input)` without
 running any steps. An already-built input instance can be passed instead of
 keyword arguments. With no `input` block, `.run`'s arguments go to the
 constructor (the free-form path).
+
+### Discriminated input
+
+`input_for(discriminator) { … }` picks the input schema at run time from a
+discriminator value — typed input for a polymorphic payload. Branches use the
+same matching as `case_step` (`==`, Array membership, `Regexp`); an unmatched
+value with no `default` short-circuits to `Failure(:invalid_input)`.
+
+<!-- doctest -->
+```ruby
+SaleShape   = Class.new(FieldStruct::Base) { required :amount, :integer }
+RefundShape = Class.new(FieldStruct::Base) { required :original_id, :integer }
+
+class Ingest < Actionable::Action
+  input_for :event_type do
+    on 'sale',   SaleShape
+    on 'refund', RefundShape
+  end
+  output { optional :amount, :integer }
+  step :capture
+  def capture
+    @amount = input.amount if input.respond_to?(:amount)
+  end
+end
+
+Ingest.run(event_type: 'sale', amount: '5').output.amount # => 5
+Ingest.run(event_type: 'wat').code                        # => :invalid_input
+```
+
+## Batch runs
+
+`Action.run_each(enumerable) { |item| run_args }` runs the action once per item
+and collects the per-item results into a `BatchResult` (Enumerable). Each item
+runs independently, so one failure never affects another. The block maps an item
+to `.run` arguments (a Hash → kwargs, an Array → positional, anything else → a
+single argument); omit it to pass each item directly.
+
+<!-- doctest -->
+```ruby
+class Doubler < Actionable::Action
+  input  { required :n, :integer }
+  output { required :doubled, :integer }
+  step :go
+  def go = @doubled = input.n * 2
+end
+
+batch = Doubler.run_each([1, 'x', 3]) { |n| {n: n} } # 'x' -> :invalid_input
+batch.size        # => 3
+batch.all_ok?     # => false
+batch.any_failure? # => true
+batch.partial?    # => true
+batch.successes.map { |r| r.output.doubled } # => [2, 6]
+```
+
+`BatchResult` answers `all_ok?` / `any_failure?` / `partial?`, exposes
+`successes` / `failures` / `skips`, and `to_api_h` renders the whole batch as an
+array of indexed API elements.
 
 ## Lifecycle hooks
 
@@ -212,9 +317,22 @@ history.steps.map(&:name)   # => [:work]
 history.steps.first.section # => :main
 ```
 
-`measure :none` (the default) records nothing. A measuring run cascades into the
-nested actions it invokes. `History#took` sums step durations;
-`History#to_json` serializes via Oj.
+`measure :none` (the default) records nothing. `measure :sampled, rate: 0.1`
+records a fraction of runs (rate between 0 and 1) for low-overhead production
+observability — when a run is sampled in, it measures fully and cascades into its
+nested actions. A measuring run cascades into the nested actions it invokes.
+`History#took` sums step durations; `History#to_json` serializes via Oj.
+
+<!-- doctest -->
+```ruby
+class Sampled < Actionable::Action
+  measure :sampled, rate: 1.0 # always, for a deterministic example
+  step :work
+  def work = nil
+end
+
+Sampled.run.history.steps.map(&:name) # => [:work]
+```
 
 ## Registry
 
@@ -248,6 +366,42 @@ end
 Probe.describe[:steps].first[:type] # => :method
 Probe.describe.key?(:output)        # => true
 Probe.describe[:measure]            # => :none
+```
+
+`Action.describe_text` renders the same information as a human/agent-readable
+multi-line summary instead of a Hash. The input/output field lines reuse
+FieldStruct's own `Metadata#describe` (each field's type, required-ness, and the
+options its type accepts); only hook sections that have hooks are listed:
+
+```
+Probe (measure: none)
+  Input: (free-form)
+  Output:
+    count (Integer, required) — accepts in (Array | Range)
+  Steps:
+    - compute (method)
+```
+
+## Serializing a result
+
+`Result#to_h` is a plain-Hash view (`code`, `message`, `output`/`history`
+rendered to primitives, `errors` as a Hash). `Result#to_api_h(index:)` is a
+compact element for an HTTP/batch response — position, `status`
+(`:success`/`:failure`/`:skipped`), the `id` read off the typed output, and
+`errors` — so a controller doesn't hand-map the shape:
+
+<!-- doctest -->
+```ruby
+class MakeWidget < Actionable::Action
+  output { required :id, :integer }
+  step :build
+  def build = @id = 99
+end
+
+result = MakeWidget.run
+result.status              # => :success
+result.to_h[:output]       # => {:id=>99}
+result.to_api_h(index: 0)  # => {:index=>0, :status=>:success, :id=>99, :errors=>{}}
 ```
 
 ## Guardrails (`DefinitionError`)
@@ -286,6 +440,36 @@ cryptic `NoMethodError`:
 - `allow_actionable_success` / `stub_actionable_success` (and `_failure` /
   `_skip` variants) build real result objects so `.run` returns them without
   executing the action.
+
+## Background jobs
+
+`require 'actionable/job'` — a framework-agnostic helper that runs an action
+inside a background job and maps its result to a queue disposition:
+`Actionable::Job.disposition(result)` returns `:ack` (a success or skip), `:retry`
+(a transient failure), or `:discard` (a failure whose code is in the
+non-retryable set, default `%i[invalid_input invalid_output not_found]`).
+
+Include `Actionable::Job::Mixin` into your Sidekiq worker or ActiveJob job and
+call `run_actionable` from `perform`. It records `actionable_result`, returns for
+an ack/discard, and raises `Actionable::Job::RetryableFailure` for a retry so the
+queue applies its own backoff. A genuine exception inside the action propagates
+unchanged (the queue retries it):
+
+```ruby
+require 'actionable/job'
+
+class ProjectEventJob
+  include Sidekiq::Job              # or: ActiveJob::Base
+  include Actionable::Job::Mixin
+
+  def perform(event_id)
+    run_actionable(ProjectApiEvent, event_id: event_id)
+  end
+
+  # optional: customize which failure codes are permanent (not retried)
+  def actionable_permanent_codes = %i[invalid_input not_found unprocessable]
+end
+```
 
 ## RBS for your actions
 

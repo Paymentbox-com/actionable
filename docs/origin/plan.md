@@ -461,7 +461,52 @@ on misconfiguration and making actions self-describing.
   `Actionable::RBS`.
 
 _Considered in this review but **not** taken: `Result#to_h` and documenting the
-`succeed`/`fail`/`skip` signature asymmetry — see `scrap/dx_review.md`._
+`succeed`/`fail`/`skip` signature asymmetry — see `scrap/dx_review.md`. (`Result#to_h`
+was subsequently taken in **D19**.)_
+
+---
+
+### D19. Phase-2 ergonomics & adapters (added 2026-06, from PBX real-world use)
+
+Seven upgrades surfaced while fitting Actionable into a PBX ingestion refactor and
+reviewed in `scrap/upgrade_review_pbx.md`. Accepted and delivered as slices A–E;
+each is additive and backward-compatible. One proposal (per-step/savepoint
+transactions) was **deferred** — a workaround exists today (a nested action with
+`transactional model: …, requires_new: true` gets an independent savepoint per
+D9), and true per-step granularity fights D9's deliberate whole-run model.
+
+- **Slice A — verb & result ergonomics.**
+  - `skip` / `skip!` accept `**output` (symmetry with `succeed`); captured
+    best-effort, never validated — *amends D17*. Lets an idempotent hit return the
+    existing record's data.
+  - `fail_with(source, code: :invalid, message: nil)` / `fail_with!` — record a
+    `Failure` absorbing an arbitrary FieldStruct's errors. Generalizes the
+    `:invalid_input` / `:invalid_output` mechanism (now a shared
+    `Failure#absorb_errors_from`) into a public verb.
+  - `Result#to_h`, `#status`, `#to_api_h(index:, id_field:)` — plain-Hash and
+    HTTP/batch-element views; *resolves the `Result#to_h` deferral noted in D18*.
+- **Slice B — `Action.run_each(enumerable) { … }`** → a `BatchResult` (Enumerable)
+  wrapping per-item `Result`s with `all_ok?` / `any_failure?` / `partial?`.
+  Collect-all, per-item independent runs (no whole-batch transaction in v1).
+- **Slice C — discriminated input (`input_for(:discriminator) { on … }`)** — pick
+  the input schema at runtime from a discriminator, reusing the `case_step`
+  matcher; an unmatched value with no `default` is `Failure(:invalid_input)`.
+  *Extends D7.* RBS for the discriminated `.run` stays permissive in v1.
+- **Slice D — optional job adapter.** Framework-agnostic `Actionable::Job`
+  (`require 'actionable/job'`, pure Ruby, fully tested) maps a `Result` to a
+  disposition (`:ack`/`:retry`/`:discard`) and provides a `Mixin` you include
+  into a Sidekiq worker or ActiveJob job; `run_actionable` raises
+  `RetryableFailure` for a retryable failure so the queue applies its backoff.
+  Runs the action synchronously inside `perform` (a result→retry/discard wrapper,
+  *not* the deferred-result async still in the backlog). Stays out of the core
+  load path (invariants 4 & 6). _Ships the framework-agnostic mixin rather than
+  `actionable/sidekiq` / `actionable/active_job` base classes, so the adapter
+  stays testable without those gems as dependencies; the host wiring is a
+  documented two-line include (see USAGE)._
+- **Slice E — `measure :sampled, rate:`** — probabilistic measurement for prod
+  observability; the runner gate becomes `measure_all? || (sampled? && rand <
+  rate) || Measurement.active?`, so a sampled-in run still cascades into its
+  children. *Amends D10.*
 
 ---
 

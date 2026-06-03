@@ -163,4 +163,62 @@ RSpec.describe 'Actionable control flow' do
       expect(result).to be_success
     end
   end
+
+  describe 'fail_with (absorb a FieldStruct\'s errors)' do
+    # A throwaway FieldStruct shape with a required field, so an empty instance
+    # is invalid and carries a per-field error.
+    let(:shape) do
+      Class.new(FieldStruct::Base) do
+        required :name, :string
+        required :email, :string
+      end
+    end
+
+    it 'records a Failure carrying the struct\'s validation errors' do
+      bad = shape.new
+      bad.valid? # populate errors
+      this = self
+      klass = Class.new(Actionable::Action) do
+        define_method(:validate) { fail_with(this.shape.new, code: :invalid_event) }
+        step :validate
+      end
+
+      result = klass.run
+
+      expect(result).to be_failure
+      expect(result.code).to eq(:invalid_event)
+      expect(result.errors[:name]).to eq(['is required'])
+      expect(result.errors[:email]).to eq(['is required'])
+    end
+
+    it 'defaults the code to :invalid and does not halt (last write wins)' do
+      this = self
+      klass = Class.new(Actionable::Action) do
+        define_method(:validate) { fail_with(this.shape.new) }
+        define_method(:recover) { succeed('recovered') }
+        step :validate
+        step :recover
+      end
+
+      expect(klass.run).to be_success
+    end
+
+    it 'fail_with! records and halts' do
+      calls = []
+      this = self
+      klass = Class.new(Actionable::Action) do
+        define_method(:validate) { fail_with!(this.shape.new, code: :invalid_event, message: 'bad shape') }
+        define_method(:after) { calls << :after }
+        step :validate
+        step :after
+      end
+
+      result = klass.run
+
+      expect(result).to be_failure
+      expect(result.code).to eq(:invalid_event)
+      expect(result.message).to eq('bad shape')
+      expect(calls).to eq([])
+    end
+  end
 end
