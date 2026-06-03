@@ -28,7 +28,7 @@ options, and macros see [`USAGE.md`](../USAGE.md); for the feature tour see
 | Branch on a value | `case_step :status do … end` |
 | Compose actions | `step Other, input: %i[sku], expose: %i[line]` |
 | Run code after the outcome | `on_success` / `on_failure` / `on_skip` / `always` |
-| Record timings & history | `measure :all`, then `result.history` |
+| Record timings & history | `measure :all` (or `:sampled, rate:`), then `result.history` |
 | Inspect an action | `Settle.describe` / `Settle.describe_text` |
 | Read errors as sentences | `result.errors.full_messages` |
 | Test an action | `expect(Settle).to perform_actionable(…).and_succeed` |

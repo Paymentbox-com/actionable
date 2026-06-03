@@ -317,9 +317,22 @@ history.steps.map(&:name)   # => [:work]
 history.steps.first.section # => :main
 ```
 
-`measure :none` (the default) records nothing. A measuring run cascades into the
-nested actions it invokes. `History#took` sums step durations;
-`History#to_json` serializes via Oj.
+`measure :none` (the default) records nothing. `measure :sampled, rate: 0.1`
+records a fraction of runs (rate between 0 and 1) for low-overhead production
+observability — when a run is sampled in, it measures fully and cascades into its
+nested actions. A measuring run cascades into the nested actions it invokes.
+`History#took` sums step durations; `History#to_json` serializes via Oj.
+
+<!-- doctest -->
+```ruby
+class Sampled < Actionable::Action
+  measure :sampled, rate: 1.0 # always, for a deterministic example
+  step :work
+  def work = nil
+end
+
+Sampled.run.history.steps.map(&:name) # => [:work]
+```
 
 ## Registry
 

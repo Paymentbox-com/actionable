@@ -194,25 +194,52 @@ module Actionable
         steps << Steps::Case.define(value_source, **options, &block)
       end
 
-      # Enable or read the action's measurement mode (decision D10). +:all+
-      # records an execution {History}; +:none+ (the default) records nothing
-      # for zero overhead. A measuring run cascades into the nested actions it
-      # invokes regardless of their own setting.
+      # Enable or read the action's measurement mode (decisions D10/D19). +:all+
+      # records an execution {History}; +:none+ (the default) records nothing for
+      # zero overhead; +:sampled+ records on a fraction of runs (+rate:+ between 0
+      # and 1) for low-overhead production observability. A measuring run cascades
+      # into the nested actions it invokes regardless of their own setting.
       #
-      # @param mode [:all, :none, nil] the mode to set; omit to read
-      # @return [:all, :none] the resolved mode
-      def measure(mode = nil)
+      #   measure :sampled, rate: 0.1   # record ~10% of runs
+      #
+      # @param mode [:all, :none, :sampled, nil] the mode to set; omit to read
+      # @param rate [Numeric, nil] required for +:sampled+ — the probability
+      #   (0..1) that a given run is measured
+      # @raise [ArgumentError] on an unknown mode, or +:sampled+ without a valid rate
+      # @return [:all, :none, :sampled] the resolved mode
+      def measure(mode = nil, rate: nil)
         unless mode.nil?
-          raise ArgumentError, "unknown measure mode #{mode.inspect}" unless %i[all none].include?(mode)
+          raise ArgumentError, "unknown measure mode #{mode.inspect}" unless %i[all none sampled].include?(mode)
+
+          if mode == :sampled && !(rate.is_a?(Numeric) && rate.between?(0, 1))
+            raise ArgumentError, "measure :sampled requires rate: between 0 and 1, got #{rate.inspect}"
+          end
 
           @measure = mode
+          @measure_rate = rate if mode == :sampled
         end
         @measure ||= :none
       end
 
-      # @return [Boolean] whether this action records history
+      # @return [Float, nil] the sampling rate for +:sampled+ mode, else +nil+
+      attr_reader :measure_rate
+
+      # @return [Boolean] whether this action always records history
       def measure_all?
         measure == :all
+      end
+
+      # @return [Boolean] whether this action samples history
+      def measure_sampled?
+        measure == :sampled
+      end
+
+      # The per-run sampling decision: true with probability {.measure_rate} when
+      # in +:sampled+ mode, false otherwise. Rolled once per run by the {Runner}.
+      #
+      # @return [Boolean]
+      def measure_sample_hit?
+        measure_sampled? && rand < measure_rate
       end
 
       # A structured, at-a-glance summary of the action — its name, input/output
@@ -444,6 +471,7 @@ module Actionable
         subclass.instance_variable_set(:@skip_hooks, skip_hooks.dup)
         subclass.instance_variable_set(:@always_hooks, always_hooks.dup)
         subclass.instance_variable_set(:@measure, measure)
+        subclass.instance_variable_set(:@measure_rate, measure_rate)
       end
     end
 
