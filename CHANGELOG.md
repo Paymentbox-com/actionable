@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-06-03
+
+### Tooling
+
+- The repo is now a single-plugin Claude Code marketplace
+  (`.claude-plugin/{plugin.json,marketplace.json}`), so the bundled skill installs
+  via `/plugin marketplace add Paymentbox-com/actionable` +
+  `/plugin install actionable@actionable` (the skill still ships in the gem for a
+  no-marketplace copy). Mirrors the field_struct agent-harness setup.
+
 ## [1.2.1] - 2026-06-03
 
 ### Tooling
