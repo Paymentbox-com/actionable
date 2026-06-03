@@ -12,7 +12,9 @@ see `CLAUDE.md`.)
   (Ruby + Rails): a task→API map, an error→fix table, and a worked example.
 - **[`USAGE.md`](USAGE.md)** — dense reference: every step type, option, and macro.
 - **[`README.md`](README.md)** — feature overview.
-- `skills/actionable/SKILL.md` — the bundled Claude Code skill.
+- `skills/actionable/SKILL.md` — the bundled Claude Code skill. Install it with
+  `/plugin marketplace add Paymentbox-com/actionable` then
+  `/plugin install actionable@actionable` (the repo is a single-plugin marketplace).
 
 ## The shape
 
