@@ -131,8 +131,11 @@ namespace :docs do
     failures = []
 
     # 1. CHANGELOG freshness — a change under lib/ needs an [Unreleased] entry.
+    #    A bare version bump (lib/actionable/version.rb only) is exempt: it IS
+    #    the release commit, which deliberately empties [Unreleased].
     changed = `git diff HEAD --name-only`.split("\n")
-    if changed.any? { |file| file.match?(%r{\Alib/.*\.rb\z}) }
+    lib_changes = changed.grep(%r{\Alib/.*\.rb\z}) - ['lib/actionable/version.rb']
+    unless lib_changes.empty?
       unreleased = File.read('CHANGELOG.md')[/##\s*\[Unreleased\](.*?)(?=^##\s|\z)/m, 1].to_s
       if unreleased.strip.empty?
         failures << 'CHANGELOG.md [Unreleased] is empty but lib/ changed — add an entry.'
