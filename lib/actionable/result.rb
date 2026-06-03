@@ -74,6 +74,44 @@ module Actionable
       inspect
     end
 
+    # @return [Symbol] the outcome as a single symbol — +:success+, +:failure+,
+    #   or +:skipped+. The coarse-grained companion to the specific {#code}.
+    def status
+      return :success if success?
+      return :skipped if skipped?
+
+      :failure
+    end
+
+    # A plain-Hash view of the result — +code+, +message+, the +output+ and
+    # +history+ rendered to primitives, and the +errors+ collection as a Hash
+    # (decision D19). The serializable companion to {#inspect}.
+    #
+    # @return [Hash{Symbol=>Object}]
+    def to_h
+      {
+        code: code,
+        message: message,
+        output: output.respond_to?(:to_h) ? output.to_h : output,
+        history: history.is_a?(History) ? history.as_json : history,
+        errors: errors.to_h
+      }
+    end
+
+    # A compact element for an HTTP/batch response: the item's position, its
+    # {#status}, the id read off the typed output, and its errors (decision
+    # D19). Lets a controller map a batch of results without hand-rolling the
+    # shape.
+    #
+    #   results.each_with_index.map { |r, i| r.to_api_h(index: i) }
+    #
+    # @param index [Integer, nil] the element's position in a batch
+    # @param id_field [Symbol] the output field to surface as +:id+ (default +:id+)
+    # @return [Hash{Symbol=>Object}]
+    def to_api_h(index: nil, id_field: :id)
+      {index: index, status: status, id: output_field(id_field), errors: errors.to_h}
+    end
+
     # Convenience delegation: a declared output field is readable straight off
     # the result (+result.invoice+ → +result.output.invoice+). Only fields
     # declared on a typed output schema delegate; incidental data never does
@@ -97,6 +135,17 @@ module Actionable
     # @return [Boolean] whether +name+ is a declared field on a typed output
     def delegates_to_output?(name)
       output.is_a?(FieldStruct::Base) && output.attribute_names.include?(name)
+    end
+
+    # Read +name+ off the output — a declared field on a typed output, a key on
+    # a Hash output, or +nil+ when absent.
+    #
+    # @param name [Symbol]
+    # @return [Object, nil]
+    def output_field(name)
+      return output.public_send(name) if delegates_to_output?(name)
+
+      output[name] if output.respond_to?(:[])
     end
   end
 end

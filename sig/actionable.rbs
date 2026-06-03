@@ -545,6 +545,33 @@ module Actionable
     # _@return_ — so a step can branch on the call
     def fail: (Symbol code, ?String? message, **::Hash[Symbol, (String | ::Array[String])] errors) -> bool
 
+    # Record a {Failure} that absorbs an arbitrary FieldStruct's validation
+    # errors, without halting (decision D19). The same machinery
+    # +Failure(:invalid_input)+ / +Failure(:invalid_output)+ use internally,
+    # exposed as a verb so a step can validate a side struct and fail with its
+    # errors directly.
+    # 
+    #   def validate = fail_with(EventShape.new(payload), code: :invalid_event)
+    # 
+    # _@param_ `source` — any object exposing a FieldStruct-style +errors+ collection (typically a +FieldStruct::Base+ instance)
+    # 
+    # _@param_ `code` — the error code; defaults to +:invalid+
+    # 
+    # _@param_ `message` — human-readable description
+    # 
+    # _@return_ — so a step can branch on the call
+    def fail_with: (untyped source, ?code: Symbol, ?message: String?) -> bool
+
+    # Record a {Failure} absorbing +source+'s errors and halt the run
+    # (decision D19). The halting companion to {#fail_with}.
+    # 
+    # _@param_ `source` — see {#fail_with}
+    # 
+    # _@param_ `code` — the error code; defaults to +:invalid+
+    # 
+    # _@param_ `message` — human-readable description
+    def fail_with!: (untyped source, ?code: Symbol, ?message: String?) -> void
+
     # Record a {Success} as the run's result without halting (decision D4).
     # 
     # _@param_ `message` — human-readable description
@@ -580,8 +607,10 @@ module Actionable
     # 
     # _@param_ `message` — human-readable description
     # 
+    # _@param_ `output` — the skip output payload — captured best-effort like a {Success}'s output, but never validated (decision D17). Lets an idempotent hit return the existing record's data.
+    # 
     # _@return_ — so a step can branch on the call (the run did not succeed here)
-    def skip: (?Symbol code, ?String? message) -> bool
+    def skip: (?Symbol code, ?String? message, **::Hash[Symbol, Object] output) -> bool
 
     # Record a {Skipped} and halt the run, skipping the remaining steps — the
     # common "nothing to do, stop here" case (decision D17).
@@ -589,7 +618,9 @@ module Actionable
     # _@param_ `code` — the skip reason; defaults to +:skipped+
     # 
     # _@param_ `message` — human-readable description
-    def skip!: (?Symbol code, ?String? message) -> void
+    # 
+    # _@param_ `output` — the skip output payload (see {#skip})
+    def skip!: (?Symbol code, ?String? message, **::Hash[Symbol, Object] output) -> void
 
     # Halt the run immediately, keeping whatever result was already recorded
     # (a prior +fail+/+succeed+/+skip+, or auto-{Success} if none). Control flow
@@ -676,6 +707,27 @@ module Actionable
     # _@return_ — same deterministic representation as {#inspect}
     def to_s: () -> String
 
+    # _@return_ — the outcome as a single symbol — +:success+, +:failure+,
+    # or +:skipped+. The coarse-grained companion to the specific {#code}.
+    def status: () -> Symbol
+
+    # A plain-Hash view of the result — +code+, +message+, the +output+ and
+    # +history+ rendered to primitives, and the +errors+ collection as a Hash
+    # (decision D19). The serializable companion to {#inspect}.
+    def to_h: () -> ::Hash[Symbol, Object]
+
+    # A compact element for an HTTP/batch response: the item's position, its
+    # {#status}, the id read off the typed output, and its errors (decision
+    # D19). Lets a controller map a batch of results without hand-rolling the
+    # shape.
+    # 
+    #   results.each_with_index.map { |r, i| r.to_api_h(index: i) }
+    # 
+    # _@param_ `index` — the element's position in a batch
+    # 
+    # _@param_ `id_field` — the output field to surface as +:id+ (default +:id+)
+    def to_api_h: (?index: Integer?, ?id_field: Symbol) -> ::Hash[Symbol, Object]
+
     # Convenience delegation: a declared output field is readable straight off
     # the result (+result.invoice+ → +result.output.invoice+). Only fields
     # declared on a typed output schema delegate; incidental data never does
@@ -690,6 +742,12 @@ module Actionable
     # 
     # _@return_ — whether +name+ is a declared field on a typed output
     def delegates_to_output?: (Symbol name) -> bool
+
+    # Read +name+ off the output — a declared field on a typed output, a key on
+    # a Hash output, or +nil+ when absent.
+    # 
+    # _@param_ `name`
+    def output_field: (Symbol name) -> Object?
   end
 
   # Executes an action instance's steps and produces the {Result}.
@@ -912,6 +970,15 @@ module Actionable
     def code: () -> Symbol
 
     def failure?: () -> bool
+
+    # Copy another object's FieldStruct-style errors onto this failure's own
+    # errors collection. The shared mechanism behind +Failure(:invalid_input)+,
+    # +Failure(:invalid_output)+, and the {Action#fail_with} verb (decision D19).
+    # 
+    # _@param_ `source` — any object whose +errors+ responds to +to_h+ (a +FieldStruct::Base+ instance, or another result)
+    # 
+    # _@return_ — so callers can build-and-absorb in one expression
+    def absorb_errors_from: (untyped source) -> self
   end
 
   # A skipped run's result (decision D17): the action had nothing to do — not a

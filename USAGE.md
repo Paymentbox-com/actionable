@@ -54,8 +54,9 @@ Guards take a Symbol naming a (possibly private) predicate, or a callable
 |------|---------|--------|---------|
 | `succeed(message = nil, **output)` | `Success` | no | `true` |
 | `fail(code, message = nil, **errors)` | `Failure` | no | `false` |
-| `skip(code = :skipped, message = nil)` | `Skipped` | no | `false` |
-| `succeed!` / `fail!` / `skip!` | as above | **yes** | — |
+| `fail_with(source, code: :invalid, message: nil)` | `Failure` absorbing `source.errors` | no | `false` |
+| `skip(code = :skipped, message = nil, **output)` | `Skipped` | no | `false` |
+| `succeed!` / `fail!` / `fail_with!` / `skip!` | as above | **yes** | — |
 | `halt!` | keeps current `@result` | **yes** | — |
 
 Plain (non-bang) verbs don't stop the pipeline — the final result reflects the
@@ -76,6 +77,40 @@ LastWins.run.success? # => true
 `fail`'s keyword arguments populate the result's `errors`; `succeed`'s populate
 its `output`. A raised `StandardError` is never caught — it propagates to the
 caller (assert on it with the RSpec matcher's `and_raise`).
+
+`fail_with` absorbs an arbitrary FieldStruct's validation errors into the failure
+— the same machinery `:invalid_input` / `:invalid_output` use internally, exposed
+as a verb for validating a side struct:
+
+<!-- doctest -->
+```ruby
+EventShape = Class.new(FieldStruct::Base) { required :event_type, :string }
+
+class Ingest < Actionable::Action
+  step :validate
+  def validate = fail_with!(EventShape.new, code: :invalid_event)
+end
+
+result = Ingest.run
+result.code               # => :invalid_event
+result.errors[:event_type] # => ["is required"]
+```
+
+`skip` takes output kwargs too (symmetry with `succeed`) — captured best-effort,
+never validated — so an idempotent hit can return the existing record's data:
+
+<!-- doctest -->
+```ruby
+class Dedup < Actionable::Action
+  output { optional :existing_id, :integer }
+  step :check
+  def check = skip!(:duplicate, 'already processed', existing_id: 42)
+end
+
+result = Dedup.run
+result.skipped?    # => true
+result.existing_id # => 42
+```
 
 ## Output
 
@@ -275,6 +310,28 @@ Probe (measure: none)
     count (Integer, required) — accepts in (Array | Range)
   Steps:
     - compute (method)
+```
+
+## Serializing a result
+
+`Result#to_h` is a plain-Hash view (`code`, `message`, `output`/`history`
+rendered to primitives, `errors` as a Hash). `Result#to_api_h(index:)` is a
+compact element for an HTTP/batch response — position, `status`
+(`:success`/`:failure`/`:skipped`), the `id` read off the typed output, and
+`errors` — so a controller doesn't hand-map the shape:
+
+<!-- doctest -->
+```ruby
+class MakeWidget < Actionable::Action
+  output { required :id, :integer }
+  step :build
+  def build = @id = 99
+end
+
+result = MakeWidget.run
+result.status              # => :success
+result.to_h[:output]       # => {:id=>99}
+result.to_api_h(index: 0)  # => {:index=>0, :status=>:success, :id=>99, :errors=>{}}
 ```
 
 ## Guardrails (`DefinitionError`)

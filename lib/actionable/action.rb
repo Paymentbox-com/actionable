@@ -314,9 +314,8 @@ module Actionable
       # @param input [FieldStruct::Base] the invalid input struct
       # @return [Failure] code +:invalid_input+, carrying the input's errors
       def invalid_input_failure(input)
-        failure = Failure.new(code: :invalid_input, message: 'input failed validation')
-        input.errors.to_h.each { |field, messages| messages.each { |m| failure.errors.add(field, m) } }
-        failure
+        Failure.new(code: :invalid_input, message: 'input failed validation')
+          .absorb_errors_from(input)
       end
 
       public
@@ -378,6 +377,36 @@ module Actionable
       false
     end
 
+    # Record a {Failure} that absorbs an arbitrary FieldStruct's validation
+    # errors, without halting (decision D19). The same machinery
+    # +Failure(:invalid_input)+ / +Failure(:invalid_output)+ use internally,
+    # exposed as a verb so a step can validate a side struct and fail with its
+    # errors directly.
+    #
+    #   def validate = fail_with(EventShape.new(payload), code: :invalid_event)
+    #
+    # @param source [#errors] any object exposing a FieldStruct-style +errors+
+    #   collection (typically a +FieldStruct::Base+ instance)
+    # @param code [Symbol] the error code; defaults to +:invalid+
+    # @param message [String, nil] human-readable description
+    # @return [false] so a step can branch on the call
+    def fail_with(source, code: :invalid, message: nil)
+      @result = Failure.new(code: code, message: message).absorb_errors_from(source)
+      false
+    end
+
+    # Record a {Failure} absorbing +source+'s errors and halt the run
+    # (decision D19). The halting companion to {#fail_with}.
+    #
+    # @param source [#errors] see {#fail_with}
+    # @param code [Symbol] the error code; defaults to +:invalid+
+    # @param message [String, nil] human-readable description
+    # @return [void]
+    def fail_with!(source, code: :invalid, message: nil)
+      fail_with(source, code: code, message: message)
+      halt!
+    end
+
     # Record a {Success} as the run's result without halting (decision D4).
     #
     # @param message [String, nil] human-readable description
@@ -418,9 +447,12 @@ module Actionable
     #
     # @param code [Symbol] the skip reason; defaults to +:skipped+
     # @param message [String, nil] human-readable description
+    # @param output [Hash{Symbol=>Object}] the skip output payload — captured
+    #   best-effort like a {Success}'s output, but never validated (decision
+    #   D17). Lets an idempotent hit return the existing record's data.
     # @return [false] so a step can branch on the call (the run did not succeed here)
-    def skip(code = :skipped, message = nil)
-      @result = Skipped.new(code: code, message: message)
+    def skip(code = :skipped, message = nil, **output)
+      @result = Skipped.new(code: code, message: message, output: output)
       false
     end
 
@@ -429,9 +461,10 @@ module Actionable
     #
     # @param code [Symbol] the skip reason; defaults to +:skipped+
     # @param message [String, nil] human-readable description
+    # @param output [Hash{Symbol=>Object}] the skip output payload (see {#skip})
     # @return [void]
-    def skip!(code = :skipped, message = nil)
-      skip(code, message)
+    def skip!(code = :skipped, message = nil, **output)
+      skip(code, message, **output)
       halt!
     end
 

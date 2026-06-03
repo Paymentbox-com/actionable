@@ -172,7 +172,7 @@ module Actionable
     #   errors copied onto the failure and the (invalid) output attached
     def invalid_output_failure(output)
       failure = Failure.new(code: :invalid_output, message: 'output failed validation')
-      output.errors.to_h.each { |field, messages| messages.each { |m| failure.errors.add(field, m) } }
+        .absorb_errors_from(output)
       failure.output = output
       failure
     end

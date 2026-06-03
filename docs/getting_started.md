@@ -155,8 +155,9 @@ going (**last write wins**); the bang forms also halt the pipeline. A genuine
 |------|---------|--------|
 | `succeed(message = nil, **output)` | `Success` | no |
 | `fail(code, message = nil, **errors)` | `Failure` | no |
-| `skip(code = :skipped, message = nil)` | `Skipped` | no |
-| `succeed!` / `fail!` / `skip!` | as above | **yes** |
+| `fail_with(source, code: :invalid)` | `Failure` absorbing `source.errors` | no |
+| `skip(code = :skipped, message = nil, **output)` | `Skipped` | no |
+| `succeed!` / `fail!` / `fail_with!` / `skip!` | as above | **yes** |
 | `halt!` | keeps current result | **yes** |
 
 `fail`'s keyword arguments populate the result's `errors`; `succeed`'s populate
@@ -410,6 +411,8 @@ affordances instead of guessing:
 - `Actionable::RBS.generate(Klass)` — emit RBS for an action's typed `.run` and
   output accessors (Steep / Solargraph).
 - `result.errors.full_messages` — validation errors as complete sentences.
+- `result.to_h` / `result.to_api_h(index:)` — a plain-Hash or HTTP-element view
+  of a result, so controllers and batch endpoints don't hand-map the shape.
 - The gem ships [`USAGE.md`](../USAGE.md) (full reference) and a Claude Code skill
   (`skills/actionable/SKILL.md`) — both are in `bundle show actionable`.
 
