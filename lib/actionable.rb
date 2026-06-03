@@ -1,8 +1,30 @@
 # frozen_string_literal: true
 
-require_relative "actionable/version"
+require 'field_struct'
 
+require_relative 'actionable/version'
+require_relative 'actionable/errors'
+require_relative 'actionable/measurement'
+require_relative 'actionable/history'
+require_relative 'actionable/registry'
+require_relative 'actionable/result'
+require_relative 'actionable/results/success'
+require_relative 'actionable/results/failure'
+require_relative 'actionable/results/skipped'
+require_relative 'actionable/steps/base'
+require_relative 'actionable/steps/method'
+require_relative 'actionable/steps/action'
+require_relative 'actionable/steps/case'
+require_relative 'actionable/steps'
+require_relative 'actionable/runner'
+require_relative 'actionable/action'
+require_relative 'actionable/rbs'
+
+# Actionable: typed, composable Ruby service objects.
+#
+# This is the core entry point. Per decision D14, every core file gets an
+# explicit +require_relative+ here — no autoload, no Zeitwerk. The optional
+# adapters (+actionable/rails+, +actionable/rspec+) are separate requires and
+# are deliberately NOT loaded here, keeping the core Rails-free.
 module Actionable
-  class Error < StandardError; end
-  # Your code goes here...
 end

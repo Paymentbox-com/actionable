@@ -72,9 +72,9 @@ result.invoice          # => same, via convenience delegation
   action), **Case** (value-based branching).
 - Step options: `:if`, `:unless` (Symbol method name or callable), and for nested
   Action steps `:input` (values to pass) and `:expose` (which outputs to absorb).
-- Control flow via `fail` / `succeed` (record, continue) and `fail!` / `succeed!` /
-  `halt!` (record + stop) using `throw :actionable_halt`. **No `rescue Exception`** —
-  genuine errors propagate.
+- Control flow via `fail` / `succeed` / `skip` (record, continue) and `fail!` /
+  `succeed!` / `skip!` / `halt!` (record + stop) using `throw :actionable_halt`.
+  **No `rescue Exception`** — genuine errors propagate. (`skip` is D17.)
 - A single result value object hierarchy: `Actionable::Result` with `Success` and
   `Failure`, backed by FieldStruct. Carries `code`, `message`, `errors`, `output`,
   `history`.
@@ -174,7 +174,11 @@ The runner wraps the main-step loop in `catch(:actionable_halt) { … }`.
 | `succeed(message = nil, **output)` | yes (Success) | no | sets `@result`, returns `true` |
 | `fail!(code, message = nil, **errors)` | yes (Failure) | **yes** | sets `@result` then `throw` |
 | `succeed!(message = nil, **output)` | yes (Success) | **yes** | sets `@result` then `throw` |
+| `skip(code = :skipped, message = nil)` | yes (Skipped) | no | sets `@result`, returns `false` |
+| `skip!(code = :skipped, message = nil)` | yes (Skipped) | **yes** | sets `@result` then `throw` |
 | `halt!` | no | **yes** | `throw` only; keeps current `@result` |
+
+> `skip` / `skip!` were added later — see **D17** for the `:skip` outcome.
 
 **`fail`/`succeed` (no bang) do NOT skip later steps** — this deliberately fixes the
 old gem's inconsistency where a plain `fail` silently short-circuited because it set
@@ -188,10 +192,12 @@ to assert on them. This removes the old `rescue Exception` entirely.
 
 ### D5. Result value objects (FieldStruct-backed)
 
-`Actionable::Result` is the base; `Actionable::Success` and `Actionable::Failure`
-are subclasses. Each is a FieldStruct with:
+`Actionable::Result` is the base; `Actionable::Success`, `Actionable::Failure`, and
+`Actionable::Skipped` (the third outcome — see **D17**) are subclasses. Each is a
+FieldStruct with:
 
-- `code` — `:success` for `Success`; an error Symbol for `Failure`.
+- `code` — `:success` for `Success`; an error Symbol for `Failure`; the skip
+  reason (default `:skipped`) for `Skipped`.
 - `message` — String, human-readable.
 - `errors` — a structured errors object (`Hash`-like; integrates with FieldStruct
   and, under the Rails adapter, ActiveModel errors via `formatted_errors`).
@@ -199,7 +205,8 @@ are subclasses. Each is a FieldStruct with:
   schema → empty struct.
 - `history` — the `History` for the run (see D10).
 
-Predicates: `success?` / `successful?`, `failure?` / `failed?`. `to_s` / `inspect`
+Predicates: `success?` / `successful?`, `failure?` / `failed?`, `skipped?`, and
+`ok?` (≡ `!failure?`, true for both `Success` and `Skipped`). `to_s` / `inspect`
 give a compact, sorted, deterministic representation. JSON via Oj.
 
 ### D6. Typed output via a declared schema
@@ -214,17 +221,35 @@ end
 ```
 
 The `output do … end` block builds an anonymous `FieldStruct::Base` subclass stored
-as the action's **output schema**. At the end of a run the runner reads the
-instance variables whose names match declared output fields, builds the output
-struct (coercing/validating through FieldStruct), and assigns it to `result.output`.
+as the action's **output schema** — a *single* schema shared by both outcomes. At
+the end of a run the runner reads the instance variables whose names match declared
+output fields, overlays any `succeed(**output)` keyword arguments (kwargs win on
+conflict), coerces them through FieldStruct, and assigns the struct to
+`result.output`.
 
 - **Ergonomics preserved**: step methods still just set `@invoice = …`. No explicit
-  "expose" call is needed — declaration + ivar name is the contract.
+  "expose" call is needed — declaration + ivar name is the contract. `succeed`'s
+  kwargs are a shorthand overlay on top of the captured ivars.
 - **Convenience delegation**: `result.invoice` delegates to `result.output.invoice`
   for declared fields. Undeclared ivars are *not* surfaced (a deliberate change from
   the old "capture everything" behavior — output is now an explicit, typed contract).
-- An action with no `output` block has an empty output struct; `result.output` is
-  present but field-less.
+- **Asymmetric validation** (revised 2026-06; see note below). On a **success**, the
+  captured output is validated through FieldStruct; if it fails (a `required` field
+  was never set, or a value won't coerce), the run can't truly have succeeded, so it
+  becomes a `Failure` with code `:invalid_output` carrying the validation errors. On a
+  **failure**, output is captured best-effort and **never** validated — callers treat
+  failure output as possibly incomplete (fields that were never set come back `nil`).
+- An action with **no** `output` block is *free-form*: `result.output` keeps whatever
+  was recorded (e.g. the `succeed(**output)` hash, default `{}`), with no schema,
+  coercion, validation, or delegation.
+
+> **Revision note (2026-06, during Slice 6).** D6 originally implied a single schema
+> with uniform handling. Implementation surfaced the success-vs-failure question; the
+> locked outcome is the single-schema, asymmetric-validation design above. A richer
+> "shape per outcome / per failure code" was considered and **deferred** to a future
+> decision, as was the division of labor between a typed *failure output* and the
+> existing structured `errors` collection. For now, failure detail lives in
+> `code` / `message` / `errors`; typed output is primarily a success-path contract.
 
 ### D7. Typed input via an optional schema
 
@@ -249,6 +274,12 @@ When there is **no** `input` block, the action defines its own `initialize` and
 `.run(*args, **kwargs)` forwards verbatim — the free-form path, for actions whose
 inputs don't fit a flat schema. Typed input is the path that unlocks a fully-typed
 `.run` and richer RBS generation (D13).
+
+Typed input stays **keyword-only**: `.run` takes keyword arguments (or a pre-built
+input instance). Accepting positional arguments (mapped to declared fields by
+order) was considered and **deferred** — keyword call sites are self-documenting
+and immune to field reordering, which matters most for service objects. Revisit
+after real-world usage; see Phase 2+ backlog and `scrap/positional_input_args.md`.
 
 ### D8. Rails decoupling: pure-Ruby core + optional adapter
 
@@ -381,15 +412,42 @@ README and USAGE code examples are wrapped in `<!-- doctest -->` blocks and exec
 by `spec/docs_examples_spec.rb`, so published examples can't rot. `rake release:check`
 runs specs + rubocop + sig staleness/validity guards + a strict YARD build.
 
+### D17. The `:skip` outcome (added 2026-06; revises D4/D5)
+
+A third run outcome beyond Success/Failure: **skip** — the action had nothing to
+do (a field isn't created yet, a condition isn't ready). It is *not* a failure
+(no error, no retry/alert) and *not* a success (no real work), so conflating it
+with either loses information for observability, retries, and composition.
+
+- `Actionable::Skipped < Result`, with `skipped?` true and `success?` /
+  `failure?` both false (a **strict** third state). Every result also gains
+  `ok?` (≡ `!failure?` — true for `Success` and `Skipped`) for the "didn't
+  fail" check. `code` defaults to `:skipped` and carries the reason.
+- Verbs `skip(code = :skipped, message = nil)` (record, continue) and `skip!`
+  (record + halt), mirroring `fail`. No output/errors payload — a skip produces
+  neither.
+- Lifecycle: a new `on_skip` hook; the runner dispatches a skipped run to
+  `on_skip` (never `on_success`/`on_failure`), then `always`.
+- Output: only a **strict** `Success` is validated. A `Skipped` (like a
+  `Failure`) captures output best-effort and is never validated, so a skip with
+  a declared output schema does not flip to `:invalid_output`.
+- Nested: a skipped child action is not a failure, so it continues the parent
+  like a success (absorb best-effort output, don't halt) — the parent decides
+  its own outcome.
+- Transactions: a skip commits (not a failure → no rollback).
+- RSpec: `perform_actionable.and_skip(code, message)`, plus
+  `allow_actionable_skip` / `stub_actionable_skip`.
+
 ---
 
 ## Slice plan
 
-16 slices, ordered so each is independently testable and unblocks the next.
-Foundation first (results → control flow → steps → action/runner), then output/input
-schemas, lifecycle, composition, ergonomics, the optional adapters, and finally the
-type/doc toolchain and release. Every slice produces one or more atomic commits;
-every test ships with the code it proves.
+16 slices (plus Slice 17, the post-plan `:skip` outcome), ordered so each is
+independently testable and unblocks the next. Foundation first (results → control
+flow → steps → action/runner), then output/input schemas, lifecycle, composition,
+ergonomics, the optional adapters, and finally the type/doc toolchain and release.
+Every slice produces one or more atomic commits; every test ships with the code it
+proves.
 
 ### Slice 1 — Result value objects
 `Actionable::Result` (FieldStruct base) + `Success` / `Failure` with
@@ -420,8 +478,10 @@ vs record-and-halt, last-write-wins, auto-success, and exception propagation.
 Commit: `feat: add fail/succeed control flow with throw/catch halt`
 
 ### Slice 6 — Output schema
-`output do … end` builds a FieldStruct subclass; runner captures matching ivars,
-coerces/validates, assigns `result.output`; result delegates declared fields.
+`output do … end` builds a FieldStruct subclass; runner captures matching ivars
+(overlaid by `succeed` kwargs), coerces, assigns `result.output`, and result
+delegates declared fields. Single schema; validated on success (failure →
+`:invalid_output`), best-effort and unvalidated on failure. See revised D6.
 Commit: `feat: add typed output schema with field_struct`
 
 ### Slice 7 — Lifecycle hooks
@@ -480,6 +540,16 @@ green; tag v1.0.0.
 Commits: `docs: add usage guide and examples`, `chore: fill gemspec metadata`,
 `chore: release v1.0.0`
 
+### Slice 17 — The `:skip` outcome (added post-plan; see D17)
+
+`Actionable::Skipped` + `skip` / `skip!` + `ok?` + `on_skip` hook; skip output is
+best-effort/unvalidated; nested skip continues the parent; skip commits under
+`transactional`; `and_skip` matcher + skip stubs. Not in the original 16; added
+on request and specified by decision **D17**.
+Commits: `feat: add :skip outcome status`,
+`feat: add skip support to the rspec matcher and stubs`,
+`docs: document the :skip outcome (D17)`
+
 ---
 
 ## Phase 2+ backlog
@@ -493,6 +563,10 @@ Surfaced during design, explicitly deferred. Roughly by likely value:
 5. **Persisted run history** — opt-in storage of `History` for observability.
 6. **Auto-generated docs** — Markdown/HTML from action input/output/step metadata.
 7. **Generators** — a Rails generator / CLI for scaffolding action classes.
+8. **Positional input arguments** — let typed-`input` `.run` accept positionals
+   (mapped to declared fields by order) in addition to keywords. Considered and
+   **deferred** (see D7): keyword stays canonical; revisit after real-world usage
+   shows it's wanted. Tradeoffs in `scrap/positional_input_args.md`.
 
 ---
 
@@ -507,10 +581,11 @@ Surfaced during design, explicitly deferred. Roughly by likely value:
 | **Case step** | A step that branches to different targets based on a value. |
 | **Lifecycle hook** | `on_success` / `on_failure` / `always` step that runs at the end of a run depending on outcome. |
 | **Runner** | `Actionable::Runner` — executes an action's steps inside `catch(:actionable_halt)`, runs lifecycle hooks, wraps in a transaction when configured, and returns the result. |
-| **Result** | The single FieldStruct-backed value object returned by a run: `Success` or `Failure`. Carries code, message, errors, output, history. |
+| **Result** | The single FieldStruct-backed value object returned by a run: `Success`, `Failure`, or `Skipped`. Carries code, message, errors, output, history. |
+| **Skip** | A third outcome (D17): the action had nothing to do. `Skipped` result; `skipped?` true, neither success nor failure; recorded via `skip`/`skip!`. |
 | **Output** | The action's declared, typed result payload (a FieldStruct). Populated from matching instance variables at the end of a run. |
 | **Input** | The action's optional declared, typed argument schema (a FieldStruct). Enables typed `.run` and richer RBS. |
-| **Halt** | Stopping the main pipeline early via `throw :actionable_halt` (from `fail!`/`succeed!`/`halt!`). Distinct from a raised exception. |
+| **Halt** | Stopping the main pipeline early via `throw :actionable_halt` (from `fail!`/`succeed!`/`skip!`/`halt!`). Distinct from a raised exception. |
 | **History** | Per-run record of each step's section, name, timing, code, and nested history. Enabled by `measure :all`. |
 | **Registry** | `Actionable.registry` — the map of all defined action classes. |
 | **Rails adapter** | The optional `actionable/rails` layer adding transactions and `ProxyValidator`. The core never depends on it. |

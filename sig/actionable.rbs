@@ -1,4 +1,872 @@
+# Actionable: typed, composable Ruby service objects.
+# 
+# This is the core entry point. Per decision D14, every core file gets an
+# explicit +require_relative+ here — no autoload, no Zeitwerk. The optional
+# adapters (+actionable/rails+, +actionable/rspec+) are separate requires and
+# are deliberately NOT loaded here, keeping the core Rails-free.
 module Actionable
-  VERSION: String
-  # See the writing guide of rbs: https://github.com/ruby/rbs#guides
+  # Run +block+ inside the halt catch point.
+  # 
+  # Returns the block's value when nothing is thrown, or the value passed with
+  # +throw Actionable::HALT, value+ when the pipeline halts (+nil+ for a bare
+  # +throw Actionable::HALT+). A raised StandardError is deliberately NOT
+  # caught — it propagates to the caller (decision D4).
+  # 
+  # _@return_ — the block's value, or the thrown halt value
+  def catch_halt: () -> Object
+
+  # Run +block+ inside the halt catch point.
+  # 
+  # Returns the block's value when nothing is thrown, or the value passed with
+  # +throw Actionable::HALT, value+ when the pipeline halts (+nil+ for a bare
+  # +throw Actionable::HALT+). A raised StandardError is deliberately NOT
+  # caught — it propagates to the caller (decision D4).
+  # 
+  # _@return_ — the block's value, or the thrown halt value
+  def self.catch_halt: () -> Object
+
+  # _@return_ — the process-wide action registry
+  def self.registry: () -> Registry
+
+  # Generates RBS for a *user* action class — track 2 of the RBS strategy
+  # (decision D13). Sord covers the library's static classes, but it can't see
+  # +CreateInvoice.run(amount:)+ or +result.invoice+: those depend on the
+  # action's declared +input+/+output+ schemas. This walks those schemas (via
+  # FieldStruct's metadata and +ruby_type+ mapping) and emits:
+  # 
+  # * a typed +.run+ signature from the input schema (or +(*untyped)+ when
+  #   free-form);
+  # * a nested +Output+ struct with a typed accessor per output field;
+  # * a nested +Result+ with +output+ and the convenience-delegation readers,
+  #   which +.run+ returns.
+  # 
+  #   class CreateInvoice < Actionable::Action
+  #     input  { required :amount, :integer }
+  #     output { required :invoice, :string }
+  #   end
+  # 
+  #   puts Actionable::RBS.generate(CreateInvoice)
+  #   # class CreateInvoice < ::Actionable::Action
+  #   #   def self.run: (amount: ::Integer) -> Result
+  #   #   class Output < ::FieldStruct::Base ... end
+  #   #   class Result < ::Actionable::Result ... end
+  #   # end
+  # 
+  # The emitted +Result+/+Output+ are generated type aids: at runtime +.run+
+  # returns a {Success}/{Failure}/{Skipped} that responds to these via output
+  # delegation. Referenced field types appear as qualified names (+::Invoice+) —
+  # generate RBS for those (e.g. via +FieldStruct::RBS+) so they resolve.
+  module RBS
+    # Generate RBS source for a user action class.
+    # 
+    # _@param_ `klass`
+    # 
+    # _@return_ — RBS for the action, wrapped in its module nesting
+    def self.generate: (singleton(Actionable::Action) klass) -> String
+
+    # _@param_ `klass`
+    def self.class_block: (singleton(Actionable::Action) klass) -> String
+
+    # _@return_ — the +.run+ signature: typed kwargs from the input schema
+    # (or +(*untyped)+ free-form), returning the generated +Result+ when an
+    # output schema is declared, else +::Actionable::Result+.
+    def self.run_signature: (untyped klass) -> String
+
+    # _@param_ `field`
+    # 
+    # _@return_ — +name: Type+ (required) or +?name: Type+ (optional). The
+    # +?+ prefix carries optionality, so the type itself is not made nullable.
+    def self.run_param: (FieldStruct::Field field) -> String
+
+    # _@param_ `schema` — the output schema
+    # 
+    # _@return_ — the nested +Output+ class block
+    def self.output_block: (singleton(FieldStruct::Base) schema) -> String
+
+    # _@param_ `schema` — the output schema
+    # 
+    # _@return_ — the nested +Result+ class block with output delegation
+    def self.result_block: (singleton(FieldStruct::Base) schema) -> String
+
+    # _@param_ `field`
+    # 
+    # _@return_ — the field's RBS type, made nullable when optional
+    def self.rbs_type: (FieldStruct::Field field) -> String
+
+    # Map a FieldStruct type (plus options, for arrays) to an RBS type — reusing
+    # FieldStruct's +ruby_type+ for the field → Ruby class mapping (D13).
+    # 
+    # _@param_ `type_instance`
+    # 
+    # _@param_ `options`
+    def self.type_expr: (FieldStruct::Types::Base type_instance, ::Hash[Symbol, Object] options) -> String
+
+    # _@param_ `of_type` — an array's element type
+    def self.element_expr: ((Class | FieldStruct::Types::Base)? of_type) -> String
+
+    # _@param_ `klass` — a Ruby class from a +ruby_type+
+    # 
+    # _@return_ — qualified RBS name, or +untyped+ for the value type's +::Object+
+    def self.class_to_rbs: (Class klass) -> String
+
+    # Wrap a class block in the +module … end+ nesting implied by its qualified
+    # name, indenting two spaces per level.
+    # 
+    # _@param_ `full_name`
+    # 
+    # _@param_ `inner`
+    # 
+    # _@return_ — RBS source ending in a trailing newline
+    def self.wrap_namespace: (String full_name, String inner) -> String
+
+    # _@param_ `text`
+    # 
+    # _@return_ — +text+ with every non-blank line indented two spaces
+    def self.indent: (String text) -> String
+  end
+
+  # Namespace for the concrete step types an action's pipeline is built from
+  # (decision D3): {Steps::Method} now, {Steps::Action} and {Steps::Case} later.
+  module Steps
+    # Build the right step type from a +step+ declaration's target, inferring
+    # the type from the argument (decision D2): a Symbol/String becomes a
+    # {Steps::Method}, an action +Class+ becomes a {Steps::Action}. The case
+    # block type ({Steps::Case}) joins in a later slice.
+    # 
+    # _@param_ `target` — the step target
+    # 
+    # _@param_ `options` — step options (e.g. +:if+, +:unless+, and for action steps +:input+ / +:expose+)
+    # 
+    # _@return_ — the constructed step
+    def self.build: ((Symbol | String | singleton(Actionable::Action)) target, **::Hash[Symbol, Object] options) -> Steps::Base
+
+    # Shared behavior for every step: a +name+, an +options+ hash, value
+    # identity for Set deduplication (keyed by +[type, name]+, decision D2),
+    # and the +:if+ / +:unless+ skip logic. Subclasses implement {#call}.
+    # 
+    # @abstract Subclass and implement {#call}.
+    class Base
+      # _@param_ `name` — the step name (see {#name})
+      # 
+      # _@param_ `options` — step options
+      def initialize: (Object name, **::Hash[Symbol, Object] options) -> void
+
+      # Run the step against an action instance.
+      # 
+      # _@param_ `_instance` — the action instance the step runs against
+      def call: (Object _instance) -> void
+
+      # Whether this step should be skipped for the given instance, per its
+      # +:if+ / +:unless+ guards. A guard is a Symbol naming a (possibly
+      # private) instance method, or a callable invoked with the instance.
+      # When both guards are present, either one asking to skip wins.
+      # 
+      # _@param_ `instance` — the action instance to evaluate guards against
+      def skip?: (Object _instance) -> bool
+
+      # Value identity: same concrete class AND same name. This keys steps in
+      # the per-action Set so a redeclared step dedups (decision D2).
+      # 
+      # _@param_ `other`
+      def ==: (Object other) -> bool
+
+      # _@return_ — consistent with {#==}, so steps work as Set members
+      def hash: () -> Integer
+
+      # Resolve a guard against the instance. A Symbol/String names an instance
+      # method (called via +__send__+, so private predicates work); anything
+      # else is treated as a callable receiving the instance.
+      # 
+      # _@param_ `guard`
+      # 
+      # _@param_ `instance`
+      def evaluate_guard: ((Symbol | String | untyped) guard, Object _instance) -> bool
+
+      # _@return_ — the step's name — a Symbol for a {Steps::Method},
+      # an action Class for a {Steps::Action}
+      attr_reader name: Object
+
+      # _@return_ — the declared step options (e.g. +:if+,
+      # +:unless+, and step-type-specific keys)
+      attr_reader options: ::Hash[Symbol, Object]
+    end
+
+    # A step that branches to one of several targets based on a value
+    # (decision D3, declared with +case_step+). The switch value is read from
+    # the action via the named method; each branch's target is an ordinary step
+    # (a method or a nested action), so branches compose like any other step.
+    # 
+    #   case_step :status do
+    #     on 'active',          :handle_active
+    #     on %w[trial grace],   :handle_trial      # Array membership
+    #     on(/\A4\d\d\z/,       :handle_client_err # Regexp
+    #     default               :handle_unknown
+    #   end
+    class Case < Actionable::Steps::Base
+      # Build a case step from a +case_step+ declaration.
+      # 
+      # _@param_ `value_source` — the method whose value is switched on
+      # 
+      # _@param_ `options` — step options (e.g. +:if+, +:unless+)
+      def self.define: ((Symbol | String) value_source, **::Hash[Symbol, Object] options) -> Case
+
+      # _@param_ `value_source` — the method whose value is switched on
+      # 
+      # _@param_ `branches` — ordered [match, step] pairs
+      # 
+      # _@param_ `default_step` — the fallback step
+      # 
+      # _@param_ `options` — step options
+      def initialize: (
+                        (Symbol | String) value_source,
+                        ::Array[[Object, Steps::Base]] branches,
+                        Steps::Base? default_step,
+                        **::Hash[Symbol, Object] options
+                      ) -> void
+
+      # Evaluate the switch value and run the first matching branch (or the
+      # default). No-op when nothing matches and no default was declared.
+      # 
+      # _@param_ `instance`
+      def call: (Actionable::Action _instance) -> void
+
+      # _@param_ `value` — the switch value
+      # 
+      # _@return_ — the first matching branch's step
+      def match: (Object value) -> Steps::Base?
+
+      # _@param_ `branch_value`
+      # 
+      # _@param_ `value`
+      def matches?: ((Object | Regexp | ::Array[untyped]) branch_value, Object value) -> bool
+
+      # Collects +on+/+default+ branch declarations inside a +case_step+ block.
+      class Builder
+        def initialize: () -> void
+
+        # Register a branch. +value+ matches the switch value by +==+, by
+        # +Regexp#match?+ when it is a Regexp, or by membership when it is an
+        # Array. +target+ is any step target (method name or nested action).
+        # 
+        # _@param_ `value`
+        # 
+        # _@param_ `target`
+        # 
+        # _@param_ `options` — step options for the target
+        def on: ((Object | Regexp | ::Array[untyped]) value, (Symbol | String | singleton(Actionable::Action)) target, **::Hash[Symbol, Object] options) -> void
+
+        # Register the fallback branch, run when no +on+ branch matches.
+        # 
+        # _@param_ `target`
+        # 
+        # _@param_ `options` — step options for the target
+        def default: ((Symbol | String | singleton(Actionable::Action)) target, **::Hash[Symbol, Object] options) -> void
+
+        # _@return_ — ordered [match, step] pairs
+        attr_reader branches: ::Array[[Object, Steps::Base]]
+
+        # _@return_ — the fallback step, if +default+ was declared
+        attr_reader default_step: Steps::Base?
+      end
+    end
+
+    # A step that runs another action as part of this one (decision D3,
+    # triggered by an action +Class+ step argument).
+    # 
+    # +:input+ threads named parent instance variables into the child's +.run+;
+    # +:expose+ limits which of the child's outputs are absorbed back as parent
+    # instance variables (default: all). A child failure fails the parent with
+    # the child's code/message/errors and halts the remaining steps.
+    class Action < Actionable::Steps::Base
+      # Run the nested action, threading input in and absorbing output back.
+      # 
+      # _@param_ `instance` — the parent action instance
+      def call: (Actionable::Action _instance) -> void
+
+      # _@param_ `instance`
+      # 
+      # _@return_ — +{ name => @name }+ for each +:input+ name
+      def input_kwargs: (Actionable::Action _instance) -> ::Hash[Symbol, Object]
+
+      # Copy the child's exposed output fields onto the parent as instance
+      # variables, so the parent's later steps and output capture see them.
+      # 
+      # _@param_ `instance`
+      # 
+      # _@param_ `child`
+      def absorb: (Actionable::Action _instance, Result child) -> void
+
+      # _@param_ `output`
+      # 
+      # _@return_ — the child output as a plain hash
+      def output_hash: ((FieldStruct::Base | ::Hash[untyped, untyped] | Object) output) -> ::Hash[Symbol, Object]
+    end
+
+    # A step that calls an instance method on the action (decision D3,
+    # triggered by a Symbol/String step argument).
+    class Method < Actionable::Steps::Base
+      # _@param_ `name` — the instance method to call; normalized to a Symbol
+      # 
+      # _@param_ `options` — step options (e.g. +:if+, +:unless+)
+      def initialize: ((Symbol | String) name, **::Hash[Symbol, Object] options) -> void
+
+      # Invoke the named method on the instance.
+      # 
+      # _@param_ `instance` — the action instance
+      # 
+      # _@return_ — the method's return value
+      def call: (Object _instance) -> Object
+    end
+  end
+
+  # Base class for service objects. Subclass it, declare an ordered list of
+  # steps with {.step}, implement each step as an instance method, and run it
+  # with {.run} (decisions D1/D2).
+  # 
+  #   class Greet < Actionable::Action
+  #     step :build_message
+  #     def build_message = @message = 'hello'
+  #   end
+  # 
+  #   Greet.run # => #<Actionable::Success ...>
+  class Action
+    # The ordered, deduplicated set of steps declared on this action.
+    # A +Set+ keyed by step identity ([type, name]) so a redeclared step
+    # collapses to one entry; insertion order is preserved (decision D2).
+    def self.steps: () -> ::Set[Steps::Base]
+
+    # Declare the action's typed output schema, or read it back.
+    # 
+    # With a block, builds an anonymous +FieldStruct::Base+ subclass from the
+    # FieldStruct DSL (+required+/+optional+/…) and stores it as this action's
+    # output schema (decision D6). At the end of a run the {Runner} captures
+    # the instance variables whose names match declared fields, coerces them
+    # through the schema, and assigns the struct to +result.output+.
+    # 
+    #   output do
+    #     required :invoice, Invoice
+    #     optional :receipt, Receipt
+    #   end
+    # 
+    # _@return_ — the output schema, or +nil+ when
+    # none has been declared (the free-form path)
+    def self.output: () -> singleton(FieldStruct::Base)?
+
+    # Declare the action's typed input schema (decision D7). Builds an
+    # anonymous +FieldStruct::Base+ subclass from the FieldStruct DSL; +.run+
+    # then coerces its arguments into this schema, validates them, and exposes
+    # the struct to steps via the instance's +input+ reader. Declaring input
+    # takes over the constructor role — steps read +input.field+ rather than
+    # capturing positional/keyword args in a custom +initialize+.
+    # 
+    #   input do
+    #     required :amount, :big_decimal
+    #     optional :name,   :string
+    #   end
+    # 
+    # _@return_ — the input schema
+    def self.input: () -> singleton(FieldStruct::Base)
+
+    # Declare a step. The step type is inferred from +target+ (a Symbol or
+    # String names an instance method — a {Steps::Method}).
+    # 
+    # _@param_ `target` — the step target
+    # 
+    # _@param_ `options` — step options (e.g. +:if+, +:unless+)
+    # 
+    # _@return_ — the updated step set
+    def self.step: ((Symbol | String) target, **::Hash[Symbol, Object] options) -> ::Set[Steps::Base]
+
+    # Lifecycle hooks that run after the main steps when the run succeeds.
+    def self.success_hooks: () -> ::Set[Steps::Base]
+
+    # Lifecycle hooks that run after the main steps when the run fails.
+    def self.failure_hooks: () -> ::Set[Steps::Base]
+
+    # Lifecycle hooks that run after the main steps when the run was skipped.
+    def self.skip_hooks: () -> ::Set[Steps::Base]
+
+    # Lifecycle hooks that run after the main steps regardless of outcome.
+    def self.always_hooks: () -> ::Set[Steps::Base]
+
+    # Declare a hook that runs at the end of a run iff it succeeded (D2).
+    # 
+    # _@param_ `target` — the instance method to run
+    # 
+    # _@param_ `options` — step options (e.g. +:if+)
+    def self.on_success: ((Symbol | String) target, **::Hash[Symbol, Object] options) -> ::Set[Steps::Base]
+
+    # Declare a hook that runs at the end of a run iff it failed (D2).
+    # 
+    # _@param_ `target` — the instance method to run
+    # 
+    # _@param_ `options` — step options (e.g. +:if+)
+    def self.on_failure: ((Symbol | String) target, **::Hash[Symbol, Object] options) -> ::Set[Steps::Base]
+
+    # Declare a hook that runs at the end of a run iff it was skipped (D17).
+    # 
+    # _@param_ `target` — the instance method to run
+    # 
+    # _@param_ `options` — step options (e.g. +:if+)
+    def self.on_skip: ((Symbol | String) target, **::Hash[Symbol, Object] options) -> ::Set[Steps::Base]
+
+    # Declare a hook that runs at the end of a run regardless of outcome (D2).
+    # 
+    # _@param_ `target` — the instance method to run
+    # 
+    # _@param_ `options` — step options (e.g. +:if+)
+    def self.always: ((Symbol | String) target, **::Hash[Symbol, Object] options) -> ::Set[Steps::Base]
+
+    # Declare a branching step (decision D3). The switch value is read from
+    # +value_source+ (an instance method); the block declares branches with
+    # +on(value, target)+ and an optional +default(target)+.
+    # 
+    #   case_step :status do
+    #     on 'active', :handle_active
+    #     default :handle_unknown
+    #   end
+    # 
+    # _@param_ `value_source` — the method whose value is switched on
+    # 
+    # _@param_ `options` — step options (e.g. +:if+, +:unless+)
+    # 
+    # _@return_ — the updated step set
+    def self.case_step: ((Symbol | String) value_source, **::Hash[Symbol, Object] options) -> ::Set[Steps::Base]
+
+    # Enable or read the action's measurement mode (decision D10). +:all+
+    # records an execution {History}; +:none+ (the default) records nothing
+    # for zero overhead. A measuring run cascades into the nested actions it
+    # invokes regardless of their own setting.
+    # 
+    # _@param_ `mode` — the mode to set; omit to read
+    # 
+    # _@return_ — the resolved mode
+    def self.measure: (?Symbol? mode) -> Symbol
+
+    # _@return_ — whether this action records history
+    def self.measure_all?: () -> bool
+
+    # Run the action. With a declared input schema, coerce the arguments
+    # (keyword args, or a single input-schema instance) into the input struct
+    # and validate it — a required input that is missing or won't coerce
+    # short-circuits to a +Failure(:invalid_input)+ without running any steps
+    # (decision D7). Without an input schema, the arguments are forwarded
+    # verbatim to the action's constructor (the free-form path).
+    # 
+    # _@return_ — the run's {Success} or {Failure}
+    def self.run: (*untyped args, **untyped kwargs) -> Result
+
+    # Coerce +.run+ arguments into the input struct: pass an existing input
+    # instance through untouched, otherwise build one from the keyword args.
+    def self.build_input: (untyped args, untyped kwargs) -> FieldStruct::Base
+
+    # _@param_ `input` — the invalid input struct
+    # 
+    # _@return_ — code +:invalid_input+, carrying the input's errors
+    def self.invalid_input_failure: (FieldStruct::Base input) -> Failure
+
+    # Give each subclass its own copy of the inherited step set, so adding
+    # steps to a subclass never mutates the parent's (decision D2).
+    # 
+    # _@param_ `subclass`
+    def self.inherited: (Class subclass) -> void
+
+    # Default free-form constructor: accept and ignore any arguments, so an
+    # action with no declared input still runs via {.run}. Subclasses override
+    # this to capture their inputs (decision D7; typed input lands in a later
+    # slice).
+    def initialize: (*untyped _args, **untyped _kwargs) -> void
+
+    # Record a {Failure} as the run's result without halting — later steps
+    # still run, and the final result reflects the most recent record (decision
+    # D4, "last write wins").
+    # 
+    # _@param_ `code` — the error code
+    # 
+    # _@param_ `message` — human-readable description
+    # 
+    # _@param_ `errors` — field => message(s) added to the result's errors collection
+    # 
+    # _@return_ — so a step can branch on the call
+    def fail: (Symbol code, ?String? message, **::Hash[Symbol, (String | ::Array[String])] errors) -> bool
+
+    # Record a {Success} as the run's result without halting (decision D4).
+    # 
+    # _@param_ `message` — human-readable description
+    # 
+    # _@param_ `output` — the success output payload
+    # 
+    # _@return_ — so a step can branch on the call
+    def succeed: (?String? message, **::Hash[Symbol, Object] output) -> bool
+
+    # Record a {Failure} and halt the run, skipping the remaining steps
+    # (decision D4).
+    # 
+    # _@param_ `code` — the error code
+    # 
+    # _@param_ `message` — human-readable description
+    # 
+    # _@param_ `errors` — field => message(s)
+    def fail!: (Symbol code, ?String? message, **::Hash[Symbol, (String | ::Array[String])] errors) -> void
+
+    # Record a {Success} and halt the run, skipping the remaining steps
+    # (decision D4).
+    # 
+    # _@param_ `message` — human-readable description
+    # 
+    # _@param_ `output` — the success output payload
+    def succeed!: (?String? message, **::Hash[Symbol, Object] output) -> void
+
+    # Record a {Skipped} as the run's result without halting — the action had
+    # nothing to do (decision D17). Not a failure; later steps still run and the
+    # final result reflects the most recent record (last write wins).
+    # 
+    # _@param_ `code` — the skip reason; defaults to +:skipped+
+    # 
+    # _@param_ `message` — human-readable description
+    # 
+    # _@return_ — so a step can branch on the call (the run did not succeed here)
+    def skip: (?Symbol code, ?String? message) -> bool
+
+    # Record a {Skipped} and halt the run, skipping the remaining steps — the
+    # common "nothing to do, stop here" case (decision D17).
+    # 
+    # _@param_ `code` — the skip reason; defaults to +:skipped+
+    # 
+    # _@param_ `message` — human-readable description
+    def skip!: (?Symbol code, ?String? message) -> void
+
+    # Halt the run immediately, keeping whatever result was already recorded
+    # (a prior +fail+/+succeed+/+skip+, or auto-{Success} if none). Control flow
+    # only — not an exception (decision D4).
+    def halt!: () -> void
+
+    # _@return_ — the declared output schema, or
+    # +nil+ for a free-form action
+    def self.output_schema: () -> singleton(FieldStruct::Base)?
+
+    # _@return_ — the declared input schema, or
+    # +nil+ for a free-form action
+    def self.input_schema: () -> singleton(FieldStruct::Base)?
+
+    # The result recorded during the run, if any. The control-flow methods
+    # (+fail+/+succeed+/+fail!+/+succeed!+) write here; +nil+ means "no explicit
+    # result", which the {Runner} turns into an auto-{Success}.
+    attr_reader result: Result?
+
+    # The typed input struct for this run, when an +input+ schema is declared
+    # (decision D7); +nil+ for a free-form action. Steps read +input.field+.
+    attr_reader input: FieldStruct::Base?
+  end
+
+  # Base class for every error this gem raises. Rescue +Actionable::Error+ to
+  # catch the whole family. Genuine errors are never caught by the runner for
+  # control flow — they propagate to the caller (decision D4).
+  class Error < StandardError
+  end
+
+  # The single value object a run returns. {Success} and {Failure} are the
+  # concrete subclasses; +Result+ itself is abstract and defines the shared,
+  # FieldStruct-backed shape (decision D5).
+  # 
+  # @abstract Instantiate {Success} or {Failure}, not +Result+ directly.
+  class Result < FieldStruct::Base
+    # _@return_ — +:success+ for a {Success}; the error symbol for a {Failure}
+    def code: () -> Symbol
+
+    # _@return_ — human-readable description of the outcome
+    def message: () -> String?
+
+    # _@return_ — the run's declared, typed output payload (empty by default).
+    # Firms up into an output FieldStruct once output schemas land (D6).
+    def output: () -> Object
+
+    # _@return_ — the run's execution history (empty by default).
+    # Firms up into a +History+ once measurement lands (D10).
+    def history: () -> Object
+
+    # _@return_ — whether the run succeeded. Abstract here; each
+    # subclass flips the predicate that applies to it.
+    def success?: () -> bool
+
+    # _@return_ — whether the run failed.
+    def failure?: () -> bool
+
+    # _@return_ — whether the run was skipped — nothing to do, neither a
+    # success nor a failure (decision D17). Abstract here; {Skipped} flips it.
+    def skipped?: () -> bool
+
+    # _@return_ — alias of {#success?}
+    def successful?: () -> bool
+
+    # _@return_ — alias of {#failure?}
+    def failed?: () -> bool
+
+    # _@return_ — whether the run did not fail — true for both a
+    # {Success} and a {Skipped}. The "happy path didn't error" check.
+    def ok?: () -> bool
+
+    # _@return_ — a compact, field-sorted, deterministic representation —
+    # the declared attributes plus the +errors+ collection, sorted by name,
+    # so equal results always render identically.
+    def inspect: () -> String
+
+    # _@return_ — same deterministic representation as {#inspect}
+    def to_s: () -> String
+
+    # Convenience delegation: a declared output field is readable straight off
+    # the result (+result.invoice+ → +result.output.invoice+). Only fields
+    # declared on a typed output schema delegate; incidental data never does
+    # (decision D6).
+    def respond_to_missing?: (untyped name, ?untyped include_private) -> bool
+
+    # 
+    # _@see_ `#respond_to_missing?`
+    def method_missing: (untyped name, *untyped args) -> untyped
+
+    # _@param_ `name`
+    # 
+    # _@return_ — whether +name+ is a declared field on a typed output
+    def delegates_to_output?: (Symbol name) -> bool
+  end
+
+  # Executes an action instance's steps and produces the {Result}.
+  # 
+  # The main loop runs inside {Actionable.catch_halt}, so a halting step
+  # (+throw Actionable::HALT+) unwinds out of the loop without running the
+  # remaining steps. Genuine exceptions are not caught — they propagate to the
+  # caller (decision D4). When no step recorded a result, the run auto-succeeds.
+  # 
+  # After the main steps the runner picks the lifecycle hook category from the
+  # outcome (+on_success+ vs +on_failure+) and runs it, then the +always+ hooks
+  # (decision D2). Hooks are ordinary methods: they may record via the
+  # control-flow verbs and +halt!+ stops the remaining hooks. The output is
+  # refreshed (re-captured and re-validated) after the main steps and after each
+  # hook (decision D6).
+  # 
+  # When the action (or an enclosing measuring run) enables measurement, the
+  # runner records a {History} of every step — section, name, timing, result
+  # code, and nested child history (decision D10).
+  class Runner
+    # _@param_ `instance` — the action instance to run
+    def initialize: (Action _instance) -> void
+
+    # Run the action's steps and lifecycle hooks, returning the finalized result.
+    # 
+    # _@return_ — the recorded result (or a fresh {Success} if none was
+    # set), with its typed output and (when measuring) history assigned
+    def run: () -> Result
+
+    # Run the body, marking measurement active so nested runs cascade.
+    def measured: () -> untyped
+
+    # The main steps, then the outcome and always lifecycle hooks.
+    def perform: () -> untyped
+
+    # Run each declared step in order, skipping any whose guard opts out.
+    def run_steps: () -> void
+
+    # Run the outcome-appropriate hooks then the +always+ hooks, all inside a
+    # single halt catch so a hook's +halt!+ stops every remaining hook. The
+    # category is fixed by the post-main-steps outcome — it does not re-dispatch
+    # if a hook later flips the result.
+    def run_lifecycle: () -> void
+
+    # Run one hook, then adopt any result it recorded and refresh the output.
+    # 
+    # _@param_ `section`
+    # 
+    # _@param_ `hook`
+    def run_hook: (Symbol section, Steps::Base hook) -> void
+
+    # Run one main step, skipping it when its guard opts out.
+    # 
+    # _@param_ `section`
+    # 
+    # _@param_ `step`
+    def call_step: (Symbol section, Steps::Base step) -> void
+
+    # Time and record a step into the history when measuring; otherwise just run
+    # it. The result code is recorded only when the step changed the recorded
+    # result, so steps that merely set ivars carry a nil code.
+    # 
+    # _@param_ `section`
+    # 
+    # _@param_ `step`
+    def record: (Symbol section, Steps::Base step) -> void
+
+    # Capture, coerce, and attach the typed output (decision D6). Free-form
+    # actions (no schema) keep whatever output was recorded. With a schema,
+    # capture the declared-field ivars overlaid with any +succeed+ kwargs
+    # (kwargs win) and coerce them. Only a strict {Success} is validated — its
+    # output failing validation means it can't really have succeeded, so
+    # +@result+ becomes a +Failure(:invalid_output)+. A {Failure} or {Skipped}
+    # captures best-effort and is never validated (decisions D6/D17).
+    def refresh_output: () -> void
+
+    # Declared-field ivars from the action instance, overlaid with the recorded
+    # +succeed+ kwargs (kept on +@result.output+ as a Hash until captured),
+    # kwargs winning on conflict.
+    # 
+    # _@param_ `schema`
+    def captured_attributes: (singleton(FieldStruct::Base) schema) -> ::Hash[Symbol, Object]
+
+    # _@param_ `output` — the invalid output struct
+    # 
+    # _@return_ — code +:invalid_output+, with the output's validation
+    # errors copied onto the failure and the (invalid) output attached
+    def invalid_output_failure: (FieldStruct::Base output) -> Failure
+  end
+
+  # An ordered record of the steps a run executed, when measurement is enabled
+  # (decision D10). Each entry is a {History::Step}; nested action steps carry
+  # their child's +History+.
+  class History
+    def initialize: () -> void
+
+    # Append a recorded step.
+    # 
+    # _@param_ `step`
+    def <<: (Step step) -> self
+
+    # _@return_ — whether any step has been recorded
+    def empty?: () -> bool
+
+    # _@return_ — the summed duration of every recorded step
+    def took: () -> Float
+
+    # _@return_ — each step as a JSON-ready hash
+    def as_json: () -> ::Array[::Hash[untyped, untyped]]
+
+    # _@return_ — the history serialized to JSON via Oj (decision D15).
+    # +:compat+ mode emits plain JSON (string keys, symbols as strings) rather
+    # than Oj's default object-marker encoding.
+    def to_json: () -> String
+
+    # _@return_ — the recorded steps, in execution order
+    attr_reader steps: ::Array[Step]
+
+    # One recorded step: which section it ran in, its name, when it started, how
+    # long it took, the result code it produced (if any), and — for action
+    # steps — the nested child {History}.
+    class Step
+      # _@param_ `section`
+      # 
+      # _@param_ `name`
+      # 
+      # _@param_ `started_at`
+      def initialize: (section: Symbol, name: (Symbol | String | Class), started_at: Time) -> void
+
+      # _@return_ — a JSON-ready hash (nested history recurses)
+      def as_json: () -> ::Hash[Symbol, Object]
+
+      # _@return_ — +:main+, +:success+, +:failure+, or +:always+
+      attr_reader section: Symbol
+
+      # _@return_ — the step's name
+      attr_reader name: (Symbol | String | Class)
+
+      # _@return_ — wall-clock start time
+      attr_reader started_at: Time
+
+      # _@return_ — elapsed seconds (monotonic)
+      attr_accessor duration: Float
+
+      # _@return_ — the result code this step recorded, if it set one
+      attr_accessor code: Symbol?
+
+      # _@return_ — the nested action's history, for action steps
+      attr_accessor nested: History?
+    end
+  end
+
+  # A read-only map of every named action class, keyed by class name (decision
+  # D11). {Action} registers each subclass through its +inherited+ hook;
+  # anonymous subclasses (which have no name) are skipped. Used for discovery
+  # and tooling — e.g. sweeping all actions to generate RBS.
+  class Registry
+    def initialize: () -> void
+
+    # Register an action class under its name. No-op for anonymous classes.
+    # 
+    # _@param_ `klass` — the action subclass
+    def register: (Class klass) -> self
+
+    # _@param_ `name` — an action class name
+    # 
+    # _@return_ — the registered class, or +nil+
+    def []: ((String | Symbol) name) -> Class?
+
+    def each: () ?{ (String name, Class klass) -> void } -> (::Enumerator[untyped] | self)
+
+    # _@return_ — the registered class names
+    def keys: () -> ::Array[String]
+
+    # _@return_ — the registered classes
+    def values: () -> ::Array[Class]
+
+    # _@return_ — the number of registered classes
+    def size: () -> Integer
+
+    # _@return_ — whether nothing is registered
+    def empty?: () -> bool
+  end
+
+  # Thread-local measurement context (decision D10). It lets a measuring run
+  # cascade into the nested actions it invokes, and lets an action step attach
+  # its child's history to the step record currently open in the parent runner.
+  # 
+  # All state is per-thread and saved/restored around each scope, so concurrent
+  # runs on different threads never interfere.
+  module Measurement
+    # _@return_ — whether the current thread is inside a measuring run
+    def self.active?: () -> bool
+
+    # _@return_ — the step record nested history attaches to
+    def self.open_step: () -> History::Step?
+
+    # Mark measurement active for the block, so nested runs measure too.
+    # 
+    # _@return_ — the block's value
+    def self.measuring: () -> Object
+
+    # Make +record+ the open step for the block, so a nested action step can
+    # attach its child's history to it.
+    # 
+    # _@param_ `record`
+    # 
+    # _@return_ — the block's value
+    def self.recording: (History::Step record) -> Object
+
+    def self.store: () -> untyped
+
+    def self.with: (untyped changes) -> untyped
+  end
+
+  # A failed run's result. Its +code+ is the error symbol describing why the
+  # run failed (e.g. +:not_found+, +:invalid_input+), defaulting to +:error+.
+  class Failure < Actionable::Result
+    # _@return_ — the error code; defaults to +:error+
+    def code: () -> Symbol
+
+    def failure?: () -> bool
+  end
+
+  # A skipped run's result (decision D17): the action had nothing to do — not a
+  # success (no real work), but not a failure either. Its +code+ is the skip
+  # reason (e.g. +:not_ready+), defaulting to +:skipped+.
+  class Skipped < Actionable::Result
+    # _@return_ — the skip reason; defaults to +:skipped+
+    def code: () -> Symbol
+
+    def skipped?: () -> bool
+  end
+
+  # A successful run's result. Its +code+ defaults to +:success+.
+  class Success < Actionable::Result
+    # _@return_ — always +:success+ unless explicitly overridden
+    def code: () -> Symbol
+
+    def success?: () -> bool
+  end
 end

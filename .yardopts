@@ -1,0 +1,9 @@
+--readme README.md
+--markup markdown
+--output-dir doc
+--exclude lib/actionable/rails
+--exclude lib/actionable/railtie
+--exclude lib/actionable/rspec
+lib/**/*.rb
+-
+CHANGELOG.md
