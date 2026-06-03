@@ -493,12 +493,16 @@ D9), and true per-step granularity fights D9's deliberate whole-run model.
   matcher; an unmatched value with no `default` is `Failure(:invalid_input)`.
   *Extends D7.* RBS for the discriminated `.run` stays permissive in v1.
 - **Slice D — optional job adapter.** Framework-agnostic `Actionable::Job`
-  (`require 'actionable/job'`) maps a `Result` to a disposition
-  (`:ack`/`:retry`/`:discard`) and provides a `Mixin`; thin `actionable/sidekiq`
-  and `actionable/active_job` integrations wire it into a host job. Runs the
-  action synchronously inside `perform` (a result→retry/discard wrapper, *not* the
-  deferred-result async still in the backlog). Stays out of the core load path
-  (invariants 4 & 6).
+  (`require 'actionable/job'`, pure Ruby, fully tested) maps a `Result` to a
+  disposition (`:ack`/`:retry`/`:discard`) and provides a `Mixin` you include
+  into a Sidekiq worker or ActiveJob job; `run_actionable` raises
+  `RetryableFailure` for a retryable failure so the queue applies its backoff.
+  Runs the action synchronously inside `perform` (a result→retry/discard wrapper,
+  *not* the deferred-result async still in the backlog). Stays out of the core
+  load path (invariants 4 & 6). _Ships the framework-agnostic mixin rather than
+  `actionable/sidekiq` / `actionable/active_job` base classes, so the adapter
+  stays testable without those gems as dependencies; the host wiring is a
+  documented two-line include (see USAGE)._
 - **Slice E — `measure :sampled, rate:`** — probabilistic measurement for prod
   observability; the runner gate becomes `measure_all? || (sampled? && rand <
   rate) || Measurement.active?`, so a sampled-in run still cascades into its

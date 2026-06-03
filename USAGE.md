@@ -428,6 +428,36 @@ cryptic `NoMethodError`:
   `_skip` variants) build real result objects so `.run` returns them without
   executing the action.
 
+## Background jobs
+
+`require 'actionable/job'` — a framework-agnostic helper that runs an action
+inside a background job and maps its result to a queue disposition:
+`Actionable::Job.disposition(result)` returns `:ack` (a success or skip), `:retry`
+(a transient failure), or `:discard` (a failure whose code is in the
+non-retryable set, default `%i[invalid_input invalid_output not_found]`).
+
+Include `Actionable::Job::Mixin` into your Sidekiq worker or ActiveJob job and
+call `run_actionable` from `perform`. It records `actionable_result`, returns for
+an ack/discard, and raises `Actionable::Job::RetryableFailure` for a retry so the
+queue applies its own backoff. A genuine exception inside the action propagates
+unchanged (the queue retries it):
+
+```ruby
+require 'actionable/job'
+
+class ProjectEventJob
+  include Sidekiq::Job              # or: ActiveJob::Base
+  include Actionable::Job::Mixin
+
+  def perform(event_id)
+    run_actionable(ProjectApiEvent, event_id: event_id)
+  end
+
+  # optional: customize which failure codes are permanent (not retried)
+  def actionable_permanent_codes = %i[invalid_input not_found unprocessable]
+end
+```
+
 ## RBS for your actions
 
 ```ruby
