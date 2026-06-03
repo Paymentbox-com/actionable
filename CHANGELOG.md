@@ -2,7 +2,9 @@
 
 ## [Unreleased]
 
-First feature-complete cut of the clean-slate rebuild (pending the v1.0.0 tag).
+## [1.0.0] - 2026-06-03
+
+First feature-complete cut of the clean-slate rebuild.
 
 ### Added
 
