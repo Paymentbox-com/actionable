@@ -213,6 +213,38 @@ module Actionable
         }
       end
 
+      # A human/agent-readable rendering of {.describe} — the same information as
+      # a multi-line summary instead of a Hash (decision D18). The input/output
+      # field lines reuse FieldStruct's own +Metadata#describe+ (type,
+      # required-ness, and the options each field's type accepts); only hook
+      # sections that have hooks are listed.
+      #
+      #   Greet.describe_text
+      #   # => "Greet (measure: none)\n  Input: (free-form)\n  ..."
+      #
+      # @return [String]
+      def describe_text
+        summary = describe
+        transactional = summary[:transactional] ? ', transactional' : ''
+        lines = ["#{summary[:name] || "action"} (measure: #{summary[:measure]}#{transactional})"]
+
+        lines << "  Input:#{schema_summary(input_schema)}"
+        lines << "  Output:#{schema_summary(output_schema)}"
+
+        lines << '  Steps:'
+        steps_summary = summary[:steps]
+        lines << '    (none)' if steps_summary.empty?
+        steps_summary.each { |step| lines << "    - #{step[:name]} (#{step[:type]})" }
+
+        present_hooks = summary[:hooks].reject { |_, names| names.empty? }
+        unless present_hooks.empty?
+          lines << '  Hooks:'
+          present_hooks.each { |section, names| lines << "    #{section}: #{names.join(", ")}" }
+        end
+
+        lines.join("\n")
+      end
+
       # Run the action. With a declared input schema, coerce the arguments
       # (keyword args, or a single input-schema instance) into the input struct
       # and validate it — a required input that is missing or won't coerce
@@ -237,6 +269,18 @@ module Actionable
       end
 
       private
+
+      # One {.describe_text} block for an input/output schema: +" (free-form)"+
+      # when none is declared, otherwise the FieldStruct +Metadata#describe+
+      # field lines indented one level under their +Input:+/+Output:+ heading.
+      #
+      # @param schema [Class<FieldStruct::Base>, nil]
+      # @return [String]
+      def schema_summary(schema)
+        return ' (free-form)' unless schema
+
+        "\n#{schema.metadata.describe.lines(chomp: true).map { |line| "  #{line}" }.join("\n")}"
+      end
 
       # Run-start guard (decision D18): every method a step needs (method steps,
       # case value sources and method branch targets, hook steps) must exist on

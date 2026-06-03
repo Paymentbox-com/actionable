@@ -64,6 +64,13 @@ RSpec.describe 'Actionable result value objects' do
       expect(result.errors).not_to be_empty
       expect(result.errors[:name]).to eq(['is required'])
     end
+
+    it 'renders human-readable error sentences via FieldStruct full_messages' do
+      result = described_class.new(code: :invalid)
+      result.errors.add(:first_name, 'is required')
+
+      expect(result.errors.full_messages).to eq(['First name is required'])
+    end
   end
 
   describe 'value semantics' do
