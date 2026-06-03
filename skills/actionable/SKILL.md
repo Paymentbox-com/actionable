@@ -1,7 +1,7 @@
 ---
 name: actionable
-description: Author, edit, and debug Actionable service objects — declaring steps, choosing control-flow verbs (succeed/fail/skip and their bang forms), wiring typed input/output schemas, composing nested actions and case branches, lifecycle hooks, history, and the optional Rails/RSpec adapters.
-when_to_use: Use when defining or modifying a class that inherits from Actionable::Action (any step / case_step / on_success / output / input declaration), when choosing how a step should record its outcome, when debugging why a run failed/skipped or an output wasn't captured, or when testing an action with the perform_actionable matcher.
+description: Author, edit, and debug Actionable service objects — declaring steps, choosing control-flow verbs (succeed/fail/fail_with/skip and their bang forms), wiring typed input/output schemas (including discriminated input via input_for), running over a collection with run_each, composing nested actions and case branches, lifecycle hooks, history/sampled measurement, serializing results (to_h/to_api_h), and the optional Rails/RSpec/job adapters.
+when_to_use: Use when defining or modifying a class that inherits from Actionable::Action (any step / case_step / on_success / output / input / input_for declaration), when choosing how a step should record its outcome, when running an action over a collection, when debugging why a run failed/skipped or an output wasn't captured, when mapping a result to an HTTP/job response, or when testing an action with the perform_actionable matcher.
 ---
 
 # Working with Actionable
@@ -60,13 +60,18 @@ When asked to build one:
 |----------|-----|
 | Succeed and keep running | `succeed(message = nil, **output)` |
 | Record an error, keep running | `fail(code, message = nil, **errors)` |
-| Mark "nothing to do", keep running | `skip(code = :skipped, message = nil)` |
-| Same, but stop the pipeline now | `succeed!` / `fail!` / `skip!` |
+| Fail with a FieldStruct's errors | `fail_with(struct, code: :invalid, message: nil)` |
+| Mark "nothing to do" (with optional output) | `skip(code = :skipped, message = nil, **output)` |
+| Same, but stop the pipeline now | `succeed!` / `fail!` / `fail_with!` / `skip!` |
 | Stop, keep whatever was recorded | `halt!` |
 
 - **Skip is not failure.** Use `skip!` when a precondition isn't ready / there's
   nothing to do — not `fail!`. A skip is `ok?` (won't read as an error) but
-  distinct from success (`skipped?`). Use `ok?` for "didn't fail" checks.
+  distinct from success (`skipped?`). Use `ok?` for "didn't fail" checks. `skip`
+  takes `**output` (like `succeed`), so an idempotent hit can return the existing
+  record's id.
+- `fail_with(struct, code:)` records a failure carrying `struct`'s validation
+  errors — for validating a side FieldStruct in a step.
 - Plain verbs don't halt; last write wins. Bang verbs halt.
 - To signal a real bug, `raise` — exceptions propagate, they aren't caught.
 
@@ -78,6 +83,12 @@ When asked to build one:
   (matches by `==`, `Regexp`, or Array membership).
 - **Hooks:** `on_success` / `on_failure` / `on_skip` / `always` run after the
   main steps by outcome.
+- **Discriminated input:** `input_for(:event_type) { on 'sale', SaleShape;
+  default UnknownShape }` picks the input schema at run time from a discriminator
+  (typed polymorphic input). An unmatched value with no `default` →
+  `Failure(:invalid_input)`.
+- **Batch:** `Action.run_each(items) { |i| {…} }` runs once per item and returns a
+  `BatchResult` (`all_ok?` / `any_failure?` / `partial?`, `to_api_h`).
 
 ## Mistakes to avoid
 
@@ -95,7 +106,20 @@ When asked to build one:
 
 To inspect an action's shape (for tooling or to reason about it), call
 `SomeAction.describe` — a Hash of its name, input/output, steps, hooks, measure,
-and transaction config.
+and transaction config (or `describe_text` for a readable summary).
+
+## Beyond a single run
+
+- **Serialize a result:** `result.to_h` (plain Hash) or
+  `result.to_api_h(index:)` (compact HTTP/batch element: `index`, `status`,
+  `id`, `errors`) — don't hand-map in controllers.
+- **Background jobs (`require 'actionable/job'`):** `include
+  Actionable::Job::Mixin` into a Sidekiq/ActiveJob job and call
+  `run_actionable(SomeAction, **kwargs)` in `perform`. A success/skip acks; a
+  transient failure raises `RetryableFailure` (queue retries); a permanent-code
+  failure is discarded; a genuine exception propagates.
+- **Prod observability:** `measure :sampled, rate: 0.1` records history on a
+  fraction of runs (between `:all` and `:none`).
 
 ## Testing (`require 'actionable/rspec'`)
 

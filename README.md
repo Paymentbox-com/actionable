@@ -56,9 +56,14 @@ exceptions are never swallowed — they propagate to the caller.
 |------|---------|--------|
 | `succeed(message = nil, **output)` | `Success` | no |
 | `fail(code, message = nil, **errors)` | `Failure` | no |
-| `skip(code = :skipped, message = nil)` | `Skipped` | no |
-| `succeed!` / `fail!` / `skip!` | as above | **yes** |
+| `fail_with(source, code: :invalid)` | `Failure` absorbing `source.errors` | no |
+| `skip(code = :skipped, message = nil, **output)` | `Skipped` | no |
+| `succeed!` / `fail!` / `fail_with!` / `skip!` | as above | **yes** |
 | `halt!` | — (keeps current) | **yes** |
+
+`fail_with` absorbs an arbitrary FieldStruct's validation errors into the failure
+— handy for validating a side struct in a step. `skip` takes output kwargs too,
+so an idempotent hit can return the existing record's data.
 
 <!-- doctest -->
 ```ruby
@@ -153,6 +158,30 @@ validate them, and expose `input` to the steps. A missing or invalid required
 input short-circuits to a `Failure(:invalid_input)` without running any steps.
 Without an `input` block, `.run`'s arguments are forwarded to the constructor.
 
+For a polymorphic payload, `input_for` picks the schema at run time from a
+discriminator — typed input without a single fixed shape:
+
+```ruby
+input_for :event_type do
+  on 'sale',   SaleShape
+  on 'refund', RefundShape
+  default      UnknownShape
+end
+```
+
+## Running a batch
+
+`Action.run_each(enumerable) { |item| run_args }` runs the action once per item
+and collects a `BatchResult` (Enumerable) — the common "process each row, report
+per item" shape. Items run independently.
+
+```ruby
+batch = ImportRow.run_each(rows) { |row| { row: row } }
+batch.all_ok?       # => false
+batch.failures.size # => 2
+batch.to_api_h      # => [{index: 0, status: :success, id: …, errors: {}}, …]
+```
+
 ## Composition
 
 Steps can be other actions or value-based branches.
@@ -231,7 +260,9 @@ end
 
 `measure :all` records a `History` of every step — section, name, timing,
 result code, and nested child history. The default (`measure :none`) records
-nothing for zero overhead. Measurement cascades into nested actions.
+nothing for zero overhead. `measure :sampled, rate: 0.1` records a fraction of
+runs for low-overhead production observability. Measurement cascades into nested
+actions.
 
 ```ruby
 class Pipeline < Actionable::Action
@@ -260,7 +291,9 @@ Greet.describe_text          # => "Greet (measure: none)\n  Input: ..." (readabl
 
 Failure results expose FieldStruct's error collection, so beyond
 `result.errors[:field]` you get `result.errors.full_messages` — each message as
-a complete sentence (`"Total is required"`).
+a complete sentence (`"Total is required"`). `result.to_h` is a plain-Hash view,
+and `result.to_api_h(index:)` a compact HTTP/batch element (`index`, `status`,
+`id`, `errors`).
 
 ## Guardrails
 
@@ -313,6 +346,29 @@ expect(Sync).to          perform_actionable(ready: false).and_skip(:not_ready)
 
 allow_actionable_success(CreateInvoice, output: { id: 7 })
 ```
+
+## Background jobs (optional)
+
+`require 'actionable/job'` adds a framework-agnostic helper that runs an action
+inside a Sidekiq worker or ActiveJob job and maps its result to a queue
+disposition (`:ack` / `:retry` / `:discard`):
+
+```ruby
+require 'actionable/job'
+
+class ProjectEventJob
+  include Sidekiq::Job             # or ActiveJob::Base
+  include Actionable::Job::Mixin
+
+  def perform(event_id)
+    run_actionable(ProjectApiEvent, event_id: event_id)
+  end
+end
+```
+
+A success or skip acks; a transient failure raises `RetryableFailure` so the
+queue retries; a permanent-code failure is discarded. Genuine exceptions
+propagate unchanged.
 
 ## Types (RBS)
 
