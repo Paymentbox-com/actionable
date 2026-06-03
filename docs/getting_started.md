@@ -19,6 +19,7 @@ options, and macros see [`USAGE.md`](../USAGE.md); for the feature tour see
 | Run it | `Settle.run(**kwargs)` |
 | Run it over a collection | `Settle.run_each(items)` → `BatchResult` |
 | Type & validate inputs | `input { required :amount, :integer }` |
+| Pick the input shape at runtime | `input_for(:event_type) { on 'sale', SaleShape }` |
 | Type the result payload | `output { required :invoice, Invoice }` |
 | Read a typed output | `result.invoice` / `result.output.invoice` |
 | Record success / failure / skip | `succeed` / `fail(:code)` / `skip(:code)` |
@@ -122,6 +123,30 @@ end
 
 Double.run(n: '21').output.doubled # => 42
 Double.run.code                    # => :invalid_input
+```
+
+For a polymorphic payload, `input_for` picks the schema at run time from a
+discriminator (typed input without a single fixed shape):
+
+<!-- doctest -->
+```ruby
+Sale   = Class.new(FieldStruct::Base) { required :amount, :integer }
+Refund = Class.new(FieldStruct::Base) { required :original_id, :integer }
+
+class Handle < Actionable::Action
+  input_for :event_type do
+    on 'sale',   Sale
+    on 'refund', Refund
+  end
+  output { optional :amount, :integer }
+  step :go
+  def go
+    @amount = input.amount if input.respond_to?(:amount)
+  end
+end
+
+Handle.run(event_type: 'sale', amount: 5).output.amount # => 5
+Handle.run(event_type: 'nope').code                     # => :invalid_input
 ```
 
 ### Typed output

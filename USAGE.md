@@ -188,6 +188,34 @@ running any steps. An already-built input instance can be passed instead of
 keyword arguments. With no `input` block, `.run`'s arguments go to the
 constructor (the free-form path).
 
+### Discriminated input
+
+`input_for(discriminator) { … }` picks the input schema at run time from a
+discriminator value — typed input for a polymorphic payload. Branches use the
+same matching as `case_step` (`==`, Array membership, `Regexp`); an unmatched
+value with no `default` short-circuits to `Failure(:invalid_input)`.
+
+<!-- doctest -->
+```ruby
+SaleShape   = Class.new(FieldStruct::Base) { required :amount, :integer }
+RefundShape = Class.new(FieldStruct::Base) { required :original_id, :integer }
+
+class Ingest < Actionable::Action
+  input_for :event_type do
+    on 'sale',   SaleShape
+    on 'refund', RefundShape
+  end
+  output { optional :amount, :integer }
+  step :capture
+  def capture
+    @amount = input.amount if input.respond_to?(:amount)
+  end
+end
+
+Ingest.run(event_type: 'sale', amount: '5').output.amount # => 5
+Ingest.run(event_type: 'wat').code                        # => :invalid_input
+```
+
 ## Batch runs
 
 `Action.run_each(enumerable) { |item| run_args }` runs the action once per item

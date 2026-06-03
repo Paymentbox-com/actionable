@@ -86,6 +86,31 @@ module Actionable
       #   +nil+ for a free-form action
       attr_reader :input_schema
 
+      # Declare a *discriminated* input schema (decision D19): pick the input
+      # FieldStruct at run time from a discriminator value, instead of a single
+      # fixed schema. The block declares branches with +on(value, Schema)+ and an
+      # optional +default(Schema)+; +.run+ reads the discriminator from its
+      # keyword arguments, chooses the schema, then coerces and validates exactly
+      # like a fixed +input+. An unmatched value with no +default+ short-circuits
+      # to +Failure(:invalid_input)+.
+      #
+      #   input_for :event_type do
+      #     on 'sale',   SaleShape
+      #     on 'refund', RefundShape
+      #     default      UnknownShape
+      #   end
+      #
+      # @param discriminator [Symbol, String] the kwarg whose value selects the schema
+      # @yield the branch declarations (+on+ / +default+)
+      # @return [InputDispatch] the stored dispatch
+      def input_for(discriminator, &block)
+        @input_dispatch = InputDispatch.define(discriminator, &block)
+      end
+
+      # @return [InputDispatch, nil] the discriminated-input dispatch, or +nil+
+      #   when input isn't discriminated
+      attr_reader :input_dispatch
+
       # Declare a step. The step type is inferred from +target+ (a Symbol or
       # String names an instance method — a {Steps::Method}).
       #
@@ -199,7 +224,7 @@ module Actionable
       def describe
         {
           name: name,
-          input: input_schema&.metadata&.to_h,
+          input: input_descriptor,
           output: output_schema&.metadata&.to_h,
           steps: steps.map { |step| {type: step.kind, name: step.name, options: step.options} },
           hooks: {
@@ -228,7 +253,7 @@ module Actionable
         transactional = summary[:transactional] ? ', transactional' : ''
         lines = ["#{summary[:name] || "action"} (measure: #{summary[:measure]}#{transactional})"]
 
-        lines << "  Input:#{schema_summary(input_schema)}"
+        lines << "  Input:#{input_summary}"
         lines << "  Output:#{schema_summary(output_schema)}"
 
         lines << '  Steps:'
@@ -254,8 +279,9 @@ module Actionable
       #
       # @return [Result] the run's {Success} or {Failure}
       def run(*args, **kwargs)
-        if input_schema
+        if input_schema || input_dispatch
           input = build_input(args, kwargs)
+          return input if input.is_a?(Failure) # unmatched discriminator
           return invalid_input_failure(input) unless input.valid?
 
           instance = new
@@ -312,6 +338,28 @@ module Actionable
         "\n#{schema.metadata.describe.lines(chomp: true).map { |line| "  #{line}" }.join("\n")}"
       end
 
+      # The +input+ value for {.describe}: a fixed schema's field metadata, a
+      # discriminated-input descriptor (+discriminated_on+ + +shapes+), or +nil+
+      # for a free-form action.
+      #
+      # @return [Hash, nil]
+      def input_descriptor
+        return input_schema.metadata.to_h if input_schema
+        return nil unless input_dispatch
+
+        {discriminated_on: input_dispatch.discriminator, shapes: input_dispatch.variants}
+      end
+
+      # The +Input:+ block for {.describe_text}: the fixed-schema field lines, a
+      # one-line discriminated-input summary, or +" (free-form)"+.
+      #
+      # @return [String]
+      def input_summary
+        return schema_summary(input_schema) if input_schema || input_dispatch.nil?
+
+        " (discriminated on #{input_dispatch.discriminator}: #{input_dispatch.variants.map(&:inspect).join(", ")})"
+      end
+
       # Run-start guard (decision D18): every method a step needs (method steps,
       # case value sources and method branch targets, hook steps) must exist on
       # the instance, or raise a clear {DefinitionError} rather than a deep
@@ -332,13 +380,42 @@ module Actionable
 
       # Coerce +.run+ arguments into the input struct: pass an existing input
       # instance through untouched, otherwise build one from the keyword args.
+      # With discriminated input ({.input_for}), the schema is chosen from the
+      # discriminator value first; an unmatched value returns a +Failure+.
       #
-      # @return [FieldStruct::Base]
+      # @return [FieldStruct::Base, Failure]
       def build_input(args, kwargs)
+        return build_dispatched_input(args, kwargs) if input_dispatch
+
         candidate = args.first
         return candidate if args.size == 1 && candidate.is_a?(input_schema)
 
         input_schema.new(**kwargs)
+      end
+
+      # Resolve the discriminated schema from the discriminator value, then build
+      # the input the same way {.build_input} does — or return an
+      # +:invalid_input+ {Failure} when nothing matches and there's no default.
+      #
+      # @return [FieldStruct::Base, Failure]
+      def build_dispatched_input(args, kwargs)
+        candidate = args.first
+        return candidate if args.size == 1 && input_dispatch.schemas.any? { |schema| candidate.is_a?(schema) }
+
+        value = kwargs[input_dispatch.discriminator]
+        schema = input_dispatch.schema_for(value)
+        return unmatched_discriminator_failure(value) unless schema
+
+        schema.new(**kwargs)
+      end
+
+      # @param value [Object] the unmatched discriminator value
+      # @return [Failure] code +:invalid_input+, naming the discriminator
+      def unmatched_discriminator_failure(value)
+        Failure.new(
+          code: :invalid_input,
+          message: "no input shape for #{input_dispatch.discriminator} #{value.inspect}"
+        )
       end
 
       # @param input [FieldStruct::Base] the invalid input struct
@@ -361,6 +438,7 @@ module Actionable
         subclass.instance_variable_set(:@steps, steps.dup)
         subclass.instance_variable_set(:@output_schema, output_schema)
         subclass.instance_variable_set(:@input_schema, input_schema)
+        subclass.instance_variable_set(:@input_dispatch, input_dispatch)
         subclass.instance_variable_set(:@success_hooks, success_hooks.dup)
         subclass.instance_variable_set(:@failure_hooks, failure_hooks.dup)
         subclass.instance_variable_set(:@skip_hooks, skip_hooks.dup)
