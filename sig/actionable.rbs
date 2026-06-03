@@ -536,18 +536,30 @@ module Actionable
     # _@return_ — the updated step set
     def self.case_step: ((Symbol | String) value_source, **::Hash[Symbol, Object] options) -> ::Set[Steps::Base]
 
-    # Enable or read the action's measurement mode (decision D10). +:all+
-    # records an execution {History}; +:none+ (the default) records nothing
-    # for zero overhead. A measuring run cascades into the nested actions it
-    # invokes regardless of their own setting.
+    # Enable or read the action's measurement mode (decisions D10/D19). +:all+
+    # records an execution {History}; +:none+ (the default) records nothing for
+    # zero overhead; +:sampled+ records on a fraction of runs (+rate:+ between 0
+    # and 1) for low-overhead production observability. A measuring run cascades
+    # into the nested actions it invokes regardless of their own setting.
+    # 
+    #   measure :sampled, rate: 0.1   # record ~10% of runs
     # 
     # _@param_ `mode` — the mode to set; omit to read
     # 
+    # _@param_ `rate` — required for +:sampled+ — the probability (0..1) that a given run is measured
+    # 
     # _@return_ — the resolved mode
-    def self.measure: (?Symbol? mode) -> Symbol
+    def self.measure: (?Symbol? mode, ?rate: Numeric?) -> Symbol
 
-    # _@return_ — whether this action records history
+    # _@return_ — whether this action always records history
     def self.measure_all?: () -> bool
+
+    # _@return_ — whether this action samples history
+    def self.measure_sampled?: () -> bool
+
+    # The per-run sampling decision: true with probability {.measure_rate} when
+    # in +:sampled+ mode, false otherwise. Rolled once per run by the {Runner}.
+    def self.measure_sample_hit?: () -> bool
 
     # A structured, at-a-glance summary of the action — its name, input/output
     # field metadata, ordered steps (with type), lifecycle hooks, measurement
@@ -758,6 +770,9 @@ module Actionable
     # _@return_ — the discriminated-input dispatch, or +nil+
     # when input isn't discriminated
     def self.input_dispatch: () -> InputDispatch?
+
+    # _@return_ — the sampling rate for +:sampled+ mode, else +nil+
+    def self.measure_rate: () -> Float?
 
     # The result recorded during the run, if any. The control-flow methods
     # (+fail+/+succeed+/+fail!+/+succeed!+) write here; +nil+ means "no explicit
