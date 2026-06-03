@@ -22,7 +22,10 @@ and rake tasks into a shared, composable, predictably-shaped layer.
 - **Not a workflow/BPM engine.** Steps are a linear pipeline with simple branching,
   not a graph with arbitrary transitions.
 - **Not a state machine.** No persisted states or transition tables.
-- **Not a background-job framework.** A run is synchronous; async is a Phase 2 idea.
+- **Not a background-job framework.** A run is synchronous. The optional
+  `actionable/job` adapter (D19) runs an action *inside* your job and maps the
+  result to a queue disposition, but *deferred/async execution* (enqueue, return
+  a handle) is still a Phase 2 idea.
 - **Not Rails-coupled.** The core is pure Ruby (depends only on `field_struct`).
   Transactions and `ProxyValidator` live in the optional `actionable/rails` adapter.
 - **Not a validation library.** Validation of inputs/outputs is delegated to

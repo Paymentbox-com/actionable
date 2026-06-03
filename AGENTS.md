@@ -51,12 +51,24 @@ result.invoice        # => same, via convenience delegation
 5. **Nested actions thread values explicitly.** `step Child, input: %i[invoice]`
    passes `invoice` in; `expose: %i[receipt]` limits what comes back. Without
    `expose:`, all of the child's outputs are absorbed.
+6. **A skip is `ok?`, not a failure — and now carries output.** `skip(code, msg,
+   **output)` mirrors `succeed` (captured best-effort, unvalidated), so an
+   idempotent hit can return the existing record's id. Don't model "already done"
+   as a `fail`.
 
 ## Fast paths
 
-- See an action's contract without reading source: `pp CreateInvoice.input_schema.metadata.to_h`
-  and `pp CreateInvoice.output_schema.metadata.to_h`.
+- See an action's contract without reading source: `pp CreateInvoice.describe`
+  (or `CreateInvoice.describe_text` for a readable summary).
+- Run over a collection: `Action.run_each(items) { |i| {…} }` → a `BatchResult`
+  with `all_ok?` / `any_failure?` / `partial?` and `to_api_h`.
+- Pick the input schema at runtime: `input_for(:event_type) { on 'sale', SaleShape; default … }`.
+- Validate a side struct and fail with its errors: `fail_with(EventShape.new(payload), code: :invalid_event)`.
+- Render a result for an HTTP response: `result.to_h` / `result.to_api_h(index:)`.
+- Run an action from a background job: `include Actionable::Job::Mixin` and call
+  `run_actionable(...)` in `perform` (requires `actionable/job`).
 - Type your actions for Steep/Solargraph: `Actionable::RBS.generate(CreateInvoice)`.
 - Test a caller without running the action: `stub_actionable_success CreateInvoice, invoice: an_invoice`
   (requires `actionable/rspec`).
-- Profile a run: declare `measure :all`, then read `result.history.to_json`.
+- Profile a run: declare `measure :all` (or `:sampled, rate: 0.1` in prod), then
+  read `result.history.to_json`.
