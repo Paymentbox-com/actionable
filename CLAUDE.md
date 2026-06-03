@@ -150,6 +150,17 @@ commit; each commit independently revertable; the message explains *why*.
 
 Use descriptive branch names off `develop`.
 
+### Cutting a release
+A version isn't released until there's a **GitHub Release** — a git tag alone is
+invisible on the Releases page. The full sequence:
+1. Bump `lib/actionable/version.rb`; move `CHANGELOG.md` `[Unreleased]` → a dated
+   `## [x.y.z]` section (leave `[Unreleased]` empty).
+2. `bundle exec rake release:check`.
+3. Commit `chore: release vX.Y.Z`; merge `develop` → `main`.
+4. `git tag -a vX.Y.Z`; push `main`, `develop`, and the tag.
+5. `gh release create vX.Y.Z --title "Actionable vX.Y.Z" --notes-file <changelog section>`
+   — **don't skip this**; tag ≠ Release.
+
 ### Commit footer
 End AI-assisted commits with a `Co-Authored-By:` trailer.
 

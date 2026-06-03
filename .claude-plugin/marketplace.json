@@ -1,0 +1,15 @@
+{
+  "name": "actionable",
+  "owner": {
+    "name": "Adrian Madrid",
+    "email": "amadrid@pmtbox.com"
+  },
+  "plugins": [
+    {
+      "name": "actionable",
+      "source": ".",
+      "description": "Guidance for building, debugging, and testing Actionable service objects (the actionable gem's typed step/result DSL).",
+      "category": "development"
+    }
+  ]
+}

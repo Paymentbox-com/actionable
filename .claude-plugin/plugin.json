@@ -1,0 +1,9 @@
+{
+  "name": "actionable",
+  "description": "Guidance for building, debugging, and testing Actionable service objects — the actionable gem's typed step/result DSL.",
+  "author": {
+    "name": "Adrian Madrid",
+    "email": "amadrid@pmtbox.com"
+  },
+  "homepage": "https://github.com/Paymentbox-com/actionable"
+}
