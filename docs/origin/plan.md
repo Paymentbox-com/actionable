@@ -275,6 +275,12 @@ When there is **no** `input` block, the action defines its own `initialize` and
 inputs don't fit a flat schema. Typed input is the path that unlocks a fully-typed
 `.run` and richer RBS generation (D13).
 
+Typed input stays **keyword-only**: `.run` takes keyword arguments (or a pre-built
+input instance). Accepting positional arguments (mapped to declared fields by
+order) was considered and **deferred** — keyword call sites are self-documenting
+and immune to field reordering, which matters most for service objects. Revisit
+after real-world usage; see Phase 2+ backlog and `scrap/positional_input_args.md`.
+
 ### D8. Rails decoupling: pure-Ruby core + optional adapter
 
 The core gem depends only on `field_struct` (which itself pulls `bigdecimal` and
@@ -557,6 +563,10 @@ Surfaced during design, explicitly deferred. Roughly by likely value:
 5. **Persisted run history** — opt-in storage of `History` for observability.
 6. **Auto-generated docs** — Markdown/HTML from action input/output/step metadata.
 7. **Generators** — a Rails generator / CLI for scaffolding action classes.
+8. **Positional input arguments** — let typed-`input` `.run` accept positionals
+   (mapped to declared fields by order) in addition to keywords. Considered and
+   **deferred** (see D7): keyword stays canonical; revisit after real-world usage
+   shows it's wanted. Tradeoffs in `scrap/positional_input_args.md`.
 
 ---
 
