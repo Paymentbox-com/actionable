@@ -250,11 +250,6 @@ module Actionable
       # _@return_ — the first matching branch's step
       def match: (Object value) -> Steps::Base?
 
-      # _@param_ `branch_value`
-      # 
-      # _@param_ `value`
-      def matches?: ((Object | Regexp | ::Array[untyped]) branch_value, Object value) -> bool
-
       # Collects +on+/+default+ branch declarations inside a +case_step+ block.
       class Builder
         def initialize: () -> void
@@ -390,6 +385,25 @@ module Actionable
     # _@return_ — the input schema
     def self.input: () -> singleton(FieldStruct::Base)
 
+    # Declare a *discriminated* input schema (decision D19): pick the input
+    # FieldStruct at run time from a discriminator value, instead of a single
+    # fixed schema. The block declares branches with +on(value, Schema)+ and an
+    # optional +default(Schema)+; +.run+ reads the discriminator from its
+    # keyword arguments, chooses the schema, then coerces and validates exactly
+    # like a fixed +input+. An unmatched value with no +default+ short-circuits
+    # to +Failure(:invalid_input)+.
+    # 
+    #   input_for :event_type do
+    #     on 'sale',   SaleShape
+    #     on 'refund', RefundShape
+    #     default      UnknownShape
+    #   end
+    # 
+    # _@param_ `discriminator` — the kwarg whose value selects the schema
+    # 
+    # _@return_ — the stored dispatch
+    def self.input_for: ((Symbol | String) discriminator) -> InputDispatch
+
     # Declare a step. The step type is inferred from +target+ (a Symbol or
     # String names an instance method — a {Steps::Method}).
     # 
@@ -521,6 +535,15 @@ module Actionable
     # _@param_ `schema`
     def self.schema_summary: (singleton(FieldStruct::Base)? schema) -> String
 
+    # The +input+ value for {.describe}: a fixed schema's field metadata, a
+    # discriminated-input descriptor (+discriminated_on+ + +shapes+), or +nil+
+    # for a free-form action.
+    def self.input_descriptor: () -> ::Hash[untyped, untyped]?
+
+    # The +Input:+ block for {.describe_text}: the fixed-schema field lines, a
+    # one-line discriminated-input summary, or +" (free-form)"+.
+    def self.input_summary: () -> String
+
     # Run-start guard (decision D18): every method a step needs (method steps,
     # case value sources and method branch targets, hook steps) must exist on
     # the instance, or raise a clear {DefinitionError} rather than a deep
@@ -532,7 +555,19 @@ module Actionable
 
     # Coerce +.run+ arguments into the input struct: pass an existing input
     # instance through untouched, otherwise build one from the keyword args.
-    def self.build_input: (untyped args, untyped kwargs) -> FieldStruct::Base
+    # With discriminated input ({.input_for}), the schema is chosen from the
+    # discriminator value first; an unmatched value returns a +Failure+.
+    def self.build_input: (untyped args, untyped kwargs) -> (FieldStruct::Base | Failure)
+
+    # Resolve the discriminated schema from the discriminator value, then build
+    # the input the same way {.build_input} does — or return an
+    # +:invalid_input+ {Failure} when nothing matches and there's no default.
+    def self.build_dispatched_input: (untyped args, untyped kwargs) -> (FieldStruct::Base | Failure)
+
+    # _@param_ `value` — the unmatched discriminator value
+    # 
+    # _@return_ — code +:invalid_input+, naming the discriminator
+    def self.unmatched_discriminator_failure: (Object value) -> Failure
 
     # _@param_ `input` — the invalid input struct
     # 
@@ -653,6 +688,10 @@ module Actionable
     # _@return_ — the declared input schema, or
     # +nil+ for a free-form action
     def self.input_schema: () -> singleton(FieldStruct::Base)?
+
+    # _@return_ — the discriminated-input dispatch, or +nil+
+    # when input isn't discriminated
+    def self.input_dispatch: () -> InputDispatch?
 
     # The result recorded during the run, if any. The control-flow methods
     # (+fail+/+succeed+/+fail!+/+succeed!+) write here; +nil+ means "no explicit
@@ -982,6 +1021,26 @@ module Actionable
     def self.with: (untyped changes) -> untyped
   end
 
+  # Shared branch-value matching for the two places Actionable dispatches on a
+  # value: case steps (decision D3) and discriminated input (decision D19). A
+  # branch value matches by Array membership, by +Regexp#match?+ against the
+  # value's string form, or by +==+.
+  module ValueMatch
+    # _@param_ `branch_value` — the declared branch matcher
+    # 
+    # _@param_ `value` — the runtime value being dispatched on
+    # 
+    # _@return_ — whether +value+ matches +branch_value+
+    def matches?: ((Object | ::Array[untyped] | Regexp) branch_value, Object value) -> bool
+
+    # _@param_ `branch_value` — the declared branch matcher
+    # 
+    # _@param_ `value` — the runtime value being dispatched on
+    # 
+    # _@return_ — whether +value+ matches +branch_value+
+    def self.matches?: ((Object | ::Array[untyped] | Regexp) branch_value, Object value) -> bool
+  end
+
   # The value object returned by {Action.run_each}: an ordered, +Enumerable+
   # collection of the per-item {Result}s, plus aggregate predicates over them
   # (decision D19). Each item ran independently — one {Result} per element, in
@@ -1039,6 +1098,76 @@ module Actionable
 
     # _@return_ — the per-item results, in input order
     attr_reader results: ::Array[Result]
+  end
+
+  # Runtime selection of an input schema from a discriminator value (decision
+  # D19, declared with +input_for+). Each branch maps a match value to a
+  # FieldStruct schema; an optional +default+ catches the rest. Lets a
+  # polymorphic payload (e.g. +event_type+ → shape) use typed, validated input.
+  # 
+  #   input_for :event_type do
+  #     on 'sale',   SaleShape
+  #     on 'refund', RefundShape
+  #     default      UnknownShape
+  #   end
+  class InputDispatch
+    # Build a dispatch from an +input_for+ declaration.
+    # 
+    # _@param_ `discriminator` — the kwarg whose value selects the schema
+    def self.define: ((Symbol | String) discriminator) -> InputDispatch
+
+    # _@param_ `discriminator`
+    # 
+    # _@param_ `branches`
+    # 
+    # _@param_ `default_schema`
+    def initialize: (Symbol discriminator, ::Array[[Object, singleton(FieldStruct::Base)]] branches, singleton(FieldStruct::Base)? default_schema) -> void
+
+    # The schema for a discriminator value: the first matching branch, else the
+    # default, else +nil+ (no match and no default).
+    # 
+    # _@param_ `value` — the discriminator value
+    def schema_for: (Object value) -> singleton(FieldStruct::Base)?
+
+    # _@return_ — every distinct schema reachable
+    # through this dispatch (branches plus default)
+    def schemas: () -> ::Array[singleton(FieldStruct::Base)]
+
+    # _@return_ — the branch match values, in declaration order
+    def variants: () -> ::Array[Object]
+
+    # _@return_ — the discriminator field read from +.run+'s kwargs
+    attr_reader discriminator: Symbol
+
+    # _@return_ — ordered [match, schema] pairs
+    attr_reader branches: ::Array[[Object, singleton(FieldStruct::Base)]]
+
+    # _@return_ — the fallback schema
+    attr_reader default_schema: singleton(FieldStruct::Base)?
+
+    # Collects +on+/+default+ branch declarations inside an +input_for+ block.
+    class Builder
+      def initialize: () -> void
+
+      # Register a branch. +value+ matches the discriminator by +==+, by
+      # Array membership, or by +Regexp#match?+ (see {ValueMatch}).
+      # 
+      # _@param_ `value`
+      # 
+      # _@param_ `schema`
+      def on: ((Object | ::Array[untyped] | Regexp) value, singleton(FieldStruct::Base) schema) -> void
+
+      # Register the fallback schema, used when no +on+ branch matches.
+      # 
+      # _@param_ `schema`
+      def default: (singleton(FieldStruct::Base) schema) -> void
+
+      # _@return_ — ordered [match, schema] pairs
+      attr_reader branches: ::Array[[Object, singleton(FieldStruct::Base)]]
+
+      # _@return_ — the fallback schema, if declared
+      attr_reader default_schema: singleton(FieldStruct::Base)?
+    end
   end
 
   # A failed run's result. Its +code+ is the error symbol describing why the

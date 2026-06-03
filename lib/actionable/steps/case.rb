@@ -99,19 +99,8 @@ module Actionable
       # @param value [Object] the switch value
       # @return [Steps::Base, nil] the first matching branch's step
       def match(value)
-        @branches.each { |branch_value, step| return step if matches?(branch_value, value) }
+        @branches.each { |branch_value, step| return step if ValueMatch.matches?(branch_value, value) }
         nil
-      end
-
-      # @param branch_value [Object, Regexp, Array]
-      # @param value [Object]
-      # @return [Boolean]
-      def matches?(branch_value, value)
-        case branch_value
-        when Array then branch_value.include?(value)
-        when Regexp then branch_value.match?(value.to_s)
-        else branch_value == value
-        end
       end
     end
   end
