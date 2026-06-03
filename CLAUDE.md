@@ -63,6 +63,26 @@ Public methods carry YARD comments — purpose, `@param`, `@return`, and any
 non-obvious behavior. These feed Sord; keep them accurate. Don't restate what the
 code already shows.
 
+#### Documentation checklist (before a feature/behavior commit)
+A behavior change isn't done until the docs are. Some of this is enforced
+(`rake docs:check`), some is judgment:
+
+| Surface | When to update | Enforced? |
+|---|---|---|
+| **YARD comments** + `rake sigs:generate` | any public API add/change | ✅ `sigs:check` |
+| **USAGE.md** (the catalog) | every new/changed public method | ✅ `rake docs:check` (API→USAGE coverage) |
+| **CHANGELOG.md** `[Unreleased]` | any `lib/**` change | ✅ `rake docs:check` (freshness) |
+| **README.md** | a user-facing feature or verb | ⚠️ judgment |
+| **docs/getting_started.md** | a feature an adopter would reach for early | ⚠️ judgment |
+| **AGENTS.md** + **skills/actionable/SKILL.md** | a new verb / DSL macro / adapter agents should know | ⚠️ judgment |
+| **docs/origin/plan.md** | a new locked decision (Dnn) | ⚠️ judgment |
+
+`rake docs:check` is run automatically before commits in the Claude Code session
+(a hook in `.claude/settings.json`). It does **not** judge prose quality — the
+⚠️ rows are on you. Run it yourself any time: `bundle exec rake docs:check`. Its
+allowlist of intentionally-undocumented public methods lives in the `docs:check`
+task in the `Rakefile`; add to it only with intent.
+
 ### Linting & coverage
 Rubocop must pass before commit. Coverage via SimpleCov (`COVERAGE=1 bin/rspec`).
 

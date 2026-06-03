@@ -26,6 +26,31 @@ SORD_FIXUPS = [
   [/^(\s*)include Enumerable$/, '\1include ::Enumerable[Result]']
 ].freeze
 
+# --- Docs guard (`docs:check`, decision D19) --------------------------
+
+# The user-facing API classes whose public methods must be documented in
+# USAGE.md (the catalog). Reflection respects `private`, so internal helpers
+# are excluded automatically.
+DOC_API_CLASSES = %w[
+  Actionable::Action Actionable::Result Actionable::Success Actionable::Failure
+  Actionable::Skipped Actionable::BatchResult Actionable::InputDispatch
+  Actionable::ValueMatch Actionable::Job
+].freeze
+
+# Public methods intentionally NOT in the USAGE reference: attribute writers,
+# secondary/internal predicates and accessors, and delegation hooks. A NEW
+# public method that isn't here must be documented in USAGE (or added here
+# deliberately). Keep this list honest — it's the "knowingly undocumented"
+# ledger, not a dumping ground.
+DOC_COVERAGE_ALLOWLIST = %w[
+  absorb_errors_from always_hooks failure_hooks skip_hooks success_hooks
+  branches default_schema define schema_for schemas
+  code= history= message= output=
+  input_dispatch input_schema output_schema
+  length measure_all? measure_rate measure_sample_hit? measure_sampled?
+  method_missing
+].freeze
+
 def sord_run(target)
   # Temporarily hide the committed sig file — YARD picks up sig/*.rbs as
   # input, and the prior file's entries confuse Sord's parameter-matching
@@ -97,6 +122,41 @@ namespace :docs do
   desc 'Show YARD coverage stats and list undocumented public methods'
   task :stats do
     sh 'bundle exec yard stats --list-undoc'
+  end
+
+  desc 'Guard that code changes are reflected in the docs (decision D19)'
+  task :check do
+    require_relative 'lib/actionable'
+    require_relative 'lib/actionable/job'
+    failures = []
+
+    # 1. CHANGELOG freshness — a change under lib/ needs an [Unreleased] entry.
+    changed = `git diff HEAD --name-only`.split("\n")
+    if changed.any? { |file| file.match?(%r{\Alib/.*\.rb\z}) }
+      unreleased = File.read('CHANGELOG.md')[/##\s*\[Unreleased\](.*?)(?=^##\s|\z)/m, 1].to_s
+      if unreleased.strip.empty?
+        failures << 'CHANGELOG.md [Unreleased] is empty but lib/ changed — add an entry.'
+      end
+    end
+
+    # 2. API → USAGE coverage — every public API method (minus the allowlist)
+    #    must be named in USAGE.md.
+    usage = File.read('USAGE.md')
+    api = DOC_API_CLASSES.flat_map do |const|
+      klass = Object.const_get(const)
+      klass.singleton_methods(false) + klass.public_instance_methods(false)
+    end.map(&:to_s).uniq - DOC_COVERAGE_ALLOWLIST
+    undocumented = api.reject do |method|
+      base = method.sub(/[?!]\z/, '')
+      usage.include?(method) || usage.include?(base)
+    end
+    unless undocumented.empty?
+      failures << 'Public API not documented in USAGE.md (document it, or add to ' \
+                  "the docs:check allowlist with intent): #{undocumented.sort.join(", ")}"
+    end
+
+    abort "docs:check failed:\n- #{failures.join("\n- ")}" unless failures.empty?
+    puts 'docs:check: CHANGELOG fresh; public API documented in USAGE.'
   end
 end
 
