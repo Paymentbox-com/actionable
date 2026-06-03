@@ -24,6 +24,11 @@ module Actionable
       def required_methods
         [name]
       end
+
+      # @return [Symbol]
+      def kind
+        :method
+      end
     end
   end
 end

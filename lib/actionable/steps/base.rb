@@ -43,6 +43,12 @@ module Actionable
         []
       end
 
+      # @return [Symbol] a short tag identifying the step type, for introspection
+      #   (+Actionable::Action.describe+). Concrete types override it.
+      def kind
+        :step
+      end
+
       # Whether this step should be skipped for the given instance, per its
       # +:if+ / +:unless+ guards. A guard is a Symbol naming a (possibly
       # private) instance method, or a callable invoked with the instance.

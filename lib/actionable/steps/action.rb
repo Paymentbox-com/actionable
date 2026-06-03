@@ -30,6 +30,11 @@ module Actionable
         end
       end
 
+      # @return [Symbol]
+      def kind
+        :action
+      end
+
       private
 
       # @param instance [Actionable::Action]

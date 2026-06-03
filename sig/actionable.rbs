@@ -161,6 +161,10 @@ module Actionable
       # types that call instance methods override this.
       def required_methods: () -> ::Array[Symbol]
 
+      # _@return_ — a short tag identifying the step type, for introspection
+      # (+Actionable::Action.describe+). Concrete types override it.
+      def kind: () -> Symbol
+
       # Whether this step should be skipped for the given instance, per its
       # +:if+ / +:unless+ guards. A guard is a Symbol naming a (possibly
       # private) instance method, or a callable invoked with the instance.
@@ -239,6 +243,8 @@ module Actionable
       # target's required methods
       def required_methods: () -> ::Array[Symbol]
 
+      def kind: () -> Symbol
+
       # _@param_ `value` — the switch value
       # 
       # _@return_ — the first matching branch's step
@@ -292,6 +298,8 @@ module Actionable
       # _@param_ `instance` — the parent action instance
       def call: (Actionable::Action _instance) -> void
 
+      def kind: () -> Symbol
+
       # _@param_ `instance`
       # 
       # _@return_ — +{ name => @name }+ for each +:input+ name
@@ -328,6 +336,8 @@ module Actionable
 
       # _@return_ — the instance method this step calls
       def required_methods: () -> ::Array[Symbol]
+
+      def kind: () -> Symbol
     end
   end
 
@@ -458,6 +468,12 @@ module Actionable
 
     # _@return_ — whether this action records history
     def self.measure_all?: () -> bool
+
+    # A structured, at-a-glance summary of the action — its name, input/output
+    # field metadata, ordered steps (with type), lifecycle hooks, measurement
+    # mode, and transaction config (decision D18). Lets humans and agents
+    # understand an action without reading its source.
+    def self.describe: () -> ::Hash[Symbol, Object]
 
     # Run the action. With a declared input schema, coerce the arguments
     # (keyword args, or a single input-schema instance) into the input struct

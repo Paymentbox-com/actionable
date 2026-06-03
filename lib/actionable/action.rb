@@ -190,6 +190,29 @@ module Actionable
         measure == :all
       end
 
+      # A structured, at-a-glance summary of the action — its name, input/output
+      # field metadata, ordered steps (with type), lifecycle hooks, measurement
+      # mode, and transaction config (decision D18). Lets humans and agents
+      # understand an action without reading its source.
+      #
+      # @return [Hash{Symbol=>Object}]
+      def describe
+        {
+          name: name,
+          input: input_schema&.metadata&.to_h,
+          output: output_schema&.metadata&.to_h,
+          steps: steps.map { |step| {type: step.kind, name: step.name, options: step.options} },
+          hooks: {
+            on_success: success_hooks.map(&:name),
+            on_failure: failure_hooks.map(&:name),
+            on_skip: skip_hooks.map(&:name),
+            always: always_hooks.map(&:name)
+          },
+          measure: measure,
+          transactional: respond_to?(:transaction_config) ? transaction_config : nil
+        }
+      end
+
       # Run the action. With a declared input schema, coerce the arguments
       # (keyword args, or a single input-schema instance) into the input struct
       # and validate it — a required input that is missing or won't coerce

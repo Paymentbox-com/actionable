@@ -89,6 +89,11 @@ module Actionable
         ([name] + branch_steps.flat_map(&:required_methods)).uniq
       end
 
+      # @return [Symbol]
+      def kind
+        :case
+      end
+
       private
 
       # @param value [Object] the switch value
