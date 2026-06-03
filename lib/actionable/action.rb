@@ -268,6 +268,36 @@ module Actionable
         Runner.new(instance).run
       end
 
+      # Run the action once per item in +enumerable+, collecting the per-item
+      # results into a {BatchResult} (decision D19). The single most common
+      # batch/ingest shape: each item runs independently (its own {.run}, its own
+      # outcome), so one item's failure never affects another, and the aggregate
+      # is inspectable via {BatchResult#all_ok?} / +#any_failure?+ / +#partial?+.
+      #
+      # The optional block maps each item to +.run+ arguments: return a Hash for
+      # keyword args, an Array for positional args, or any other value to pass as
+      # a single argument. Without a block, each item is passed to +.run+
+      # directly.
+      #
+      #   ImportRow.run_each(rows) { |row| {row: row} }
+      #   Charge.run_each(amounts) # => each amount passed to .run
+      #
+      # @param enumerable [Enumerable] the items to run
+      # @yieldparam item [Object] one element of +enumerable+
+      # @yieldreturn [Hash, Array, Object] the +.run+ arguments for that item
+      # @return [BatchResult] the per-item results
+      def run_each(enumerable, &block)
+        results = enumerable.map do |item|
+          args = block ? block.call(item) : item
+          case args
+          when Hash then run(**args)
+          when Array then run(*args)
+          else run(args)
+          end
+        end
+        BatchResult.new(results)
+      end
+
       private
 
       # One {.describe_text} block for an input/output schema: +" (free-form)"+

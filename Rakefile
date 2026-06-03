@@ -19,9 +19,12 @@ SIG_FILE = 'sig/actionable.rbs'
 #
 # Each entry is [search_regex, replacement]. Keep this list short and
 # document each entry — if it grows, it's a smell that we should fix
-# YARD upstream or open an issue against Sord. Empty for now; entries
-# get added as the library surface grows and Sord gaps surface.
-SORD_FIXUPS = [].freeze
+# YARD upstream or open an issue against Sord.
+SORD_FIXUPS = [
+  # Sord emits a bare `include Enumerable`, but RBS's Enumerable is generic and
+  # requires its element type. BatchResult enumerates Results (decision D19).
+  [/^(\s*)include Enumerable$/, '\1include ::Enumerable[Result]']
+].freeze
 
 def sord_run(target)
   # Temporarily hide the committed sig file — YARD picks up sig/*.rbs as

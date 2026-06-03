@@ -495,6 +495,25 @@ module Actionable
     # _@return_ — the run's {Success} or {Failure}
     def self.run: (*untyped args, **untyped kwargs) -> Result
 
+    # Run the action once per item in +enumerable+, collecting the per-item
+    # results into a {BatchResult} (decision D19). The single most common
+    # batch/ingest shape: each item runs independently (its own {.run}, its own
+    # outcome), so one item's failure never affects another, and the aggregate
+    # is inspectable via {BatchResult#all_ok?} / +#any_failure?+ / +#partial?+.
+    # 
+    # The optional block maps each item to +.run+ arguments: return a Hash for
+    # keyword args, an Array for positional args, or any other value to pass as
+    # a single argument. Without a block, each item is passed to +.run+
+    # directly.
+    # 
+    #   ImportRow.run_each(rows) { |row| {row: row} }
+    #   Charge.run_each(amounts) # => each amount passed to .run
+    # 
+    # _@param_ `enumerable` — the items to run
+    # 
+    # _@return_ — the per-item results
+    def self.run_each: (::Enumerable[untyped] enumerable) ?{ (Object item) -> (::Hash[untyped, untyped] | ::Array[untyped] | Object) } -> BatchResult
+
     # One {.describe_text} block for an input/output schema: +" (free-form)"+
     # when none is declared, otherwise the FieldStruct +Metadata#describe+
     # field lines indented one level under their +Input:+/+Output:+ heading.
@@ -961,6 +980,65 @@ module Actionable
     def self.store: () -> untyped
 
     def self.with: (untyped changes) -> untyped
+  end
+
+  # The value object returned by {Action.run_each}: an ordered, +Enumerable+
+  # collection of the per-item {Result}s, plus aggregate predicates over them
+  # (decision D19). Each item ran independently — one {Result} per element, in
+  # input order — so a failure in one never affects another.
+  # 
+  #   batch = ImportRow.run_each(rows) { |row| {row: row} }
+  #   batch.all_ok?            # => false
+  #   batch.failures.size      # => 2
+  #   batch.to_api_h           # => [{index: 0, status: :success, ...}, ...]
+  class BatchResult
+    include ::Enumerable[Result]
+
+    # _@param_ `results`
+    def initialize: (::Array[Result] results) -> void
+
+    def each: () ?{ (Result result) -> void } -> (::Enumerator[untyped] | self)
+
+    # _@param_ `index`
+    # 
+    # _@return_ — the result at +index+
+    def []: (Integer index) -> Result?
+
+    # _@return_ — the number of results
+    def size: () -> Integer
+
+    # _@return_ — whether the batch ran no items
+    def empty?: () -> bool
+
+    # _@return_ — whether every result is +ok?+ (success or skip);
+    # vacuously true for an empty batch
+    def all_ok?: () -> bool
+
+    # _@return_ — whether any result is a failure
+    def any_failure?: () -> bool
+
+    # _@return_ — whether the batch is mixed — at least one failure and at
+    # least one +ok?+ result
+    def partial?: () -> bool
+
+    # _@return_ — the successful results
+    def successes: () -> ::Array[Result]
+
+    # _@return_ — the failed results
+    def failures: () -> ::Array[Result]
+
+    # _@return_ — the skipped results
+    def skips: () -> ::Array[Result]
+
+    # The batch as an array of API elements, each tagged with its position
+    # (see {Result#to_api_h}). Ready to render as a JSON array of per-item
+    # statuses.
+    # 
+    # _@param_ `id_field` — the output field to surface as +:id+
+    def to_api_h: (?id_field: Symbol) -> ::Array[::Hash[Symbol, Object]]
+
+    # _@return_ — the per-item results, in input order
+    attr_reader results: ::Array[Result]
   end
 
   # A failed run's result. Its +code+ is the error symbol describing why the

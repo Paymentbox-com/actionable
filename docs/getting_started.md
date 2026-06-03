@@ -17,6 +17,7 @@ options, and macros see [`USAGE.md`](../USAGE.md); for the feature tour see
 | Define a service object | `class Settle < Actionable::Action` |
 | Add an ordered step | `step :build` |
 | Run it | `Settle.run(**kwargs)` |
+| Run it over a collection | `Settle.run_each(items)` → `BatchResult` |
 | Type & validate inputs | `input { required :amount, :integer }` |
 | Type the result payload | `output { required :invoice, Invoice }` |
 | Read a typed output | `result.invoice` / `result.output.invoice` |
@@ -261,6 +262,27 @@ class BuildOrder < Actionable::Action
 end
 
 BuildOrder.run.output.line # => "line:ABC"
+```
+
+### Running a batch
+
+`run_each` runs the action once per item and collects a `BatchResult` — the
+common "process each row, report per item" endpoint shape. Items run
+independently; the block maps each to `.run` arguments.
+
+<!-- doctest -->
+```ruby
+class Doubler < Actionable::Action
+  input  { required :n, :integer }
+  output { required :doubled, :integer }
+  step :go
+  def go = @doubled = input.n * 2
+end
+
+batch = Doubler.run_each([1, 2, 3]) { |n| {n: n} }
+batch.size                              # => 3
+batch.all_ok?                           # => true
+batch.map { |r| r.output.doubled }      # => [2, 4, 6]
 ```
 
 ### Lifecycle hooks & measurement
