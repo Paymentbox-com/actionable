@@ -40,8 +40,10 @@ See `docs/origin/plan.md` for the authoritative in/out lists. At a glance:
 `Result`/`Success`/`Failure`/`Skipped` (the `:skip` outcome, D17), typed
 `output` schema, optional typed `input` schema, nested-action composition with
 `:input`/`:expose`, `History` + `measure`, `Registry`, optional Rails adapter
-(transactions + `ProxyValidator`), optional RSpec integration, and the
-Sord/RBS/YARD type toolchain including `Actionable::RBS.generate` for user actions.
+(transactions + `ProxyValidator`), optional RSpec integration, the
+Sord/RBS/YARD type toolchain including `Actionable::RBS.generate` for user
+actions, and the DX guardrails (`DefinitionError` for misconfigured actions) +
+`Action.describe` introspection (D18).
 
 **Out (deferred):** async/deferred results, step retries/timeouts, result
 combinators, non-Rails transaction adapters, persisted history, auto-generated docs,
@@ -99,6 +101,6 @@ These hold across the codebase. Don't break them without surfacing the change.
 
 ## When in doubt
 
-- Re-read `docs/origin/plan.md` (the locked decisions D1–D17 are authoritative).
+- Re-read `docs/origin/plan.md` (the locked decisions D1–D18 are authoritative).
 - Re-read `docs/origin/first_discussion.md` for the original intent.
 - If the answer isn't in either, ask Adrian before guessing.
