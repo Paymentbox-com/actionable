@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-06-03
+
 Phase-2 ergonomics and adapters (decision D19), from real-world use fitting
 Actionable into a polymorphic ingestion endpoint. All additive and
 backward-compatible.
