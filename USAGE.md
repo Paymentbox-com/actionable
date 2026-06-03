@@ -188,6 +188,35 @@ running any steps. An already-built input instance can be passed instead of
 keyword arguments. With no `input` block, `.run`'s arguments go to the
 constructor (the free-form path).
 
+## Batch runs
+
+`Action.run_each(enumerable) { |item| run_args }` runs the action once per item
+and collects the per-item results into a `BatchResult` (Enumerable). Each item
+runs independently, so one failure never affects another. The block maps an item
+to `.run` arguments (a Hash → kwargs, an Array → positional, anything else → a
+single argument); omit it to pass each item directly.
+
+<!-- doctest -->
+```ruby
+class Doubler < Actionable::Action
+  input  { required :n, :integer }
+  output { required :doubled, :integer }
+  step :go
+  def go = @doubled = input.n * 2
+end
+
+batch = Doubler.run_each([1, 'x', 3]) { |n| {n: n} } # 'x' -> :invalid_input
+batch.size        # => 3
+batch.all_ok?     # => false
+batch.any_failure? # => true
+batch.partial?    # => true
+batch.successes.map { |r| r.output.doubled } # => [2, 6]
+```
+
+`BatchResult` answers `all_ok?` / `any_failure?` / `partial?`, exposes
+`successes` / `failures` / `skips`, and `to_api_h` renders the whole batch as an
+array of indexed API elements.
+
 ## Lifecycle hooks
 
 ```ruby
