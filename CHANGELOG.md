@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-06-03
+
 ### Tooling
 
 - The repo is now a single-plugin Claude Code marketplace
