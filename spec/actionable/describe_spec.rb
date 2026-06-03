@@ -83,3 +83,39 @@ RSpec.describe 'Actionable::Action.describe' do
     expect(parent.describe[:steps].map { |s| s[:type] }).to eq(%i[action case])
   end
 end
+
+RSpec.describe 'Actionable::Action.describe_text' do
+  subject(:text) { DescribeSample.describe_text }
+
+  it 'returns a String headed by the action name and measure mode' do
+    expect(text).to be_a(String)
+    expect(text.lines.first).to include('DescribeSample').and include('measure: all')
+  end
+
+  it 'renders input and output fields in FieldStruct human-readable form' do
+    expect(text).to include('amount (Integer, required)')
+    expect(text).to include('invoice (String, required)')
+  end
+
+  it 'lists steps with their type' do
+    expect(text).to include('validate (method)')
+  end
+
+  it 'lists only the hook sections that have hooks' do
+    expect(text).to match(/on_success: notify/)
+    expect(text).to match(/always: log/)
+    expect(text).not_to include('on_failure')
+  end
+
+  it 'marks a free-form action input and output as free-form' do
+    klass = Class.new(Actionable::Action) do
+      def go
+      end
+      step :go
+    end
+
+    summary = klass.describe_text
+    expect(summary).to include('Input: (free-form)')
+    expect(summary).to include('Output: (free-form)')
+  end
+end
