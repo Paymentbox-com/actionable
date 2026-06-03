@@ -255,7 +255,12 @@ measure) so humans and agents can understand an action without reading source:
 ```ruby
 Actionable.registry['Greet'] # => Greet
 Greet.describe               # => { name: "Greet", steps: [...], output: {...}, ... }
+Greet.describe_text          # => "Greet (measure: none)\n  Input: ..." (readable form)
 ```
+
+Failure results expose FieldStruct's error collection, so beyond
+`result.errors[:field]` you get `result.errors.full_messages` — each message as
+a complete sentence (`"Total is required"`).
 
 ## Guardrails
 

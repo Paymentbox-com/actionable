@@ -113,6 +113,19 @@ result.code           # => :invalid_output
 result.errors[:total] # => ["is required"]
 ```
 
+`errors` is FieldStruct's own collection, so alongside the per-field
+`errors[:field]` / `errors.to_h` it answers `full_messages` — each message
+rendered as a complete sentence with the humanized field name prepended
+(`:base` messages pass through unprefixed):
+
+<!-- doctest -->
+```ruby
+result = Actionable::Failure.new(code: :invalid)
+result.errors.add(:first_name, 'is required')
+
+result.errors.full_messages # => ["First name is required"]
+```
+
 Declared output fields delegate off the result (`result.total` →
 `result.output.total`), except names that collide with the result's own
 attributes (`code`/`message`/`output`/`history`/`errors`).
@@ -248,6 +261,20 @@ end
 Probe.describe[:steps].first[:type] # => :method
 Probe.describe.key?(:output)        # => true
 Probe.describe[:measure]            # => :none
+```
+
+`Action.describe_text` renders the same information as a human/agent-readable
+multi-line summary instead of a Hash. The input/output field lines reuse
+FieldStruct's own `Metadata#describe` (each field's type, required-ness, and the
+options its type accepts); only hook sections that have hooks are listed:
+
+```
+Probe (measure: none)
+  Input: (free-form)
+  Output:
+    count (Integer, required) — accepts in (Array | Range)
+  Steps:
+    - compute (method)
 ```
 
 ## Guardrails (`DefinitionError`)
