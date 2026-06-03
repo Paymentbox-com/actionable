@@ -82,6 +82,31 @@ RSpec.describe 'Actionable skip status' do
       expect(result.code).to eq(:not_ready) # NOT :invalid_output
       expect(result.output.total).to be_nil
     end
+
+    it 'accepts output kwargs, captured best-effort like succeed (the idempotent-hit case)' do
+      klass = Class.new(Actionable::Action) do
+        output { optional :existing_id, :integer }
+        define_method(:check) { skip!(:duplicate, 'already processed', existing_id: 42) }
+        step :check
+      end
+
+      result = klass.run
+
+      expect(result).to be_skipped
+      expect(result.code).to eq(:duplicate)
+      expect(result.existing_id).to eq(42)        # delegates off the result
+      expect(result.output.existing_id).to eq(42)
+    end
+
+    it 'threads output kwargs on the non-bang skip too' do
+      klass = Class.new(Actionable::Action) do
+        output { optional :existing_id, :integer }
+        define_method(:check) { skip(:duplicate, 'already processed', existing_id: 7) }
+        step :check
+      end
+
+      expect(klass.run.output.existing_id).to eq(7)
+    end
   end
 
   describe 'lifecycle dispatch' do
