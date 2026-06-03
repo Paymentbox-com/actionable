@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-06-03
+
+### Tooling
+
+- The `rake docs:check` commit guard (decision D19) now detects a `git commit`
+  invocation from the command itself rather than a prefix gate, so a compound
+  `git add -A && git commit …` can no longer slip past the pre-commit hook. No
+  library changes.
+
 ## [1.2.0] - 2026-06-03
 
 Phase-2 ergonomics and adapters (decision D19), from real-world use fitting
