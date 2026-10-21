@@ -128,6 +128,35 @@ Sync.run(ready: true).success? # => true
 Predicates: `success?` / `successful?`, `failure?` / `failed?`, `skipped?`, and
 `ok?` (≡ "didn't fail" — true for both a success and a skip).
 
+## Declared failures
+
+An action can declare the failure codes it ends with, each with neutral
+metadata. The gem stores the metadata, attaches it to the failure and shows it
+in `describe`, but never interprets it, so your app decides what a key like
+`kind:` means:
+
+<!-- doctest -->
+```ruby
+class Capture < Actionable::Action
+  fails :refused, 'the card was refused', kind: :rejected
+  fails :expired, kind: :rejected
+
+  step :capture
+  def capture = fail!(:refused)
+end
+
+result = Capture.run
+result.code     # => :refused
+result.metadata # => {kind: :rejected}
+Capture.declared_failures.keys # => [:refused, :expired]
+```
+
+Once an action declares any code, a `fail` with an undeclared one raises
+`Actionable::DefinitionError` at the call. Actions that declare none, and the
+codes the gem emits itself (`:invalid_input`, `:invalid_output`), are unchecked.
+A nested action's failure reaches its parent with its code, message, errors and
+metadata intact. See [USAGE](USAGE.md#declared-failures).
+
 ## Typed output
 
 `output do … end` builds a FieldStruct schema. Matching instance variables are
