@@ -184,6 +184,27 @@ RSpec.describe Actionable::Coverage do
       expect(described_class.expected_outcomes(with_output)).to eq(%w[success failure:invalid_output])
     end
 
+    it 'expects invalid_output when a skip schema has a required field (decision D23)' do
+      described_class.gem_codes = %i[invalid_output]
+      skipping = Class.new(Actionable::Action) { skips(:idle) { required :id, :integer } }
+
+      expect(described_class.expected_outcomes(skipping)).to eq(%w[success skipped:idle failure:invalid_output])
+    end
+
+    it 'expects invalid_output when a failure schema has a required field (decision D23)' do
+      described_class.gem_codes = %i[invalid_output]
+      failing = Class.new(Actionable::Action) { fails(:refused) { required :reason, :string } }
+
+      expect(described_class.expected_outcomes(failing)).to eq(%w[success failure:refused failure:invalid_output])
+    end
+
+    it 'does not expect invalid_output when no schema has a required field' do
+      described_class.gem_codes = %i[invalid_output]
+      optional_only = Class.new(Actionable::Action) { skips(:idle) { optional :id, :integer } }
+
+      expect(described_class.expected_outcomes(optional_only)).to eq(%w[success skipped:idle])
+    end
+
     it 'lists a declared gem code once' do
       described_class.gem_codes = %i[invalid_input]
       charge.fails :invalid_input, kind: :invalid

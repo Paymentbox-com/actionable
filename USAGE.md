@@ -232,6 +232,99 @@ An action that declares no skips skips with any code, as before. Declared
 failures and declared skips are independent, so declaring one never makes the
 other strict.
 
+## Typed outcomes
+
+`typed_outcomes` gives a skip and a failure an output contract of their own,
+the way `output` gives one to a success (decision D23). It is opt-in and
+inherited, so a host base class can turn it on for every action beneath it;
+`typed_outcomes?` reads it, and `typed_outcomes enabled: false` turns it off
+again for a subclass.
+
+A block on `skips` or `fails` declares the output a result with that code
+carries, in the same FieldStruct DSL as `output`. `skip_output_schema(code)` and
+`failure_output_schema(code)` read it back, and `describe` shows its fields.
+Under typed outcomes, a failure takes its output from the `output:` keyword of
+`fail` / `fail!` (and of `fail_with` / `fail_with!`); every other keyword is
+still an error:
+
+<!-- doctest -->
+```ruby
+class ActivateKey < Actionable::Action
+  typed_outcomes
+  input { required :id, :integer }
+  output { required :id, :integer }
+
+  skips(:already_active) { required :id, :integer }
+  fails(:invalid) { optional :field, :string }
+
+  step :activate
+
+  def activate
+    return skip!(:already_active, nil, id: input.id) if input.id == 1
+    return fail!(:invalid, 'bad id', output: {field: 'id'}, id: 'is negative') if input.id.negative?
+
+    @id = input.id
+  end
+end
+
+skipped = ActivateKey.run(id: 1)
+skipped.class        # => ActivateKey::Skipped
+skipped.id           # => 1
+failed = ActivateKey.run(id: -1)
+failed.class         # => ActivateKey::Failure
+failed.output.field  # => "id"
+failed.errors[:id]   # => ["is negative"]
+ActivateKey.run(id: 2).class # => ActivateKey::Success
+```
+
+The rules:
+
+- **A code with a schema** is built from the keywords it was recorded with,
+  never from instance variables, and validated like a success: output that
+  breaks the schema ends the run as `invalid_output`. This holds whether or not
+  `typed_outcomes` is on, since the block itself is the opt-in for that code.
+  So the block also ends instance-variable capture for that code: after
+  `@note = 'x'; skip!(:dup)`, a `skips(:dup) { required :note, :string }`
+  ends the run as `invalid_output`, because `note:` was never passed.
+- **A code without one** carries an empty output under typed outcomes. Without
+  them it keeps the old best-effort capture into the success schema. The
+  failures the gem builds (`invalid_input`, `invalid_output`) keep their
+  output either way, because the invalid struct is what explains them.
+- **Output with nowhere to go is refused.** Under typed outcomes, output keywords
+  on a code without a schema raise `Actionable::DefinitionError`, naming the
+  code and asking for a `fails :code do … end` (or `skips`) schema. `output:`
+  must be a Hash or a FieldStruct; anything else raises `ArgumentError`.
+- **Result classes.** `.run` returns the action's own `Success`, `Failure` or
+  `Skipped`, defined inside it. Each is a subclass of the gem class, or of the
+  parent action's own for a subclass, so `result.is_a?(Actionable::Failure)`
+  still holds. An action that already has its own constant by one of those names
+  is refused. A host's own result subclass is returned as it is, which the
+  generated RBS does not describe: it still types `.run` as the action's own
+  classes, a known gap.
+- **Nested failures.** A child's failure that crosses becomes the parent's own
+  `Failure`. Its output is judged by the schema the *parent* declares for the
+  code, and the parent must still declare the code. A parent without typed
+  outcomes gets a plain `Actionable::Failure`, never the typed child's class.
+  The gem's own `invalid_input` / `invalid_output` cross with their output and
+  are not judged by a parent schema.
+- **Stubs.** The RSpec stub helpers return the action's own result classes too,
+  with the output shaped as a real run would shape it: built through the code's
+  schema (an `ArgumentError` when it breaks the schema, since a real run would
+  end as `invalid_output` instead), and empty for a code without one (output
+  given for such a code raises `ArgumentError`).
+- **RBS.** `Actionable::RBS.generate` types `.run` as
+  `(Success | Skipped | Failure)`, with each `code` and `output` narrowed to
+  what that outcome can carry (see [RBS for your actions](#rbs-for-your-actions)).
+  The readers a result delegates to its output are declared on `Skipped` and
+  `Failure` too.
+
+Two things change for a spec when an action turns typed outcomes on. Results
+compare by class, so `ActivateKey.run(id: 2) == Actionable::Success.new(...)` is
+false even with the same output; compare with `ActivateKey::Success`, or use
+`be_success` and the output. And the `allow_actionable_*` / `stub_actionable_*`
+helpers return a new object of the action's own class, not one you built with
+`actionable_failure_result`, so assert on what the helper returns.
+
 ## Output
 
 `output do … end` declares a typed schema. Matching ivars are captured at the
@@ -755,5 +848,33 @@ the gem emits no skips of its own:
 type skip_code = :not_ready | :already_synced
 ```
 
-The aliases are type aids for now. Nothing in the generated `Result` uses them
-yet, since `code` is shared by all three outcomes.
+Without typed outcomes the aliases are type aids only: nothing in the generated
+`Result` uses them, since `code` is shared by all three outcomes. Under
+`typed_outcomes` (decision D23) they type each outcome's `code`, and `.run`
+returns the action's own result classes, each with the output it can carry:
+
+```
+def self.run: (id: ::Integer) -> (Success | Skipped | Failure)
+
+class AlreadyActiveSkipOutput < ::FieldStruct::Base ... end
+class InvalidFailureOutput < ::FieldStruct::Base ... end
+
+class Success < ::Actionable::Success
+  def code: () -> :success
+  def output: () -> Output
+end
+
+class Skipped < ::Actionable::Skipped
+  def code: () -> skip_code
+  def output: () -> (AlreadyActiveSkipOutput | ::Hash[::Symbol, untyped])
+end
+
+class Failure < ::Actionable::Failure
+  def code: () -> failure_code
+  def output: () -> (InvalidFailureOutput | AlreadyActiveSkipOutput | Output | ::Hash[::Symbol, untyped])
+end
+```
+
+A failure's output also admits every skip schema and `Output`, since output that
+breaks one ends the run as `invalid_output` carrying it. A code with no schema,
+or no declarations at all, types as a Hash and a plain `::Symbol`.

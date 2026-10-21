@@ -265,7 +265,7 @@ module Actionable
       def gem_code_applies?(action_class, code)
         case code
         when :invalid_input then input_can_be_invalid?(action_class)
-        when :invalid_output then requires_field?(action_class.output_schema)
+        when :invalid_output then output_schemas(action_class).any? { |schema| requires_field?(schema) }
         end
       end
 
@@ -278,6 +278,15 @@ module Actionable
         return false unless dispatch
 
         dispatch.default_schema.nil? || dispatch.schemas.any? { |schema| requires_field?(schema) }
+      end
+
+      # Every output schema a run can be held to: the success's, and each skip
+      # or failure code's (decision D23), any of which can end it as
+      # +invalid_output+.
+      def output_schemas(action_class)
+        skips = action_class.skip_declarations.keys.map { |code| action_class.skip_output_schema(code) }
+        failures = action_class.failure_declarations.keys.map { |code| action_class.failure_output_schema(code) }
+        [action_class.output_schema, *skips, *failures].compact
       end
 
       def requires_field?(schema)

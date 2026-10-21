@@ -2,6 +2,49 @@
 
 ## [Unreleased]
 
+Typed outcomes (decision D23). Opt-in with `typed_outcomes`: an action that
+doesn't turn it on runs as before, except that a code whose `fails` or `skips`
+declaration carries a block (new syntax) has its output validated.
+
+### Added
+
+- **`typed_outcomes`** turns typed outcomes on for an action and its
+  descendants (`typed_outcomes enabled: false` turns them off for a subclass);
+  `typed_outcomes?` reads it.
+- **A block on `fails` / `skips`** declares the output a result with that code
+  carries, in the `output` DSL. **`failure_output_schema(code)`** and
+  **`skip_output_schema(code)`** read it back, and `describe` shows its fields.
+  Such output is built from the call's keywords alone, never from instance
+  variables, and validated: output that breaks the schema ends the run as
+  `invalid_output`. The block also ends instance-variable capture for that
+  code, typed outcomes or not.
+- **`output:` on `fail` / `fail!` / `fail_with` / `fail_with!`**, under typed
+  outcomes only: the failure's output, a Hash or a FieldStruct
+  (`ArgumentError` otherwise). Without them `output:` on `fail` is still an
+  error, and `fail_with` refuses it. Under typed outcomes, output for a code
+  with no schema raises `DefinitionError`, naming the code.
+- **Per-action result classes.** Under typed outcomes `.run` returns the
+  action's own `Success`, `Failure` or `Skipped`, each a subclass of the gem
+  class (or of the parent action's own). A nested failure becomes the parent's
+  own `Failure`, judged by the parent's schema for its code; a parent without
+  typed outcomes gets a plain `Actionable::Failure`. The RSpec stub helpers
+  return them too, with output shaped through the code's schema (or empty
+  without one) as a real run would.
+- **RBS:** `Actionable::RBS.generate` types a typed action's `.run` as
+  `(Success | Skipped | Failure)`, with each `code` and `output` narrowed and
+  the output's readers declared on each class. A host's own result subclass,
+  which `.run` still returns as it is, is not described: a known gap.
+
+### Changed
+
+- Under typed outcomes, a skip or failure whose code has no schema carries an
+  empty output, where it used to carry a best-effort capture into the success
+  schema. The gem's own `invalid_input` / `invalid_output` keep theirs.
+- Under typed outcomes, results compare by class: `Act::Success` is not `==`
+  to an `Actionable::Success` with the same output, and the stub helpers
+  return a new object of the action's own class. Specs that compare results
+  with `==` need to compare against the action's class.
+
 ## [1.4.0] - 2026-10-21
 
 Declared skips (decision D21), the skip counterpart of 1.3.0's declared
