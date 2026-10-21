@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-10-21
+
 Typed outcomes (decision D23). Opt-in with `typed_outcomes`: an action that
 doesn't turn it on runs as before, except that a code whose `fails` or `skips`
 declaration carries a block (new syntax) has its output validated.
