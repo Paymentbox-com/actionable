@@ -19,6 +19,14 @@ module Actionable
   #   listing every code it can skip with (decision D21). The gem emits no skip
   #   codes of its own, so the alias holds the declared ones only.
   #
+  # Under typed outcomes (decision D23) +.run+ returns the action's own
+  # +Success | Skipped | Failure+ instead, each typed with its +code+ and an
+  # +output+ that names what the outcome can carry: a nested class per code
+  # that declares an output schema (+AlreadyActiveSkipOutput+,
+  # +InvalidFailureOutput+), and a Hash for a code without one. A failure's
+  # output also admits every skip schema and +Output+, since a broken one ends
+  # the run as +invalid_output+ carrying it.
+  #
   #   class CreateInvoice < Actionable::Action
   #     input  { required :amount, :integer }
   #     output { required :invoice, :string }
@@ -56,6 +64,8 @@ module Actionable
     # @param klass [Class<Actionable::Action>]
     # @return [String]
     def self.class_block(klass)
+      return typed_class_block(klass) if klass.typed_outcomes?
+
       simple = klass.name.split('::').last
       aliases = []
       aliases << failure_code_alias(klass) unless klass.declared_failures.empty?
@@ -72,13 +82,115 @@ module Actionable
     end
     private_class_method :class_block
 
+    # The class block of an action with typed outcomes (decision D23).
+    #
+    # @param klass [Class<Actionable::Action>]
+    # @return [String]
+    def self.typed_class_block(klass)
+      aliases = []
+      aliases << failure_code_alias(klass) unless klass.declared_failures.empty?
+      aliases << skip_code_alias(klass) unless klass.declared_skips.empty?
+      sections = []
+      sections << aliases.join("\n") unless aliases.empty?
+      sections << "def self.run: #{run_signature(klass, return_type: "(Success | Skipped | Failure)")}"
+      sections << output_block(klass.output_schema) if klass.output_schema
+      outcome_schemas(klass).each { |name, schema| sections << output_block(schema, name) }
+      sections.concat(outcome_blocks(klass))
+      "class #{klass.name.split("::").last} < ::Actionable::Action\n#{indent(sections.join("\n\n"))}\nend"
+    end
+    private_class_method :typed_class_block
+
+    # The nested output class of every skip, then every failure, code that
+    # declares an output schema, named after the code.
+    #
+    # @param klass [Class<Actionable::Action>]
+    # @return [Array<Array(String, Class<FieldStruct::Base>)>] name, schema
+    def self.outcome_schemas(klass)
+      skips = klass.skip_declarations.keys.filter_map do |code|
+        schema = klass.skip_output_schema(code)
+        ["#{camelize(code)}SkipOutput", schema] if schema
+      end
+      failures = klass.failure_declarations.keys.filter_map do |code|
+        schema = klass.failure_output_schema(code)
+        ["#{camelize(code)}FailureOutput", schema] if schema
+      end
+      skips + failures
+    end
+    private_class_method :outcome_schemas
+
+    # The +Success+, +Skipped+ and +Failure+ blocks of a typed action.
+    #
+    # @param klass [Class<Actionable::Action>]
+    # @return [Array<String>]
+    def self.outcome_blocks(klass)
+      names = outcome_schemas(klass).map(&:first)
+      skip_outputs = names.grep(/SkipOutput\z/)
+      failure_types = names.grep(/FailureOutput\z/) + skip_outputs + (klass.output_schema ? ['Output'] : [])
+      [
+        outcome_block(klass, 'Success', success_lines(klass)),
+        outcome_block(klass, 'Skipped', ["def code: () -> #{code_type(klass.declared_skips, "skip_code")}",
+                                         "def output: () -> #{union(skip_outputs)}"]),
+        outcome_block(klass, 'Failure', ["def code: () -> #{code_type(klass.declared_failures, "failure_code")}",
+                                         "def output: () -> #{union(failure_types)}"])
+      ]
+    end
+    private_class_method :outcome_blocks
+
+    # @param klass [Class<Actionable::Action>]
+    # @return [Array<String>] the +Success+ block's signatures
+    def self.success_lines(klass)
+      schema = klass.output_schema
+      lines = ['def code: () -> :success', "def output: () -> #{schema ? "Output" : HASH_OUTPUT}"]
+      schema&.metadata&.each { |field| lines << "def #{field.name}: () -> #{rbs_type(field)}" }
+      lines
+    end
+    private_class_method :success_lines
+
+    # @param declared [Hash] the declared codes
+    # @param name [String] the alias naming them
+    # @return [String] the alias, or +::Symbol+ when none are declared
+    def self.code_type(declared, name)
+      declared.empty? ? '::Symbol' : name
+    end
+    private_class_method :code_type
+
+    HASH_OUTPUT = '::Hash[::Symbol, untyped]'
+    private_constant :HASH_OUTPUT
+
+    # @param types [Array<String>] the output classes an outcome can carry
+    # @return [String] them and a Hash, as one RBS type
+    def self.union(types)
+      types.empty? ? HASH_OUTPUT : "(#{(types + [HASH_OUTPUT]).join(" | ")})"
+    end
+    private_class_method :union
+
+    # @param klass [Class<Actionable::Action>]
+    # @param name [String] +Success+, +Skipped+ or +Failure+
+    # @param lines [Array<String>] the block's method signatures
+    # @return [String] the class block, subclassing the parent action's own
+    #   result class when the parent has typed outcomes, else the gem's
+    def self.outcome_block(klass, name, lines)
+      parent = klass.superclass
+      base = parent.typed_outcomes? && parent.name ? "::#{parent.name}::#{name}" : "::Actionable::#{name}"
+      "class #{name} < #{base}\n#{indent(lines.join("\n"))}\nend"
+    end
+    private_class_method :outcome_block
+
+    # @param code [Symbol]
+    # @return [String] +:already_active+ as +AlreadyActive+
+    def self.camelize(code)
+      code.to_s.split('_').map(&:capitalize).join
+    end
+    private_class_method :camelize
+
+    # @param klass [Class<Actionable::Action>]
+    # @param return_type [String] what +.run+ returns
     # @return [String] the +.run+ signature: typed kwargs from the input schema
     #   (or +(*untyped)+ free-form), returning the generated +Result+ when an
     #   output schema is declared, else +::Actionable::Result+.
-    def self.run_signature(klass)
+    def self.run_signature(klass, return_type: klass.output_schema ? 'Result' : '::Actionable::Result')
       schema = klass.input_schema
       params = schema ? schema.metadata.map { |field| run_param(field) }.join(', ') : '*untyped'
-      return_type = klass.output_schema ? 'Result' : '::Actionable::Result'
       "(#{params}) -> #{return_type}"
     end
     private_class_method :run_signature
@@ -109,9 +221,10 @@ module Actionable
     private_class_method :run_param
 
     # @param schema [Class<FieldStruct::Base>] the output schema
-    # @return [String] the nested +Output+ class block
-    def self.output_block(schema)
-      lines = ['class Output < ::FieldStruct::Base']
+    # @param name [String] the nested class name
+    # @return [String] the nested output class block
+    def self.output_block(schema, name = 'Output')
+      lines = ["class #{name} < ::FieldStruct::Base"]
       schema.metadata.each do |field|
         lines << "  attr_reader #{field.name}: #{rbs_type(field)}"
         lines << "  def #{field.name}=: (untyped value) -> untyped"
