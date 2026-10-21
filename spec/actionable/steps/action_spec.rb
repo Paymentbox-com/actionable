@@ -109,6 +109,91 @@ RSpec.describe Actionable::Steps::Action do
 
       expect(result.errors[:name]).to eq(['is required'])
     end
+
+    it 'keeps a child error keyed like a keyword the parent fail takes' do
+      child = Class.new(Actionable::Action) do
+        define_method(:go) { fail!(:invalid, 'bad', kind: 'is not a known kind', name: 'is required') }
+        step :go
+      end
+      # A host base class that, like pbx did, gives fail its own keyword.
+      parent = Class.new(Actionable::Action) do
+        step child
+
+        def fail(code, message = nil, kind: nil, **errors)
+          raise ArgumentError, "kind #{kind.inspect} is not a Symbol" if kind && !kind.is_a?(Symbol)
+
+          super(code, message, **errors)
+        end
+      end
+
+      result = parent.run
+
+      expect(result.code).to eq(:invalid)
+      expect(result.errors[:kind]).to eq(['is not a known kind'])
+      expect(result.errors[:name]).to eq(['is required'])
+    end
+
+    it "carries the child's declared metadata onto the parent failure" do
+      child = Class.new(Actionable::Action) do
+        fails :refused, kind: :rejected, retryable: false
+        define_method(:go) { fail!(:refused, 'card refused') }
+        step :go
+      end
+      parent = Class.new(Actionable::Action) do
+        fails :refused
+        step child
+      end
+
+      result = parent.run
+
+      expect(result.code).to eq(:refused)
+      expect(result.message).to eq('card refused')
+      expect(result.metadata).to eq(kind: :rejected, retryable: false)
+    end
+
+    it "fills in the parent's declared metadata under the child's" do
+      child = Class.new(Actionable::Action) do
+        fails :refused, kind: :rejected
+        define_method(:go) { fail!(:refused) }
+        step :go
+      end
+      parent = Class.new(Actionable::Action) do
+        fails :refused, kind: :conflict, http_status: 409
+        step child
+      end
+
+      expect(parent.run.metadata).to eq(kind: :rejected, http_status: 409)
+    end
+
+    it "keeps the child's failure class and its extra attributes" do
+      host_failure = Class.new(Actionable::Failure) { optional :kind, :symbol }
+      child = Class.new(Actionable::Action) do
+        define_method(:go) do
+          @result = host_failure.new(code: :refused, kind: :rejected)
+          halt!
+        end
+        step :go
+      end
+      parent = Class.new(Actionable::Action) { step child }
+
+      result = parent.run
+
+      expect(result).to be_a(host_failure)
+      expect(result.kind).to eq(:rejected)
+    end
+
+    it 'refuses a child code that a declaring parent does not declare' do
+      child = Class.new(Actionable::Action) do
+        define_method(:go) { fail!(:refused) }
+        step :go
+      end
+      parent = Class.new(Actionable::Action) do
+        fails :not_found
+        step child
+      end
+
+      expect { parent.run }.to raise_error(Actionable::DefinitionError, /fails with :refused/)
+    end
   end
 
   describe 'skip guards' do

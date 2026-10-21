@@ -112,6 +112,70 @@ result.skipped?    # => true
 result.existing_id # => 42
 ```
 
+## Declared failures
+
+`fails(code, message = nil, **metadata)` declares one failure code an action can
+end with. The keywords after the message are neutral per-code metadata: the gem
+stores them, attaches them to the failure, and shows them in `describe`, but
+never reads them. Your app gives the keys their meaning. A `fail` or `fail_with`
+with a declared code carries its metadata as `result.metadata`, and its declared
+message when the call gives none. `declared_failures` reads the declarations
+back as `{code => metadata}`, and `failure_declarations` as
+`{code => {message:, metadata:}}`:
+
+<!-- doctest -->
+```ruby
+class Charge < Actionable::Action
+  fails :refused, 'the card was refused', kind: :rejected
+  fails :not_found, kind: :not_found
+
+  step :charge
+  def charge = fail!(:refused, nil, kind: 'is not a known kind')
+end
+
+result = Charge.run
+result.code           # => :refused
+result.message        # => "the card was refused"
+result.metadata       # => {kind: :rejected}
+result.errors[:kind]  # => ["is not a known kind"]
+Charge.declared_failures # => {refused: {kind: :rejected}, not_found: {kind: :not_found}}
+```
+
+Nothing but `**errors` follows `fail`'s message, so an error on a field named
+like a metadata key (`kind` above) stays an error. Declarations are inherited,
+and a subclass can add more. Declaring `:invalid_input` or `:invalid_output`
+attaches that metadata to the failures the gem builds itself. A failure whose
+code isn't declared has `metadata == {}`, and `Failure#to_h` includes it.
+
+**Strict once declared.** An action that declares at least one code may only fail
+with codes it declares (`allows_failure_code?(code)` answers whether it may). Any other `fail` / `fail!` / `fail_with` / `fail_with!`
+raises `Actionable::DefinitionError` from the call itself, naming the code and
+the declared list:
+
+<!-- doctest -->
+```ruby
+class Refund < Actionable::Action
+  fails :refused, kind: :rejected
+  step :go
+  def go = fail!(:timeout)
+end
+
+begin
+  Refund.run
+rescue Actionable::DefinitionError => e
+  e.message.include?('fails with :timeout, which it does not declare') # => true
+end
+```
+
+Two cases stay unchecked, so existing actions keep working unchanged:
+
+- an action that declares no failures fails with any code, as before;
+- the codes the gem emits itself, `Actionable::Action::GEM_FAILURE_CODES`
+  (`:invalid_input` and `:invalid_output`), are always allowed.
+
+`fail_with`'s default code `:invalid` is not exempt: the action writes that
+`fail_with`, so a declaring action declares `:invalid` or passes its own `code:`.
+
 ## Output
 
 `output do … end` declares a typed schema. Matching ivars are captured at the
@@ -269,8 +333,14 @@ step Notify, input: %i[invoice], expose: %i[receipt]
 
 `:input` names parent ivars to pass to the child's `.run`; `:expose` limits which
 child outputs are absorbed back as parent ivars (default: all). A child failure
-fails the parent (with the child's code/message/errors) and halts; a child skip
-continues the parent like a success.
+fails the parent and halts; a child skip continues the parent like a success.
+
+The child's failure crosses intact: its code, message, every error (whatever the
+field is called), its `metadata`, and its result class. It doesn't go through
+the parent's `fail`, so an override of `fail` in a host base class doesn't see
+it. The parent's own declaration for that code fills in metadata keys the child
+didn't set. A parent that declares failures must declare the codes its children
+can fail with, since they become its own.
 
 ## Case steps
 
@@ -352,8 +422,10 @@ Actionable.registry[Registered.name].equal?(Registered) # => true
 ## Introspection — `Action.describe`
 
 A structured, at-a-glance summary of an action (name, input/output field
-metadata, ordered steps with type, hooks, measure mode, transaction config) so
-humans and agents can understand it without reading source:
+metadata, ordered steps with type, declared failures, hooks, measure mode,
+transaction config) so humans and agents can understand it without reading
+source. `describe[:failures]` maps each declared code to
+`{message:, metadata:}`:
 
 <!-- doctest -->
 ```ruby
@@ -371,7 +443,8 @@ Probe.describe[:measure]            # => :none
 `Action.describe_text` renders the same information as a human/agent-readable
 multi-line summary instead of a Hash. The input/output field lines reuse
 FieldStruct's own `Metadata#describe` (each field's type, required-ness, and the
-options its type accepts); only hook sections that have hooks are listed:
+options its type accepts). Declared failures and hook sections are listed only
+when there are any:
 
 ```
 Probe (measure: none)
@@ -380,6 +453,14 @@ Probe (measure: none)
     count (Integer, required) — accepts in (Array | Range)
   Steps:
     - compute (method)
+```
+
+With `fails :refused, 'the card was refused', kind: :rejected` declared, a
+`Failures:` section follows the steps:
+
+```
+  Failures:
+    - refused (kind: :rejected): the card was refused
 ```
 
 ## Serializing a result
@@ -411,9 +492,12 @@ cryptic `NoMethodError`:
 
 - **Reserved output field names (at declaration):** an `output` field that
   shadows a result attribute (`code` / `message` / `output` / `history` /
-  `errors`) or a reserved instance variable (`result` / `input`) raises
+  `errors` / `metadata`) or a reserved instance variable (`result` / `input`) raises
   immediately. Pick another name. (Input fields aren't affected — they're read
   via `input.x`.)
+- **Undeclared failure codes (at the `fail` call):** once an action declares a
+  failure with `fails`, failing with a code it doesn't declare raises. See
+  [Declared failures](#declared-failures).
 - **Missing step methods (at run start):** every method a step needs (method
   steps, case value sources and method branch targets, hook steps) must be
   implemented, or the run raises a `DefinitionError` naming the action and the
@@ -439,7 +523,15 @@ cryptic `NoMethodError`:
   `(result, exception)`.
 - `allow_actionable_success` / `stub_actionable_success` (and `_failure` /
   `_skip` variants) build real result objects so `.run` returns them without
-  executing the action.
+  executing the action. `actionable_failure_result(code:, message:, output:,
+  errors:, metadata:)` builds a failure without stubbing anything.
+
+On an action that declares failures, the RSpec support holds to the
+declarations. A stubbed failure carries the declared metadata for its code (and
+the declared message when you give none), and a stub or `and_fail` with a code
+the action doesn't declare raises `ArgumentError`, since it would test a
+failure the action can never return. The exemptions match the runtime: actions
+that declare none, and `GEM_FAILURE_CODES`.
 
 ## Background jobs
 
@@ -478,3 +570,13 @@ Actionable::RBS.generate(CreateInvoice)
 # => RBS with a typed `.run` (from the input schema) and output accessors /
 #    result delegation (from the output schema), wrapped in module nesting.
 ```
+
+An action that declares failures also gets a `failure_code` type alias listing
+every code it can fail with, the declared ones first, then `GEM_FAILURE_CODES`:
+
+```
+type failure_code = :refused | :not_found | :invalid_input | :invalid_output
+```
+
+The alias is a type aid for now. Nothing in the generated `Result` uses it yet,
+since `code` is shared with success and skip.

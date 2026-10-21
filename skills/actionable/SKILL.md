@@ -72,13 +72,21 @@ When asked to build one:
   record's id.
 - `fail_with(struct, code:)` records a failure carrying `struct`'s validation
   errors — for validating a side FieldStruct in a step.
+- **Declare failure codes** with `fails :refused, 'message', kind: :rejected`.
+  The keywords are neutral metadata the gem passes through to
+  `result.metadata`. Once any code is declared, failing with an undeclared one
+  raises `DefinitionError` (`:invalid_input` / `:invalid_output` are exempt).
+  `fail`'s keywords after the message are only ever errors, so an error on
+  `kind` stays an error.
 - Plain verbs don't halt; last write wins. Bang verbs halt.
 - To signal a real bug, `raise` — exceptions propagate, they aren't caught.
 
 ## Composition
 
 - **Nested action:** `step Notify, input: %i[invoice], expose: %i[receipt]`. A
-  child failure fails the parent; a child skip continues it.
+  child failure fails the parent with its code, message, errors and metadata
+  intact; a child skip continues it. A parent that declares failures must
+  declare its children's codes too.
 - **Branch:** `case_step :status do on 'active', :handle; default :other end`
   (matches by `==`, `Regexp`, or Array membership).
 - **Hooks:** `on_success` / `on_failure` / `on_skip` / `always` run after the
@@ -93,8 +101,8 @@ When asked to build one:
 ## Mistakes to avoid
 
 - **Reserved output field names raise `Actionable::DefinitionError`.** An
-  `output` field named `code`/`message`/`output`/`history`/`errors` (result
-  attributes) or `result`/`input` (reserved ivars) is rejected when declared —
+  `output` field named `code`/`message`/`output`/`history`/`errors`/`metadata`
+  (result attributes) or `result`/`input` (reserved ivars) is rejected when declared —
   pick another name. (Input fields are fine; they're read via `input.x`.)
 - **A missing step method raises `DefinitionError` at run start**, naming the
   action and method — implement every declared step / hook / case method.
@@ -105,8 +113,8 @@ When asked to build one:
   `ProxyValidator` are opt-in; the core never loads `active_*`.
 
 To inspect an action's shape (for tooling or to reason about it), call
-`SomeAction.describe` — a Hash of its name, input/output, steps, hooks, measure,
-and transaction config (or `describe_text` for a readable summary).
+`SomeAction.describe` — a Hash of its name, input/output, steps, declared
+failures, hooks, measure, and transaction config (or `describe_text` for a readable summary).
 
 ## Beyond a single run
 
@@ -130,3 +138,7 @@ expect(Sync).to          perform_actionable.and_skip(:not_ready)
 
 allow_actionable_failure(CreateInvoice, code: :invalid_amount) # stub without running
 ```
+
+On an action that declares failures, a stubbed failure carries the declared
+metadata for its code, and a stub or `and_fail` with an undeclared code raises
+`ArgumentError`.

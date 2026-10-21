@@ -8,7 +8,8 @@ module Actionable
     # +:input+ threads named parent instance variables into the child's +.run+;
     # +:expose+ limits which of the child's outputs are absorbed back as parent
     # instance variables (default: all). A child failure fails the parent with
-    # the child's code/message/errors and halts the remaining steps.
+    # the child's code, message, errors and metadata, and halts the remaining
+    # steps.
     class Action < Base
       # Run the nested action, threading input in and absorbing output back.
       #
@@ -22,9 +23,11 @@ module Actionable
         Measurement.open_step&.nested = child.history if child.history.is_a?(History)
 
         if child.failure?
-          # Propagate the child's failure onto the parent and halt — reusing the
-          # parent's own control-flow verb keeps the record-and-halt semantics.
-          instance.__send__(:fail!, child.code, child.message, **child.errors.to_h)
+          # Propagate the child's failure onto the parent and halt. Not through
+          # +fail!+: splatting the errors into a keyword list lost the metadata
+          # and let an error keyed like a keyword the parent's +fail+ takes bind
+          # to it (decision D20).
+          instance.__send__(:adopt_failure!, child)
         else
           absorb(instance, child)
         end

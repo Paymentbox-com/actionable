@@ -7,9 +7,23 @@ module Actionable
     # @return [Symbol] the error code; defaults to +:error+
     required :code, :symbol, default: :error
 
+    # @return [Hash{Symbol=>Object}] the metadata the action declared for this
+    #   code with {Action.fails} (decision D20), so an adapter can read it off the
+    #   result without the action class. Empty when the code isn't declared.
+    #   The gem stores and passes it through but never interprets it.
+    optional :metadata, :value, default: -> { {} }
+
     # @return [true]
     def failure?
       true
+    end
+
+    # A plain-Hash view of the failure: {Result#to_h} plus its declared
+    # +metadata+ (decision D20).
+    #
+    # @return [Hash{Symbol=>Object}]
+    def to_h
+      super.merge(metadata: metadata)
     end
 
     # Copy another object's FieldStruct-style errors onto this failure's own

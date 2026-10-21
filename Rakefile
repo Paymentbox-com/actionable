@@ -45,7 +45,7 @@ DOC_API_CLASSES = %w[
 DOC_COVERAGE_ALLOWLIST = %w[
   absorb_errors_from always_hooks failure_hooks skip_hooks success_hooks
   branches default_schema define schema_for schemas
-  code= history= message= output=
+  code= history= message= metadata= output=
   input_dispatch input_schema output_schema
   length measure_all? measure_rate measure_sample_hit? measure_sampled?
   method_missing

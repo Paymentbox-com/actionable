@@ -171,8 +171,11 @@ module Actionable
     # @return [Failure] code +:invalid_output+, with the output's validation
     #   errors copied onto the failure and the (invalid) output attached
     def invalid_output_failure(output)
-      failure = Failure.new(code: :invalid_output, message: 'output failed validation')
-        .absorb_errors_from(output)
+      failure = Failure.new(
+        code: :invalid_output,
+        message: 'output failed validation',
+        metadata: @instance.class.declared_failures.fetch(:invalid_output, {})
+      ).absorb_errors_from(output)
       failure.output = output
       failure
     end

@@ -35,6 +35,53 @@ RSpec.describe 'actionable rspec stubs' do
     end
   end
 
+  describe 'stubbing an action that declares failures' do
+    let(:declaring) do
+      Class.new(Actionable::Action) do
+        fails :refused, 'the card was refused', kind: :rejected
+        def go = raise('the action should not actually run')
+        step :go
+      end
+    end
+
+    it 'builds a Failure carrying the declared metadata and message' do
+      allow_actionable_failure(declaring, code: :refused)
+      run = declaring.run
+
+      expect(run.metadata).to eq(kind: :rejected)
+      expect(run.message).to eq('the card was refused')
+    end
+
+    it 'carries the declared metadata from stub_actionable_failure too' do
+      stub_actionable_failure(declaring, code: :refused, message: 'declined')
+      run = declaring.run
+
+      expect(run.metadata).to eq(kind: :rejected)
+      expect(run.message).to eq('declined')
+    end
+
+    it 'refuses a code the action does not declare' do
+      expect { allow_actionable_failure(declaring, code: :nope) }
+        .to raise_error(ArgumentError, /does not declare :nope.*:refused/)
+    end
+
+    it 'allows a code the gem emits itself' do
+      expect(allow_actionable_failure(declaring, code: :invalid_input).metadata).to eq({})
+    end
+
+    it 'builds an empty metadata Failure for an action that declares none' do
+      expect(allow_actionable_failure(action, code: :anything).metadata).to eq({})
+    end
+  end
+
+  describe 'actionable_failure_result' do
+    it 'takes explicit metadata, for a failure built without an action' do
+      result = actionable_failure_result(code: :refused, metadata: {kind: :rejected})
+
+      expect(result.metadata).to eq(kind: :rejected)
+    end
+  end
+
   describe 'allow_actionable_skip' do
     it 'builds a real Skipped with its reason' do
       allow_actionable_skip(action, code: :not_ready, message: 'later')

@@ -510,6 +510,48 @@ D9), and true per-step granularity fights D9's deliberate whole-run model.
 
 ---
 
+### D20. Declared failures (added 2026-10, from PBX typed-results review)
+
+A failure's code was open-ended, so an adapter couldn't know an action's failure
+contract. PBX attached its own per-code `kind` by adding a `kind:` keyword to
+`fail`, which shares a keyword space with `**errors`: a record error on an
+attribute named `kind` bound to the keyword. `Steps::Action` also re-failed the
+parent with `fail!(code, message, **errors)`, which dropped anything else on
+the child's failure.
+
+- **`fails(code, message = nil, **metadata)`** declares a code the action can
+  end with. The metadata is neutral: the gem stores it, passes it through and
+  shows it, but never interprets it, so the gem stays unopinionated about what
+  a host means by a key such as `kind`. `message` is the default message for a
+  `fail` that gives none. Declarations are inherited (copied on inherit, like
+  steps and hooks) and a subclass can add or redeclare codes.
+  `declared_failures` reads them as `{code => metadata}`.
+- **`Failure#metadata`** (default `{}`) carries the declared metadata of the
+  failure's code, so an adapter reads it off the result without the action
+  class. `metadata` joins the reserved output field names (*amends D18*).
+  `fail`'s signature is unchanged: nothing but `**errors` follows the message.
+- **Strict once declared.** An action that declares any code raises
+  `DefinitionError` from a `fail` / `fail_with` with an undeclared code.
+  Unchecked: actions that declare none (every existing action), and
+  `Action::GEM_FAILURE_CODES` (`:invalid_input`, `:invalid_output`). Declaring a
+  gem code only attaches metadata to the failures the gem builds.
+  `fail_with`'s default `:invalid` is not exempt, since the action writes it.
+- **Nested failures cross intact** (*amends D3*). The parent adopts the child's
+  failure (code, message, every error, metadata, result class) rather than
+  re-failing through `fail!`, so it no longer passes through a host override of
+  `fail`. The parent's declared metadata for the code sits under the child's.
+  A declaring parent must declare its children's codes, since they become its
+  own.
+- `describe` / `describe_text` show the declarations; the RSpec stubs attach the
+  declared metadata and, with `and_fail`, refuse undeclared codes (*amends
+  D12*); `Actionable::RBS` emits a `failure_code` alias (*amends D13*).
+
+_Deferred: checking at definition time that a declaring parent declares every
+code a declaring child can fail with, and using `failure_code` in a typed
+per-outcome Result (stage 3 of the PBX typed-results work)._
+
+---
+
 ## Slice plan
 
 16 slices (plus Slice 17, the post-plan `:skip` outcome), ordered so each is

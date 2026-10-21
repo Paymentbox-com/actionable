@@ -104,7 +104,10 @@ module Actionable
   #   free-form);
   # * a nested +Output+ struct with a typed accessor per output field;
   # * a nested +Result+ with +output+ and the convenience-delegation readers,
-  #   which +.run+ returns.
+  #   which +.run+ returns;
+  # * when the action declares failures with +fails+, a +failure_code+ type
+  #   alias listing every code it can fail with: the declared ones, then the
+  #   {Action::GEM_FAILURE_CODES} (decision D20).
   # 
   #   class CreateInvoice < Actionable::Action
   #     input  { required :amount, :integer }
@@ -137,6 +140,12 @@ module Actionable
     # (or +(*untyped)+ free-form), returning the generated +Result+ when an
     # output schema is declared, else +::Actionable::Result+.
     def self.run_signature: (untyped klass) -> String
+
+    # _@param_ `klass` — an action that declares failures
+    # 
+    # _@return_ — the +failure_code+ alias: a union of the declared codes
+    # and the codes the gem emits itself, as Symbol literal types
+    def self.failure_code_alias: (singleton(Actionable::Action) klass) -> String
 
     # _@param_ `field`
     # 
@@ -352,7 +361,8 @@ module Actionable
     # +:input+ threads named parent instance variables into the child's +.run+;
     # +:expose+ limits which of the child's outputs are absorbed back as parent
     # instance variables (default: all). A child failure fails the parent with
-    # the child's code/message/errors and halts the remaining steps.
+    # the child's code, message, errors and metadata, and halts the remaining
+    # steps.
     class Action < Actionable::Steps::Base
       # Run the nested action, threading input in and absorbing output back.
       # 
@@ -470,6 +480,47 @@ module Actionable
     # _@return_ — the stored dispatch
     def self.input_for: ((Symbol | String) discriminator) -> InputDispatch
 
+    # Declare one failure code this action can end with, and the metadata a
+    # failure with that code carries (decision D20).
+    # 
+    # The metadata is neutral: arbitrary keywords the gem stores, attaches to
+    # the {Failure} as +result.metadata+, and shows in {.describe}, but never
+    # interprets. A host app gives the keys their meaning (say, +kind:+ for
+    # how an adapter answers the failure). +message+ is the default message
+    # for a +fail+ that gives none.
+    # 
+    #   fails :refused, 'the card was refused', kind: :rejected
+    #   fails :not_found, kind: :not_found
+    # 
+    # Declarations are inherited and a subclass can add to them; redeclaring a
+    # code replaces its message and metadata. Once an action declares any
+    # code, failing with an undeclared one raises a {DefinitionError} at the
+    # +fail+ call; the {GEM_FAILURE_CODES} are exempt.
+    # 
+    # _@param_ `code` — the failure code
+    # 
+    # _@param_ `message` — the default message for this code
+    # 
+    # _@param_ `metadata` — per-code metadata, passed through
+    # 
+    # _@return_ — {.declared_failures}
+    def self.fails: ((Symbol | String) code, ?String? message, **::Hash[Symbol, Object] metadata) -> ::Hash[Symbol, ::Hash[Symbol, Object]]
+
+    # The failure codes this action declares with {.fails}, each mapped to its
+    # metadata (decision D20). Empty when the action declares none.
+    def self.declared_failures: () -> ::Hash[Symbol, ::Hash[Symbol, Object]]
+
+    # Whether this action may end with a failure of +code+ (decision D20):
+    # always when it declares no failures, otherwise when it declares +code+
+    # or +code+ is one of the {GEM_FAILURE_CODES}. The check behind the
+    # strictness guard, the RSpec stubs and +and_fail+.
+    # 
+    # _@param_ `code`
+    def self.allows_failure_code?: ((Symbol | String) code) -> bool
+
+    # Every {.fails} declaration, keyed by code, as +{message:, metadata:}+.
+    def self.failure_declarations: () -> ::Hash[Symbol, ::Hash[Symbol, Object]]
+
     # Declare a step. The step type is inferred from +target+ (a Symbol or
     # String names an instance method — a {Steps::Method}).
     # 
@@ -562,16 +613,17 @@ module Actionable
     def self.measure_sample_hit?: () -> bool
 
     # A structured, at-a-glance summary of the action — its name, input/output
-    # field metadata, ordered steps (with type), lifecycle hooks, measurement
-    # mode, and transaction config (decision D18). Lets humans and agents
+    # field metadata, ordered steps (with type), declared failures (each code's
+    # message and metadata, decision D20), lifecycle hooks, measurement mode,
+    # and transaction config (decision D18). Lets humans and agents
     # understand an action without reading its source.
     def self.describe: () -> ::Hash[Symbol, Object]
 
     # A human/agent-readable rendering of {.describe} — the same information as
     # a multi-line summary instead of a Hash (decision D18). The input/output
     # field lines reuse FieldStruct's own +Metadata#describe+ (type,
-    # required-ness, and the options each field's type accepts); only hook
-    # sections that have hooks are listed.
+    # required-ness, and the options each field's type accepts); declared
+    # failures and hook sections are listed only when there are any.
     # 
     #   Greet.describe_text
     #   # => "Greet (measure: none)\n  Input: (free-form)\n  ..."
@@ -612,6 +664,10 @@ module Actionable
     # 
     # _@param_ `schema`
     def self.schema_summary: (singleton(FieldStruct::Base)? schema) -> String
+
+    # The +Failures:+ lines for {.describe_text}, one per declared code with its
+    # metadata and default message, or none when nothing is declared.
+    def self.failures_summary: () -> ::Array[String]
 
     # The +input+ value for {.describe}: a fixed schema's field metadata, a
     # discriminated-input descriptor (+discriminated_on+ + +shapes+), or +nil+
@@ -667,6 +723,11 @@ module Actionable
     # Record a {Failure} as the run's result without halting — later steps
     # still run, and the final result reflects the most recent record (decision
     # D4, "last write wins").
+    # 
+    # A code declared with {Action.fails} attaches its metadata to the failure,
+    # and its declared message when +message+ is +nil+ (decision D20). Nothing
+    # but +errors+ follows the message, so an error on any field name, +kind+
+    # included, lands in +errors+.
     # 
     # _@param_ `code` — the error code
     # 
@@ -753,6 +814,34 @@ module Actionable
     # 
     # _@param_ `output` — the skip output payload (see {#skip})
     def skip!: (?Symbol code, ?String? message, **::Hash[Symbol, Object] output) -> void
+
+    # Build a {Failure} for +code+ carrying what {Action.fails} declared for it:
+    # its metadata, and its message when +message+ is +nil+ (decision D20).
+    # 
+    # _@param_ `code` — the error code
+    # 
+    # _@param_ `message` — the message given at the call
+    def declared_failure: ((Symbol | String) code, String? message) -> Failure
+
+    # Fail this run with a nested action's failure and halt (decision D20).
+    # {Steps::Action} calls it instead of +fail!+, so the child's failure
+    # crosses intact: its code, message, every error (on any field name, since
+    # no keyword list is involved), its metadata, and its result class with any
+    # extra attributes a host subclass adds. Under the child's metadata sits
+    # what this action declares for the code, so the parent's declaration fills
+    # in keys the child didn't set. The child's output and history stay on the
+    # child. A declaring parent must declare the child's code too.
+    # 
+    # _@param_ `child` — the nested action's failure
+    def adopt_failure!: (Failure child) -> void
+
+    # Strictness (decision D20): once an action declares any failure, every
+    # code it fails with must be declared, so its declarations are its whole
+    # failure contract. An action that declares none is unchecked, and the
+    # {GEM_FAILURE_CODES} are always allowed.
+    # 
+    # _@param_ `code`
+    def ensure_failure_declared!: (Symbol code) -> void
 
     # Halt the run immediately, keeping whatever result was already recorded
     # (a prior +fail+/+succeed+/+skip+, or auto-{Success} if none). Control flow
@@ -1257,7 +1346,17 @@ module Actionable
     # _@return_ — the error code; defaults to +:error+
     def code: () -> Symbol
 
+    # _@return_ — the metadata the action declared for this
+    # code with {Action.fails} (decision D20), so an adapter can read it off the
+    # result without the action class. Empty when the code isn't declared.
+    # The gem stores and passes it through but never interprets it.
+    def metadata: () -> ::Hash[Symbol, Object]
+
     def failure?: () -> bool
+
+    # A plain-Hash view of the failure: {Result#to_h} plus its declared
+    # +metadata+ (decision D20).
+    def to_h: () -> ::Hash[Symbol, Object]
 
     # Copy another object's FieldStruct-style errors onto this failure's own
     # errors collection. The shared mechanism behind +Failure(:invalid_input)+,

@@ -2,6 +2,61 @@
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-21
+
+Declared failures (decision D20). Additive: an action that declares no
+failures runs as before. Three edges can reach existing code, listed under
+Changed: `metadata` is now a reserved output name, `Failure#to_h` has a
+`metadata` key, and a nested failure no longer passes through an overridden
+`fail`.
+
+### Added
+
+- **`fails(code, message = nil, **metadata)`** declares a failure code the
+  action can end with, plus neutral per-code metadata (arbitrary keywords the
+  gem stores and passes through but never interprets). Declarations are
+  inherited and a subclass can add to them. **`declared_failures`** reads them
+  back as `{code => metadata}`.
+- **`Failure#metadata`** (default `{}`): a `fail`, `fail!`, `fail_with` or
+  `fail_with!` with a declared code carries its metadata, and its declared
+  message when the call gives none. Declaring `:invalid_input` or
+  `:invalid_output` attaches metadata to the failures the gem builds itself.
+  `Failure#to_h` includes `metadata`.
+
+- **`describe` shows declared failures** as `failures: {code => {message:,
+  metadata:}}`, and `describe_text` lists them under `Failures:`.
+- **Strict once declared.** An action that declares at least one failure code
+  may only fail with declared codes; any other `fail` / `fail_with` raises
+  `Actionable::DefinitionError` at the call. Exempt: actions that declare none,
+  and the codes the gem emits itself, `Actionable::Action::GEM_FAILURE_CODES`
+  (`:invalid_input`, `:invalid_output`).
+
+- **`allows_failure_code?(code)`** answers whether an action may fail with a
+  code under those rules.
+- **RSpec support follows the declarations.** On an action that declares
+  failures, `allow_actionable_failure` / `stub_actionable_failure` build a
+  failure carrying the code's declared metadata (and message, when none is
+  given), and they and `and_fail` raise `ArgumentError` for a code the action
+  doesn't declare. `actionable_failure_result` takes `metadata:`.
+
+- **`Actionable::RBS.generate`** emits a `failure_code` type alias for an
+  action that declares failures: the declared codes, then the codes the gem
+  emits itself.
+
+### Changed
+
+- **A nested action's failure crosses intact.** `Steps::Action` used to re-fail
+  the parent with `fail!(code, message, **errors)`, which dropped anything else
+  on the child's failure and let a child error keyed like a keyword of an
+  overridden `fail` (pbx's `kind:`) bind to that keyword. The parent now adopts
+  the child's code, message, every error, its metadata and its result class
+  directly, with the parent's declared metadata for the code filling in keys
+  the child didn't set. A host override of `fail` no longer runs for a
+  propagated failure.
+- `metadata` joins the reserved output field names, since an output field of
+  that name would be shadowed on a failure.
+- `Failure#to_h` gains a `metadata` key (`{}` when the code isn't declared).
+
 ## [1.2.2] - 2026-06-03
 
 ### Tooling

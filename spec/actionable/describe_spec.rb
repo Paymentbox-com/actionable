@@ -82,6 +82,22 @@ RSpec.describe 'Actionable::Action.describe' do
 
     expect(parent.describe[:steps].map { |s| s[:type] }).to eq(%i[action case])
   end
+
+  it 'reports declared failures with their message and metadata' do
+    klass = Class.new(Actionable::Action) do
+      fails :refused, 'the card was refused', kind: :rejected
+      fails :not_found, kind: :not_found
+    end
+
+    expect(klass.describe[:failures]).to eq(
+      refused: {message: 'the card was refused', metadata: {kind: :rejected}},
+      not_found: {message: nil, metadata: {kind: :not_found}}
+    )
+  end
+
+  it 'reports no failures for an action that declares none' do
+    expect(described[:failures]).to eq({})
+  end
 end
 
 RSpec.describe 'Actionable::Action.describe_text' do
@@ -117,5 +133,20 @@ RSpec.describe 'Actionable::Action.describe_text' do
     summary = klass.describe_text
     expect(summary).to include('Input: (free-form)')
     expect(summary).to include('Output: (free-form)')
+  end
+
+  it 'lists declared failures with their metadata and message' do
+    klass = Class.new(Actionable::Action) do
+      fails :refused, 'the card was refused', kind: :rejected
+      fails :gone
+    end
+
+    expect(klass.describe_text).to include(
+      "  Failures:\n    - refused (kind: :rejected): the card was refused\n    - gone"
+    )
+  end
+
+  it 'omits the failures section when none are declared' do
+    expect(text).not_to include('Failures:')
   end
 end

@@ -40,7 +40,9 @@ module Actionable
         configure(:success, message, &block)
       end
 
-      # Expect a failed result, optionally matching +code+ and +message+.
+      # Expect a failed result, optionally matching +code+ and +message+. On an
+      # action that declares failures, a Symbol +code+ it doesn't declare raises
+      # +ArgumentError+ (decision D20).
       # @return [self]
       def and_fail(code = nil, message = nil, &block)
         @expected_code = code
@@ -66,6 +68,7 @@ module Actionable
       # @return [Boolean]
       def matches?(action_class)
         @action_class = action_class
+        ensure_code_declared!
         perform
         primary_match? && block_match?
       end
@@ -74,6 +77,7 @@ module Actionable
       # @return [Boolean]
       def does_not_match?(action_class)
         @action_class = action_class
+        ensure_code_declared!
         perform
         !primary_match?
       end
@@ -100,6 +104,16 @@ module Actionable
         @expected_message = message
         @block = block if block
         self
+      end
+
+      # An +and_fail+ code the action could never end with is a broken spec,
+      # not a failed expectation, so it raises rather than not matching.
+      def ensure_code_declared!
+        return unless @outcome == :failure && @expected_code.is_a?(Symbol)
+        return unless @action_class.respond_to?(:allows_failure_code?)
+        return if @action_class.allows_failure_code?(@expected_code)
+
+        raise ArgumentError, Actionable::RSpec.undeclared_code_message(@action_class, @expected_code)
       end
 
       def perform

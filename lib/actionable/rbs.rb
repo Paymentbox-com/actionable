@@ -11,7 +11,10 @@ module Actionable
   #   free-form);
   # * a nested +Output+ struct with a typed accessor per output field;
   # * a nested +Result+ with +output+ and the convenience-delegation readers,
-  #   which +.run+ returns.
+  #   which +.run+ returns;
+  # * when the action declares failures with +fails+, a +failure_code+ type
+  #   alias listing every code it can fail with: the declared ones, then the
+  #   {Action::GEM_FAILURE_CODES} (decision D20).
   #
   #   class CreateInvoice < Actionable::Action
   #     input  { required :amount, :integer }
@@ -52,6 +55,7 @@ module Actionable
     def self.class_block(klass)
       simple = klass.name.split('::').last
       body = ["def self.run: #{run_signature(klass)}"]
+      body.unshift(failure_code_alias(klass), '') unless klass.declared_failures.empty?
       if (schema = klass.output_schema)
         body << ''
         body << output_block(schema)
@@ -72,6 +76,15 @@ module Actionable
       "(#{params}) -> #{return_type}"
     end
     private_class_method :run_signature
+
+    # @param klass [Class<Actionable::Action>] an action that declares failures
+    # @return [String] the +failure_code+ alias: a union of the declared codes
+    #   and the codes the gem emits itself, as Symbol literal types
+    def self.failure_code_alias(klass)
+      codes = (klass.declared_failures.keys + Actionable::Action::GEM_FAILURE_CODES).uniq
+      "type failure_code = #{codes.map(&:inspect).join(" | ")}"
+    end
+    private_class_method :failure_code_alias
 
     # @param field [FieldStruct::Field]
     # @return [String] +name: Type+ (required) or +?name: Type+ (optional). The

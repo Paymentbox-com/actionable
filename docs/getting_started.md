@@ -411,7 +411,7 @@ failed.errors.full_messages # => ["First name is required"]
    `Failure(:invalid_input)` before step one — put "missing argument" handling in
    the `input` schema, not a guard step.
 5. **Reserved output names.** `code` / `message` / `output` / `history` /
-   `errors` / `result` / `input` can't be output fields (they'd shadow the
+   `errors` / `metadata` / `result` / `input` can't be output fields (they'd shadow the
    result). Rename them.
 6. **Exceptions aren't failures.** A raised `StandardError` propagates to the
    caller; it does not become a `Failure`. Use `fail`/`fail!` for expected error

@@ -57,9 +57,16 @@ result.invoice        # => same, via convenience delegation
    **output)` mirrors `succeed` (captured best-effort, unvalidated), so an
    idempotent hit can return the existing record's id. Don't model "already done"
    as a `fail`.
+7. **Declared failures are strict.** Once an action says `fails :refused, kind:
+   :rejected`, every code it fails with must be declared, or `fail` raises
+   `DefinitionError`. `:invalid_input` / `:invalid_output` are exempt. The
+   metadata after the message is the app's, read back as `result.metadata`;
+   `fail`'s keywords are only ever errors.
 
 ## Fast paths
 
+- Declare what an action can fail with: `fails :not_found, kind: :not_found`;
+  read it back with `Action.declared_failures` or off the result as `result.metadata`.
 - See an action's contract without reading source: `pp CreateInvoice.describe`
   (or `CreateInvoice.describe_text` for a readable summary).
 - Run over a collection: `Action.run_each(items) { |i| {…} }` → a `BatchResult`
