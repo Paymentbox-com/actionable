@@ -104,8 +104,8 @@ module Actionable
       end
 
       # The outcomes +action_class+ can end with, as outcome keys:
-      # +"success"+, +"failure:<code>"+ for each declared failure and
-      # +"skipped:<code>"+ for each declared skip, plus any configured
+      # +"success"+, +"failure:<code>"+ for each declared failure (D20) and
+      # +"skipped:<code>"+ for each declared skip (D21), plus any configured
       # {.gem_codes} that apply. Read from the declarations at run time.
       #
       # @param action_class [Class<Actionable::Action>]
@@ -113,11 +113,7 @@ module Actionable
       def expected_outcomes(action_class)
         keys = ['success']
         keys.concat(action_class.declared_failures.keys.map { |code| "failure:#{code}" })
-        # +declared_skips+ is newer than +declared_failures+; on a gem without
-        # it, an action declares no skips.
-        if action_class.respond_to?(:declared_skips)
-          keys.concat(action_class.declared_skips.keys.map { |code| "skipped:#{code}" })
-        end
+        keys.concat(action_class.declared_skips.keys.map { |code| "skipped:#{code}" })
         gem_codes.each { |code| keys << "failure:#{code}" if gem_code_applies?(action_class, code) }
         keys.uniq
       end

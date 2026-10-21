@@ -154,8 +154,8 @@ RSpec.describe Actionable::Coverage do
       expect(described_class.expected_outcomes(charge)).to eq(%w[success failure:refused])
     end
 
-    it 'expects every declared skip on an action that declares skips' do
-      charge.define_singleton_method(:declared_skips) { {duplicate: {}} }
+    it 'expects every declared skip' do
+      charge.skips :duplicate
 
       expect(described_class.expected_outcomes(charge)).to eq(%w[success failure:refused skipped:duplicate])
     end
