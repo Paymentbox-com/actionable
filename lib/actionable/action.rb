@@ -219,14 +219,25 @@ module Actionable
         skip_declarations.dig(code.to_sym, :output_schema)
       end
 
+      # The gem result class each outcome {Result#status} stands for, which an
+      # action with typed outcomes subclasses once per outcome (decision D23).
+      OUTCOME_BASES = {success: Success, failure: Failure, skipped: Skipped}.freeze
+
       # Turn typed outcomes on (or off) for this action and its descendants
       # (decision D23). With it on, a skip or failure whose code declares no
-      # output schema carries an empty output instead of a best-effort capture.
+      # output schema carries an empty output instead of a best-effort capture,
+      # and {.run} returns the action's own result classes: +Success+,
+      # +Failure+ and +Skipped+ defined inside it, each a subclass of the gem
+      # class (or of the parent action's own, for a subclass).
       #
       # @param enabled [Boolean]
+      # @raise [DefinitionError] when the action already has a constant of its
+      #   own named +Success+, +Failure+ or +Skipped+
       # @return [Boolean] the new setting
       def typed_outcomes(enabled: true)
         @typed_outcomes = enabled ? true : false
+        define_outcome_classes if @typed_outcomes
+        @typed_outcomes
       end
 
       # @return [Boolean] whether typed outcomes are on (decision D23)
@@ -461,21 +472,12 @@ module Actionable
       # (decision D7). Without an input schema, the arguments are forwarded
       # verbatim to the action's constructor (the free-form path).
       #
+      # Under typed outcomes the result is an instance of the action's own
+      # result class for its outcome (decision D23).
+      #
       # @return [Result] the run's {Success} or {Failure}
       def run(*args, **kwargs)
-        if input_schema || input_dispatch
-          input = build_input(args, kwargs)
-          return input if input.is_a?(Failure) # unmatched discriminator
-          return invalid_input_failure(input) unless input.valid?
-
-          instance = new
-          instance.instance_variable_set(:@input, input)
-        else
-          instance = new(*args, **kwargs)
-        end
-
-        ensure_steps_implemented!(instance)
-        Runner.new(instance).run
+        typed_result(run_untyped(args, kwargs))
       end
 
       # Run the action once per item in +enumerable+, collecting the per-item
@@ -509,6 +511,77 @@ module Actionable
       end
 
       private
+
+      # The body of {.run}: build the input, then run the steps.
+      #
+      # @param args [Array<Object>]
+      # @param kwargs [Hash{Symbol=>Object}]
+      # @return [Result]
+      def run_untyped(args, kwargs)
+        if input_schema || input_dispatch
+          input = build_input(args, kwargs)
+          return input if input.is_a?(Failure) # unmatched discriminator
+          return invalid_input_failure(input) unless input.valid?
+
+          instance = new
+          instance.instance_variable_set(:@input, input)
+        else
+          instance = new(*args, **kwargs)
+        end
+
+        ensure_steps_implemented!(instance)
+        Runner.new(instance).run
+      end
+
+      # Define this action's own +Success+, +Failure+ and +Skipped+ (decision
+      # D23), each subclassing the parent action's own when it has them, else
+      # the gem class. Defined once; a later call is a no-op.
+      #
+      # @raise [DefinitionError] when the action has its own constant by one
+      #   of those names
+      # @return [Hash{Symbol=>Class<Result>}] status => result class
+      def define_outcome_classes
+        @define_outcome_classes ||= OUTCOME_BASES.to_h do |status, base|
+          [status, define_outcome_class(base.name.split('::').last.to_sym, status, base)]
+        end
+      end
+
+      # @param const [Symbol] the constant to define
+      # @param status [Symbol] the outcome {Result#status}
+      # @param base [Class<Result>] the gem result class
+      # @return [Class<Result>]
+      def define_outcome_class(const, status, base)
+        if const_defined?(const, false)
+          raise DefinitionError,
+            "#{name || "action"} has its own #{const}, which typed outcomes would replace; rename it"
+        end
+
+        inherited_class = superclass.instance_variable_get(:@define_outcome_classes)&.fetch(status)
+        action = self
+        outcome_class = Class.new(inherited_class || base)
+        outcome_class.define_singleton_method(:outcome_of) { action }
+        const_set(const, outcome_class)
+      end
+
+      # The result as this action's own result class for its outcome, under
+      # typed outcomes (decision D23). A result already of that class, or of a
+      # host's own result subclass, is returned as it is; a gem result, or
+      # another action's own (a nested failure that crossed), is rebuilt with
+      # its attributes and errors.
+      #
+      # @param result [Result]
+      # @return [Result]
+      def typed_result(result)
+        return result unless typed_outcomes?
+
+        target = define_outcome_classes.fetch(result.status)
+        return result if result.instance_of?(target)
+        return result unless OUTCOME_BASES.value?(result.class) || result.class.respond_to?(:outcome_of)
+
+        converted = target.new(**result.attributes)
+        result.errors.to_h.each { |field, messages| Array(messages).each { |m| converted.errors.add(field, m) } }
+        converted
+      end
 
       # Build an output schema from a FieldStruct DSL block, refusing a field
       # named like a result attribute (decisions D6/D18/D23).
@@ -701,6 +774,7 @@ module Actionable
         subclass.instance_variable_set(:@measure, measure)
         subclass.instance_variable_set(:@measure_rate, measure_rate)
         subclass.instance_variable_set(:@typed_outcomes, typed_outcomes?)
+        subclass.__send__(:define_outcome_classes) if typed_outcomes?
       end
     end
 

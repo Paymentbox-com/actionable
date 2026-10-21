@@ -201,3 +201,102 @@ RSpec.describe 'typed outcome output (decision D23)' do
     end
   end
 end
+
+# Named, so the generated result classes have names to check.
+class TypedOutcomeSample < Actionable::Action
+  typed_outcomes
+  fails :refused
+  skips :idle
+  input { required :mode, :symbol }
+  step :decide
+
+  def decide
+    case input.mode
+    when :refuse then fail!(:refused, 'no', card: 'declined')
+    when :idle then skip!(:idle)
+    end
+  end
+end
+
+class TypedOutcomeChild < TypedOutcomeSample
+end
+
+RSpec.describe 'typed outcome result classes (decision D23)' do
+  it 'names one result class per outcome inside the action' do
+    expect([TypedOutcomeSample::Success, TypedOutcomeSample::Failure, TypedOutcomeSample::Skipped].map(&:name))
+      .to eq(%w[TypedOutcomeSample::Success TypedOutcomeSample::Failure TypedOutcomeSample::Skipped])
+  end
+
+  it 'makes each one the gem result class it stands for' do
+    expect([TypedOutcomeSample::Success.superclass, TypedOutcomeSample::Failure.superclass, TypedOutcomeSample::Skipped.superclass])
+      .to eq([Actionable::Success, Actionable::Failure, Actionable::Skipped])
+  end
+
+  it 'returns a success as the action’s own Success' do
+    expect(TypedOutcomeSample.run(mode: :go)).to be_an_instance_of(TypedOutcomeSample::Success)
+  end
+
+  it 'returns a skip as the action’s own Skipped' do
+    expect(TypedOutcomeSample.run(mode: :idle)).to be_an_instance_of(TypedOutcomeSample::Skipped)
+  end
+
+  it 'returns a failure as the action’s own Failure, with its message and errors intact' do
+    result = TypedOutcomeSample.run(mode: :refuse)
+
+    expect([result.class, result.code, result.message, result.errors.to_h])
+      .to eq([TypedOutcomeSample::Failure, :refused, 'no', {card: ['declined']}])
+  end
+
+  it 'returns an input failure as the action’s own Failure' do
+    expect(TypedOutcomeSample.run(mode: nil)).to be_an_instance_of(TypedOutcomeSample::Failure)
+  end
+
+  it 'gives a subclass its own classes, each a kind of its parent’s' do
+    expect([TypedOutcomeChild::Success.superclass, TypedOutcomeChild.run(mode: :go).class])
+      .to eq([TypedOutcomeSample::Success, TypedOutcomeChild::Success])
+  end
+
+  it 'defines none for an action without typed outcomes' do
+    expect(Class.new(Actionable::Action).const_defined?(:Success, false)).to be(false)
+  end
+
+  it 'returns the gem classes for an action without typed outcomes' do
+    plain = Class.new(Actionable::Action) do
+      step :go
+      def go = nil
+    end
+
+    expect(plain.run).to be_an_instance_of(Actionable::Success)
+  end
+
+  it 'refuses an action whose own constant is already named like one' do
+    clashing = Class.new(Actionable::Action) { const_set(:Failure, Class.new) }
+
+    expect { clashing.typed_outcomes }.to raise_error(Actionable::DefinitionError, /Failure/)
+  end
+
+  it 'turns a typed child’s failure into the parent’s own Failure when it crosses' do
+    parent = Class.new(Actionable::Action) do
+      typed_outcomes
+      fails :refused, kind: :rejected
+      step :choose
+      step TypedOutcomeSample, input: [:mode]
+      def choose = @mode = :refuse
+    end
+
+    result = parent.run
+
+    expect([result.class, result.code, result.metadata]).to eq([parent::Failure, :refused, {kind: :rejected}])
+  end
+
+  it 'leaves a host’s own result subclass as it is' do
+    host_failure = Class.new(Actionable::Failure)
+    action = Class.new(Actionable::Action) do
+      typed_outcomes
+      step :refuse
+      define_method(:refuse) { @result = host_failure.new(code: :refused) }
+    end
+
+    expect(action.run).to be_an_instance_of(host_failure)
+  end
+end
