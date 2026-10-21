@@ -677,6 +677,33 @@ module Actionable
       Failure.new(code: code, message: message || declaration[:message], metadata: declaration[:metadata])
     end
 
+    # Fail this run with a nested action's failure and halt (decision D20).
+    # {Steps::Action} calls it instead of +fail!+, so the child's failure
+    # crosses intact: its code, message, every error (on any field name, since
+    # no keyword list is involved), its metadata, and its result class with any
+    # extra attributes a host subclass adds. Under the child's metadata sits
+    # what this action declares for the code, so the parent's declaration fills
+    # in keys the child didn't set. The child's output and history stay on the
+    # child. A declaring parent must declare the child's code too.
+    #
+    # @param child [Failure] the nested action's failure
+    # @raise [DefinitionError] when this action declares failures but not the
+    #   child's code
+    # @return [void]
+    def adopt_failure!(child)
+      declarations = self.class.failure_declarations
+      ensure_failure_declared!(child.code, declarations)
+      declaration = declarations.fetch(child.code, {message: nil, metadata: {}})
+      failure_class = child.is_a?(Failure) ? child.class : Failure
+      attributes = child.attributes.except(:output, :history)
+      @result = failure_class.new(
+        **attributes,
+        message: child.message || declaration[:message],
+        metadata: declaration[:metadata].merge(attributes.fetch(:metadata, {}))
+      ).absorb_errors_from(child)
+      halt!
+    end
+
     # Strictness (decision D20): once an action declares any failure, every
     # code it fails with must be declared, so its declarations are its whole
     # failure contract. An action that declares none is unchecked, and the

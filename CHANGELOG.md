@@ -26,6 +26,14 @@ action that declares no failures behaves exactly as before.
 
 ### Changed
 
+- **A nested action's failure crosses intact.** `Steps::Action` used to re-fail
+  the parent with `fail!(code, message, **errors)`, which dropped anything else
+  on the child's failure and let a child error keyed like a keyword of an
+  overridden `fail` (pbx's `kind:`) bind to that keyword. The parent now adopts
+  the child's code, message, every error, its metadata and its result class
+  directly, with the parent's declared metadata for the code filling in keys
+  the child didn't set. A host override of `fail` no longer runs for a
+  propagated failure.
 - `metadata` joins the reserved output field names, since an output field of
   that name would be shadowed on a failure.
 

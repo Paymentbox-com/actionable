@@ -352,7 +352,8 @@ module Actionable
     # +:input+ threads named parent instance variables into the child's +.run+;
     # +:expose+ limits which of the child's outputs are absorbed back as parent
     # instance variables (default: all). A child failure fails the parent with
-    # the child's code/message/errors and halts the remaining steps.
+    # the child's code, message, errors and metadata, and halts the remaining
+    # steps.
     class Action < Actionable::Steps::Base
       # Run the nested action, threading input in and absorbing output back.
       # 
@@ -799,6 +800,18 @@ module Actionable
     # 
     # _@param_ `message` — the message given at the call
     def declared_failure: ((Symbol | String) code, String? message) -> Failure
+
+    # Fail this run with a nested action's failure and halt (decision D20).
+    # {Steps::Action} calls it instead of +fail!+, so the child's failure
+    # crosses intact: its code, message, every error (on any field name, since
+    # no keyword list is involved), its metadata, and its result class with any
+    # extra attributes a host subclass adds. Under the child's metadata sits
+    # what this action declares for the code, so the parent's declaration fills
+    # in keys the child didn't set. The child's output and history stay on the
+    # child. A declaring parent must declare the child's code too.
+    # 
+    # _@param_ `child` — the nested action's failure
+    def adopt_failure!: (Failure child) -> void
 
     # Strictness (decision D20): once an action declares any failure, every
     # code it fails with must be declared, so its declarations are its whole

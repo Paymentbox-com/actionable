@@ -333,8 +333,14 @@ step Notify, input: %i[invoice], expose: %i[receipt]
 
 `:input` names parent ivars to pass to the child's `.run`; `:expose` limits which
 child outputs are absorbed back as parent ivars (default: all). A child failure
-fails the parent (with the child's code/message/errors) and halts; a child skip
-continues the parent like a success.
+fails the parent and halts; a child skip continues the parent like a success.
+
+The child's failure crosses intact: its code, message, every error (whatever the
+field is called), its `metadata`, and its result class. It doesn't go through
+the parent's `fail`, so an override of `fail` in a host base class doesn't see
+it. The parent's own declaration for that code fills in metadata keys the child
+didn't set. A parent that declares failures must declare the codes its children
+can fail with, since they become its own.
 
 ## Case steps
 
