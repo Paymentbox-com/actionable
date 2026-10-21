@@ -809,14 +809,21 @@ module Actionable
     # but +errors+ follows the message, so an error on any field name, +kind+
     # included, lands in +errors+.
     #
+    # Under typed outcomes alone, +output:+ is reserved: it is the failure's
+    # output, held to the schema its code declares (decision D23).
+    #
+    #   fail!(:invalid, 'check the form', output: {form_record: record}, name: 'is blank')
+    #
     # @param code [Symbol] the error code
     # @param message [String, nil] human-readable description
     # @param errors [Hash{Symbol=>String, Array<String>}] field => message(s)
     #   added to the result's errors collection
     # @return [false] so a step can branch on the call
     def fail(code, message = nil, **errors)
+      output = self.class.typed_outcomes? ? errors.delete(:output) : nil
       failure = declared_failure(code, message)
       errors.each { |field, messages| Array(messages).each { |m| failure.errors.add(field, m) } }
+      failure.output = output unless output.nil?
       @result = failure
       false
     end
@@ -833,9 +840,18 @@ module Actionable
     #   collection (typically a +FieldStruct::Base+ instance)
     # @param code [Symbol] the error code; defaults to +:invalid+
     # @param message [String, nil] human-readable description
+    # @param output [Hash{Symbol=>Object}, nil] the failure's output, held to
+    #   the schema its code declares; typed outcomes only (decision D23)
+    # @raise [ArgumentError] when +output+ is given without typed outcomes
     # @return [false] so a step can branch on the call
-    def fail_with(source, code: :invalid, message: nil)
-      @result = declared_failure(code, message).absorb_errors_from(source)
+    def fail_with(source, code: :invalid, message: nil, output: nil)
+      unless output.nil? || self.class.typed_outcomes?
+        raise ArgumentError, 'fail_with takes output: only under typed_outcomes (decision D23)'
+      end
+
+      failure = declared_failure(code, message).absorb_errors_from(source)
+      failure.output = output unless output.nil?
+      @result = failure
       false
     end
 
@@ -845,9 +861,10 @@ module Actionable
     # @param source [#errors] see {#fail_with}
     # @param code [Symbol] the error code; defaults to +:invalid+
     # @param message [String, nil] human-readable description
+    # @param output [Hash{Symbol=>Object}, nil] see {#fail_with}
     # @return [void]
-    def fail_with!(source, code: :invalid, message: nil)
-      fail_with(source, code: code, message: message)
+    def fail_with!(source, code: :invalid, message: nil, output: nil)
+      fail_with(source, code: code, message: message, output: output)
       halt!
     end
 
@@ -946,6 +963,11 @@ module Actionable
     # in keys the child didn't set. The child's output and history stay on the
     # child. A declaring parent must declare the child's code too.
     #
+    # Under typed outcomes the child's output crosses as this action's failure
+    # output, so it is held to the schema this action declares for the code,
+    # not the child's (decision D23), and the failure becomes this action's own
+    # +Failure+ when {.run} returns.
+    #
     # @param child [Failure] the nested action's failure
     # @raise [DefinitionError] when this action declares failures but not the
     #   child's code
@@ -960,7 +982,18 @@ module Actionable
         message: child.message || declaration[:message],
         metadata: declaration[:metadata].merge(attributes.fetch(:metadata, {}))
       ).absorb_errors_from(child)
+      @result.output = crossing_output(child.output) if self.class.typed_outcomes?
       halt!
+    end
+
+    # @param output [FieldStruct::Base, Hash, Object] a nested failure's output
+    # @return [Hash{Symbol=>Object}] its fields, for this action's schema
+    def crossing_output(output)
+      case output
+      when FieldStruct::Base then output.attributes
+      when Hash then output
+      else {}
+      end
     end
 
     # Strictness (decision D20): once an action declares any failure, every

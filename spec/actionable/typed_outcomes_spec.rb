@@ -300,3 +300,124 @@ RSpec.describe 'typed outcome result classes (decision D23)' do
     expect(action.run).to be_an_instance_of(host_failure)
   end
 end
+
+RSpec.describe 'typed failure output (decision D23)' do
+  let(:form) { Struct.new(:name) }
+
+  def failing(typed: true, &body)
+    Class.new(Actionable::Action) do
+      typed_outcomes if typed
+      fails(:invalid) { required :form_record, :value }
+      class_eval(&body)
+    end
+  end
+
+  it 'takes its output from the output: keyword' do
+    record = form.new('x')
+    action = failing do
+      step(:check)
+      define_method(:check) { fail!(:invalid, 'bad', output: {form_record: record}, name: 'blank') }
+    end
+
+    result = action.run
+
+    expect([result.code, result.form_record, result.errors.to_h]).to eq([:invalid, record, {name: ['blank']}])
+  end
+
+  it 'fails as invalid_output when the output breaks the code’s schema' do
+    action = failing do
+      step(:check)
+      def check = fail!(:invalid)
+    end
+
+    expect(action.run.code).to eq(:invalid_output)
+  end
+
+  it 'takes output: on fail_with too' do
+    record = form.new('x')
+    action = failing do
+      step(:check)
+      define_method(:check) { fail_with!(Actionable::Success.new, output: {form_record: record}) }
+    end
+
+    expect(action.run.form_record).to eq(record)
+  end
+
+  it 'leaves output: an ordinary error on fail when typed outcomes are off' do
+    action = Class.new(Actionable::Action) do
+      step(:check)
+      def check = fail!(:invalid, nil, output: 'is wrong')
+    end
+
+    expect(action.run.errors.to_h).to eq(output: ['is wrong'])
+  end
+
+  it 'refuses output: on fail_with when typed outcomes are off' do
+    action = Class.new(Actionable::Action) do
+      step(:check)
+      def check = fail_with!(Actionable::Success.new, output: {})
+    end
+
+    expect { action.run }.to raise_error(ArgumentError, /typed_outcomes/)
+  end
+
+  describe 'a nested failure that crosses' do
+    let(:child) do
+      Class.new(Actionable::Action) do
+        typed_outcomes
+        fails(:refused) do
+          required :reason, :string
+          optional :extra, :integer
+        end
+        step(:refuse)
+        def refuse = fail!(:refused, nil, output: {reason: 'card', extra: 1})
+      end
+    end
+
+    it 'is held to the parent’s schema for its code, not the child’s' do
+      inner = child
+      parent = Class.new(Actionable::Action) do
+        typed_outcomes
+        fails(:refused) { required :reason, :string }
+        step inner
+      end
+
+      result = parent.run
+
+      expect([result.output.class, result.reason]).to eq([parent.failure_output_schema(:refused), 'card'])
+    end
+
+    it 'fails the parent as invalid_output when it breaks the parent’s schema' do
+      inner = child
+      parent = Class.new(Actionable::Action) do
+        typed_outcomes
+        fails(:refused) { required :card_id, :integer }
+        step inner
+      end
+
+      expect(parent.run.code).to eq(:invalid_output)
+    end
+
+    it 'carries no output into a parent whose code declares no schema' do
+      inner = child
+      parent = Class.new(Actionable::Action) do
+        typed_outcomes
+        fails :refused
+        step inner
+      end
+
+      expect(parent.run.output).to eq({})
+    end
+
+    it 'still needs the parent to declare its code' do
+      inner = child
+      parent = Class.new(Actionable::Action) do
+        typed_outcomes
+        fails :other
+        step inner
+      end
+
+      expect { parent.run }.to raise_error(Actionable::DefinitionError, /refused/)
+    end
+  end
+end
