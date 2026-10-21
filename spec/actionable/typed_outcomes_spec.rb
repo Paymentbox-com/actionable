@@ -162,8 +162,22 @@ RSpec.describe 'typed outcome output (decision D23)' do
       end
     end
 
-    it 'carries an empty output when typed outcomes are on' do
-      expect(action(&body).run.output).to eq({})
+    it 'refuses keywords it has no schema for when typed outcomes are on' do
+      expect { action(&body).run }.to raise_error(Actionable::DefinitionError, /:idle.*do … end/m)
+    end
+
+    it 'carries an empty output when typed outcomes are on and it is given none' do
+      bare = action do
+        skips :idle
+        step :idle
+
+        def idle
+          @id = 5
+          skip!(:idle)
+        end
+      end
+
+      expect(bare.run.output).to eq({})
     end
 
     it 'still captures into the success schema when they are off' do
@@ -462,5 +476,70 @@ RSpec.describe 'typed outcome adoption (decision D23)' do
     parent = Class.new(Actionable::Action) { step inner }
 
     expect(parent.run).to be_an_instance_of(Actionable::Failure)
+  end
+end
+
+RSpec.describe 'typed outcome keywords (decision D23)' do
+  def typed(&body)
+    Class.new(Actionable::Action) do
+      typed_outcomes
+      fails :refused
+      fails(:invalid) { optional :field, :string }
+      class_eval(&body)
+    end
+  end
+
+  it 'refuses output: on fail for a code with no schema, naming the code' do
+    action = typed do
+      step(:refuse)
+      def refuse = fail!(:refused, nil, output: {card: 1})
+    end
+
+    expect { action.run }.to raise_error(Actionable::DefinitionError, /:refused.*do … end/m)
+  end
+
+  it 'refuses output: on fail_with for a code with no schema' do
+    action = typed do
+      step(:refuse)
+      def refuse = fail_with!(Actionable::Success.new, code: :refused, output: {card: 1})
+    end
+
+    expect { action.run }.to raise_error(Actionable::DefinitionError, /:refused/)
+  end
+
+  it 'accepts output: for a code the gem builds, which keeps its output' do
+    action = typed do
+      step(:refuse)
+      def refuse = fail!(:invalid_output, nil, output: {card: 1})
+    end
+
+    expect(action.run.output).to eq(card: 1)
+  end
+
+  it 'refuses an output: that is not a Hash or a struct, such as an old error message' do
+    action = typed do
+      step(:refuse)
+      def refuse = fail!(:invalid, nil, output: 'is wrong')
+    end
+
+    expect { action.run }.to raise_error(ArgumentError, /output:.*Hash/)
+  end
+
+  it 'refuses a non-Hash output: on fail_with too' do
+    action = typed do
+      step(:refuse)
+      def refuse = fail_with!(Actionable::Success.new, output: 'is wrong')
+    end
+
+    expect { action.run }.to raise_error(ArgumentError, /output:.*Hash/)
+  end
+
+  it 'accepts a struct as output:' do
+    action = typed do
+      step(:refuse)
+      def refuse = fail!(:invalid, nil, output: self.class.failure_output_schema(:invalid).new(field: 'id'))
+    end
+
+    expect(action.run.output.field).to eq('id')
   end
 end

@@ -825,6 +825,7 @@ module Actionable
     def fail(code, message = nil, **errors)
       output = self.class.typed_outcomes? ? errors.delete(:output) : nil
       failure = declared_failure(code, message)
+      ensure_output_declared!(:fails, failure.code, output)
       errors.each { |field, messages| Array(messages).each { |m| failure.errors.add(field, m) } }
       failure.output = output unless output.nil?
       @result = failure
@@ -853,6 +854,7 @@ module Actionable
       end
 
       failure = declared_failure(code, message).absorb_errors_from(source)
+      ensure_output_declared!(:fails, failure.code, output)
       failure.output = output unless output.nil?
       @result = failure
       false
@@ -923,6 +925,7 @@ module Actionable
     def skip(code = :skipped, message = nil, **output)
       code = code.to_sym
       ensure_skip_declared!(code)
+      ensure_output_declared!(:skips, code, output) if self.class.typed_outcomes?
       declaration = self.class.skip_declarations.fetch(code, {message: nil, metadata: {}})
       @result = Skipped.new(
         code: code, message: message || declaration[:message], output: output, metadata: declaration[:metadata]
@@ -1036,6 +1039,36 @@ module Actionable
       raise DefinitionError,
         "#{self.class.name || "action"} fails with #{code.inspect}, which it does not declare; " \
         "declare it with `fails #{code.inspect}` (declared: #{declared})"
+    end
+
+    # Under typed outcomes, output given for a skip or failure must have a
+    # schema to go into (decision D23): output for a code with none would be
+    # dropped, so it is refused instead. The failures the gem builds keep
+    # their output, so they need none. +output:+ itself must be a Hash or a
+    # struct, which catches an old +output:+ error message.
+    #
+    # @param verb [:fails, :skips] the declaration that would add the schema
+    # @param code [Symbol]
+    # @param output [Hash, FieldStruct::Base, nil] the output given, if any
+    # @raise [ArgumentError] when +output+ is neither a Hash nor a struct
+    # @raise [DefinitionError] when +output+ is given for a code with no schema
+    # @return [void]
+    def ensure_output_declared!(verb, code, output)
+      return if output.nil?
+      unless output.is_a?(Hash) || output.is_a?(FieldStruct::Base)
+        raise ArgumentError,
+          "output: must be a Hash or a FieldStruct, got #{output.class}: under typed_outcomes it is the " \
+          'outcome\'s output, not an error'
+      end
+      return if output.is_a?(Hash) && output.empty?
+
+      klass = self.class
+      schema = verb == :skips ? klass.skip_output_schema(code) : klass.failure_output_schema(code)
+      return if schema || (verb == :fails && GEM_FAILURE_CODES.include?(code))
+
+      raise DefinitionError,
+        "#{klass.name || "action"} #{verb} with #{code.inspect} and output, but " \
+        "#{code.inspect} declares no output schema; declare one with `#{verb} #{code.inspect} do … end`"
     end
 
     # Strictness (decision D21): once an action declares any skip, every code
