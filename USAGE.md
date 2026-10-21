@@ -147,6 +147,35 @@ and a subclass can add more. Declaring `:invalid_input` or `:invalid_output`
 attaches that metadata to the failures the gem builds itself. A failure whose
 code isn't declared has `metadata == {}`, and `Failure#to_h` includes it.
 
+**Strict once declared.** An action that declares at least one code may only fail
+with codes it declares. Any other `fail` / `fail!` / `fail_with` / `fail_with!`
+raises `Actionable::DefinitionError` from the call itself, naming the code and
+the declared list:
+
+<!-- doctest -->
+```ruby
+class Refund < Actionable::Action
+  fails :refused, kind: :rejected
+  step :go
+  def go = fail!(:timeout)
+end
+
+begin
+  Refund.run
+rescue Actionable::DefinitionError => e
+  e.message.include?('fails with :timeout, which it does not declare') # => true
+end
+```
+
+Two cases stay unchecked, so existing actions keep working unchanged:
+
+- an action that declares no failures fails with any code, as before;
+- the codes the gem emits itself, `Actionable::Action::GEM_FAILURE_CODES`
+  (`:invalid_input` and `:invalid_output`), are always allowed.
+
+`fail_with`'s default code `:invalid` is not exempt: the action writes that
+`fail_with`, so a declaring action declares `:invalid` or passes its own `code:`.
+
 ## Output
 
 `output do … end` declares a typed schema. Matching ivars are captured at the
@@ -449,6 +478,9 @@ cryptic `NoMethodError`:
   `errors` / `metadata`) or a reserved instance variable (`result` / `input`) raises
   immediately. Pick another name. (Input fields aren't affected — they're read
   via `input.x`.)
+- **Undeclared failure codes (at the `fail` call):** once an action declares a
+  failure with `fails`, failing with a code it doesn't declare raises. See
+  [Declared failures](#declared-failures).
 - **Missing step methods (at run start):** every method a step needs (method
   steps, case value sources and method branch targets, hook steps) must be
   implemented, or the run raises a `DefinitionError` naming the action and the

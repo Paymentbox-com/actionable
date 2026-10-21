@@ -483,7 +483,9 @@ module Actionable
     #   fails :not_found, kind: :not_found
     # 
     # Declarations are inherited and a subclass can add to them; redeclaring a
-    # code replaces its message and metadata.
+    # code replaces its message and metadata. Once an action declares any
+    # code, failing with an undeclared one raises a {DefinitionError} at the
+    # +fail+ call; the {GEM_FAILURE_CODES} are exempt.
     # 
     # _@param_ `code` — the failure code
     # 
@@ -797,6 +799,16 @@ module Actionable
     # 
     # _@param_ `message` — the message given at the call
     def declared_failure: ((Symbol | String) code, String? message) -> Failure
+
+    # Strictness (decision D20): once an action declares any failure, every
+    # code it fails with must be declared, so its declarations are its whole
+    # failure contract. An action that declares none is unchecked, and the
+    # {GEM_FAILURE_CODES} are always allowed.
+    # 
+    # _@param_ `code`
+    # 
+    # _@param_ `declarations`
+    def ensure_failure_declared!: (Symbol code, ::Hash[Symbol, ::Hash[untyped, untyped]] declarations) -> void
 
     # Halt the run immediately, keeping whatever result was already recorded
     # (a prior +fail+/+succeed+/+skip+, or auto-{Success} if none). Control flow

@@ -18,6 +18,12 @@ action that declares no failures behaves exactly as before.
   `:invalid_output` attaches metadata to the failures the gem builds itself.
   `Failure#to_h` includes `metadata`.
 
+- **Strict once declared.** An action that declares at least one failure code
+  may only fail with declared codes; any other `fail` / `fail_with` raises
+  `Actionable::DefinitionError` at the call. Exempt: actions that declare none,
+  and the codes the gem emits itself, `Actionable::Action::GEM_FAILURE_CODES`
+  (`:invalid_input`, `:invalid_output`).
+
 ### Changed
 
 - `metadata` joins the reserved output field names, since an output field of

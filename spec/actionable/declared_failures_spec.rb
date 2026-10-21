@@ -158,6 +158,63 @@ RSpec.describe 'declared failures (fails)' do
     end
   end
 
+  describe 'strictness' do
+    def failing_with(code, declares: [])
+      Class.new(Actionable::Action) do
+        declares.each { |declared| fails declared }
+        step :go
+        define_method(:go) { fail!(code) }
+      end
+    end
+
+    it 'refuses a fail whose code a declaring action did not declare' do
+      expect { failing_with(:boom, declares: %i[refused]).run }
+        .to raise_error(Actionable::DefinitionError, /fails with :boom, which it does not declare.*:refused/)
+    end
+
+    it 'raises from the fail call, so the first frame outside the gem is the step' do
+      action = failing_with(:boom, declares: %i[refused])
+
+      expect { action.run }.to raise_error(Actionable::DefinitionError) { |error|
+        first_caller = error.backtrace.find { |frame| !frame.include?('/lib/actionable/') }
+        fail_line = File.readlines(__FILE__).index { |line| line.include?('{ fail!(code) }') } + 1
+        expect(first_caller).to include("#{__FILE__}:#{fail_line}")
+      }
+    end
+
+    it 'refuses an undeclared fail_with code' do
+      action = Class.new(Actionable::Action) do
+        fails :refused
+        step :go
+        def go = fail_with(FieldStruct::Base.new)
+      end
+
+      expect { action.run }.to raise_error(Actionable::DefinitionError, /:invalid/)
+    end
+
+    it 'lets an action that declares none fail with any code' do
+      expect(failing_with(:anything).run.code).to eq(:anything)
+    end
+
+    it 'exempts the codes the gem emits itself' do
+      expect(Actionable::Action::GEM_FAILURE_CODES).to eq(%i[invalid_input invalid_output])
+
+      Actionable::Action::GEM_FAILURE_CODES.each do |code|
+        expect(failing_with(code, declares: %i[refused]).run.code).to eq(code)
+      end
+    end
+
+    it 'lets a subclass fail with a code its parent declared' do
+      parent = Class.new(Actionable::Action) { fails :refused, kind: :rejected }
+      child = Class.new(parent) do
+        step :go
+        def go = fail!(:refused)
+      end
+
+      expect(child.run.metadata).to eq(kind: :rejected)
+    end
+  end
+
   it 'reserves metadata as an output field name' do
     expect { Class.new(Actionable::Action) { output { optional :metadata, :value } } }
       .to raise_error(Actionable::DefinitionError, /:metadata/)

@@ -12,6 +12,13 @@ module Actionable
   #
   #   Greet.run # => #<Actionable::Success ...>
   class Action
+    # The failure codes the gem itself emits: +:invalid_input+ (input failed
+    # validation, or no shape matched a discriminator) and +:invalid_output+
+    # (a success's output failed validation). An action that declares failures
+    # with {.fails} may still end with these without declaring them (decision
+    # D20); declaring one only attaches metadata to it.
+    GEM_FAILURE_CODES = %i[invalid_input invalid_output].freeze
+
     class << self
       # The ordered, deduplicated set of steps declared on this action.
       # A +Set+ keyed by step identity ([type, name]) so a redeclared step
@@ -124,7 +131,9 @@ module Actionable
       #   fails :not_found, kind: :not_found
       #
       # Declarations are inherited and a subclass can add to them; redeclaring a
-      # code replaces its message and metadata.
+      # code replaces its message and metadata. Once an action declares any
+      # code, failing with an undeclared one raises a {DefinitionError} at the
+      # +fail+ call; the {GEM_FAILURE_CODES} are exempt.
       #
       # @param code [Symbol, String] the failure code
       # @param message [String, nil] the default message for this code
@@ -658,9 +667,31 @@ module Actionable
     # @param code [Symbol, String] the error code
     # @param message [String, nil] the message given at the call
     # @return [Failure]
+    # @raise [DefinitionError] when the action declares failures but not +code+
+    #   (the {GEM_FAILURE_CODES} are exempt)
     def declared_failure(code, message)
-      declaration = self.class.failure_declarations.fetch(code.to_sym, {message: nil, metadata: {}})
+      declarations = self.class.failure_declarations
+      code = code.to_sym
+      ensure_failure_declared!(code, declarations)
+      declaration = declarations.fetch(code, {message: nil, metadata: {}})
       Failure.new(code: code, message: message || declaration[:message], metadata: declaration[:metadata])
+    end
+
+    # Strictness (decision D20): once an action declares any failure, every
+    # code it fails with must be declared, so its declarations are its whole
+    # failure contract. An action that declares none is unchecked, and the
+    # {GEM_FAILURE_CODES} are always allowed.
+    #
+    # @param code [Symbol]
+    # @param declarations [Hash{Symbol=>Hash}]
+    # @raise [DefinitionError] when +code+ is undeclared
+    # @return [void]
+    def ensure_failure_declared!(code, declarations)
+      return if declarations.empty? || declarations.key?(code) || GEM_FAILURE_CODES.include?(code)
+
+      raise DefinitionError,
+        "#{self.class.name || "action"} fails with #{code.inspect}, which it does not declare; " \
+        "declare it with `fails #{code.inspect}` (declared: #{declarations.keys.map(&:inspect).join(", ")})"
     end
 
     # Halt the run immediately, keeping whatever result was already recorded
