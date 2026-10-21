@@ -112,12 +112,20 @@ module Actionable
       end
 
       def allow_run(action_class, result)
-        allow(action_class).to receive(:run).and_return(result)
+        allow(action_class).to receive(:run) { stubbed_run(action_class, result) }
         result
       end
 
       def expect_run(action_class, result)
-        expect(action_class).to receive(:run).and_return(result)
+        expect(action_class).to receive(:run) { stubbed_run(action_class, result) }
+        result
+      end
+
+      # The stub's response: +result+, noted as a stubbed run when outcome
+      # coverage is loaded (decision D22), so a report can tell an outcome
+      # only ever stubbed from one never reached at all.
+      def stubbed_run(action_class, result)
+        Actionable::Coverage.record_stub(action_class, result) if defined?(Actionable::Coverage)
         result
       end
 

@@ -612,6 +612,96 @@ default `:skipped` is not exempt, so `allow_actionable_skip(action)` with no
 `code:` raises unless the action declares `:skipped`. A bare `and_skip` names no
 code and is always accepted.
 
+## Outcome coverage
+
+`require 'actionable/rspec/coverage'` (decision D22) records every real `.run`
+of a named action as `[class name, outcome, code]` and, at the end of the
+suite, reports each action's outcomes that no spec reached. It is off unless
+required, and `actionable/rspec` does not load it.
+
+An action's expected outcomes come from its declarations at run time, as
+outcome keys. `"success"` is always expected, plus `"failure:<code>"` for each
+`declared_failures` code and `"skipped:<code>"` for each `declared_skips` code.
+`Coverage.expected_outcomes(SomeAction)` lists them.
+
+A run counts only when the action really ran. Nested `Steps::Action` runs and
+each `run_each` item count. A stub of `.run` replaces the recording, so a
+stubbed result never counts as tested; the gem's stub helpers note their runs
+in `Coverage.stubbed`, which the report shows as "Stubbed only".
+
+```ruby
+# spec/support/actionable_coverage.rb
+require 'actionable/rspec/coverage'
+
+Actionable::Coverage.loader = -> { Rails.application.eager_load! }
+Actionable::Coverage.baseline = 'spec/actionable_coverage_baseline.yml'
+```
+
+Settings, all on `Actionable::Coverage`:
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `root` | `Actionable::Action` | Report its named descendants that have steps. Anonymous classes and actions with no steps (abstract bases) are left out, and so is a class whose name no longer resolves to it. |
+| `include_prefixes` / `exclude_prefixes` | `[]` | Name filters. A String matches as a prefix, a Regexp by `match?`. |
+| `loader` | `nil` | Called before the actions are listed. A class that was never loaded can't be reported, so a Rails host eager-loads here. |
+| `gem_codes` | `[]` | Gem codes to expect too. `:invalid_input` counts for an action whose input has a required field, `:invalid_output` for one whose output does. |
+| `only_observed` | `false` | Report only actions with at least one real run, so a targeted run doesn't flag every action it never touched. |
+| `baseline` | `nil` | Path to a committed JSON or YAML baseline of known gaps (below). |
+
+`reset_config!` restores the defaults; `enable!`, `disable!`, `enabled?` and
+`reset!` control the recording, and `observed` holds the real runs.
+
+The report (`Actionable::Coverage::Report`) is a table of each action's
+never-reached outcomes followed by the totals:
+
+```text
+Actionable outcome coverage
+  Action           Never reached                       Stubbed only
+  Billing::Charge  failure:refused, failure:not_found  failure:refused
+  Billing::Refund  success
+Actions: 2  Expected outcomes: 4  Reached: 1  Missing: 3
+```
+
+`rows`, `totals`, `to_h` and `to_json` give the same data to a machine, and
+`ACTIONABLE_COVERAGE_JSON=path` writes the JSON next to the text.
+
+**The baseline.** Missing outcomes alone never fail a suite. With
+`Coverage.baseline` set to a file of `{"Action::Name" => [outcome keys]}`,
+the report fails in two cases, and its message lists each entry to change:
+
+- an untested outcome the baseline doesn't list (a new gap: write the spec,
+  or add the entry);
+- a baseline entry that is now covered, is no longer declared, or names an
+  action that no longer exists (remove the entry).
+
+`Report#to_baseline` returns the current gaps in that shape and
+`#write_baseline(path)` writes them, as YAML for a `.yml`/`.yaml` path and JSON
+otherwise. Running the report with `ACTIONABLE_COVERAGE_UPDATE_BASELINE=true`
+rewrites `Coverage.baseline` from the current gaps instead of checking it,
+which is how a host adopts the baseline and how it accepts a deliberate change.
+
+**Unsharded suites.** The `after(:suite)` hook prints the report and, when it
+disagrees with the baseline, raises `Coverage::BaselineMismatch`, which fails
+the run.
+
+**Sharded suites.** When `ACTIONABLE_COVERAGE_FILE` names a path, the hook
+writes that process's runs there (`Coverage.write(path)`) and reports nothing,
+since one shard can't judge the whole suite. Each rspec process needs its own
+path. A later step merges the files with the expected outcomes computed in
+that process: `Coverage.report!(files: 'tmp/actionable_coverage/*.json')`, or
+`Report.new(files:)` for the report alone. A glob that matches no file raises
+rather than reporting every outcome missing, and `Coverage.read(path)` reads
+one file back. From a Rails CI step:
+
+```bash
+RAILS_ENV=test bin/rails runner 'require "./spec/support/actionable_coverage"; Actionable::Coverage.report!(files: "tmp/actionable_coverage/*.json")'
+```
+
+The baseline is only meaningful for a full run. A local or targeted run
+reports every action it didn't touch, so set `baseline` only in CI and, for
+local runs, `only_observed = true` (or require the file only when an env var
+asks for it).
+
 ## Background jobs
 
 `require 'actionable/job'` — a framework-agnostic helper that runs an action

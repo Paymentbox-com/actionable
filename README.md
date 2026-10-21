@@ -398,6 +398,22 @@ expect(Sync).to          perform_actionable(ready: false).and_skip(:not_ready)
 allow_actionable_success(CreateInvoice, output: { id: 7 })
 ```
 
+## Outcome coverage (optional)
+
+`require 'actionable/rspec/coverage'` records which outcomes your specs
+actually reach. At the end of the suite it reports, for every action, the
+outcomes it can end with (success, its declared failures and skips) that no
+spec produced. A stubbed result doesn't count. A committed baseline of known
+gaps lets CI fail on a new gap or a stale entry, and sharded suites write one
+file per shard and merge them in a later step. See USAGE, "Outcome coverage".
+
+```ruby
+# spec/support/actionable_coverage.rb
+require 'actionable/rspec/coverage'
+Actionable::Coverage.loader = -> { Rails.application.eager_load! }
+Actionable::Coverage.baseline = 'spec/actionable_coverage_baseline.yml' if ENV['CI']
+```
+
 ## Background jobs (optional)
 
 `require 'actionable/job'` adds a framework-agnostic helper that runs an action

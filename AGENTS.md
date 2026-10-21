@@ -86,5 +86,9 @@ result.invoice        # => same, via convenience delegation
 - Type your actions for Steep/Solargraph: `Actionable::RBS.generate(CreateInvoice)`.
 - Test a caller without running the action: `stub_actionable_success CreateInvoice, invoice: an_invoice`
   (requires `actionable/rspec`).
+- Find outcomes no spec reaches: `require 'actionable/rspec/coverage'` in a spec
+  support file. The suite ends with a table of each action's never-reached
+  outcomes; a stubbed result doesn't count. `Coverage.baseline = path` makes CI
+  fail on a new gap or a stale entry (see USAGE, "Outcome coverage").
 - Profile a run: declare `measure :all` (or `:sampled, rate: 0.1` in prod), then
   read `result.history.to_json`.
