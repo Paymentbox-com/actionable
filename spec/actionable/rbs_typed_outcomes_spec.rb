@@ -19,6 +19,12 @@ class RbsTypedBare < Actionable::Action
   typed_outcomes
 end
 
+class RbsTypedClash < Actionable::Action
+  typed_outcomes
+  skips(:counted) { required :id, :integer }
+  skips(:named) { optional :id, :string }
+end
+
 RSpec.describe Actionable::RBS, 'under typed outcomes (decision D23)' do
   it 'types each outcome as the action’s own result class, its output per code' do
     expect(described_class.generate(RbsTypedAction)).to eq(<<~RBS)
@@ -52,14 +58,21 @@ RSpec.describe Actionable::RBS, 'under typed outcomes (decision D23)' do
         class Skipped < ::Actionable::Skipped
           def code: () -> skip_code
           def output: () -> (AlreadyActiveSkipOutput | ::Hash[::Symbol, untyped])
+          def name: () -> ::String
         end
 
         class Failure < ::Actionable::Failure
           def code: () -> failure_code
           def output: () -> (InvalidFailureOutput | AlreadyActiveSkipOutput | Output | ::Hash[::Symbol, untyped])
+          def form_record: () -> untyped?
+          def name: () -> ::String
         end
       end
     RBS
+  end
+
+  it 'types a field several schemas declare as the union of their types, nullable if any is optional' do
+    expect(described_class.generate(RbsTypedClash)).to include("def id: () -> (::Integer | ::String)?\n  end\n\n  class Failure")
   end
 
   it 'produces syntactically valid RBS' do

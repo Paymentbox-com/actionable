@@ -123,18 +123,38 @@ module Actionable
     # @param klass [Class<Actionable::Action>]
     # @return [Array<String>]
     def self.outcome_blocks(klass)
-      names = outcome_schemas(klass).map(&:first)
-      skip_outputs = names.grep(/SkipOutput\z/)
-      failure_types = names.grep(/FailureOutput\z/) + skip_outputs + (klass.output_schema ? ['Output'] : [])
+      skips = outcome_schemas(klass).select { |name, _| name.end_with?('SkipOutput') }
+      failures = outcome_schemas(klass).select { |name, _| name.end_with?('FailureOutput') }
+      failures += skips
+      failures << ['Output', klass.output_schema] if klass.output_schema
       [
         outcome_block(klass, 'Success', success_lines(klass)),
         outcome_block(klass, 'Skipped', ["def code: () -> #{code_type(klass.declared_skips, "skip_code")}",
-                                         "def output: () -> #{union(skip_outputs)}"]),
+                                         "def output: () -> #{union(skips.map(&:first))}",
+                                         *delegator_lines(skips.map(&:last))]),
         outcome_block(klass, 'Failure', ["def code: () -> #{code_type(klass.declared_failures, "failure_code")}",
-                                         "def output: () -> #{union(failure_types)}"])
+                                         "def output: () -> #{union(failures.map(&:first))}",
+                                         *delegator_lines(failures.map(&:last))])
       ]
     end
     private_class_method :outcome_blocks
+
+    # The readers a result delegates to its output struct, one per field any
+    # of +schemas+ declares. A field several declare types as the union of
+    # their types, nullable when any declares it optional.
+    #
+    # @param schemas [Array<Class<FieldStruct::Base>>]
+    # @return [Array<String>]
+    def self.delegator_lines(schemas)
+      fields = Hash.new { |hash, name| hash[name] = [] }
+      schemas.each { |schema| schema.metadata.each { |field| fields[field.name] << field } }
+      fields.map do |name, declared|
+        types = declared.map { |field| type_expr(field.type_instance, field.options) }.uniq
+        type = types.one? ? types.first : "(#{types.join(" | ")})"
+        "def #{name}: () -> #{type}#{"?" if declared.any? { |field| !field.required? }}"
+      end
+    end
+    private_class_method :delegator_lines
 
     # @param klass [Class<Actionable::Action>]
     # @return [Array<String>] the +Success+ block's signatures
