@@ -18,6 +18,9 @@
   `:skipped`. An action that declares no skips is unchecked, and declared
   failures don't make skips strict. **`allows_skip_code?(code)`** answers
   whether an action may skip with a code.
+- **`describe` shows declared skips** as `skips: {code => {message:,
+  metadata:}}`, and `describe_text` lists them under `Skips:`, after
+  `Failures:`.
 
 ## [1.3.0] - 2026-10-21
 

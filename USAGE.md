@@ -478,9 +478,9 @@ Actionable.registry[Registered.name].equal?(Registered) # => true
 ## Introspection — `Action.describe`
 
 A structured, at-a-glance summary of an action (name, input/output field
-metadata, ordered steps with type, declared failures, hooks, measure mode,
-transaction config) so humans and agents can understand it without reading
-source. `describe[:failures]` maps each declared code to
+metadata, ordered steps with type, declared failures and skips, hooks, measure
+mode, transaction config) so humans and agents can understand it without reading
+source. `describe[:failures]` and `describe[:skips]` each map a declared code to
 `{message:, metadata:}`:
 
 <!-- doctest -->
@@ -499,8 +499,8 @@ Probe.describe[:measure]            # => :none
 `Action.describe_text` renders the same information as a human/agent-readable
 multi-line summary instead of a Hash. The input/output field lines reuse
 FieldStruct's own `Metadata#describe` (each field's type, required-ness, and the
-options its type accepts). Declared failures and hook sections are listed only
-when there are any:
+options its type accepts). Declared failures, declared skips and hook sections
+are listed only when there are any:
 
 ```
 Probe (measure: none)
@@ -517,6 +517,14 @@ With `fails :refused, 'the card was refused', kind: :rejected` declared, a
 ```
   Failures:
     - refused (kind: :rejected): the card was refused
+```
+
+With `skips :not_ready, 'the field is not created yet', retry: true` declared, a
+`Skips:` section follows the failures:
+
+```
+  Skips:
+    - not_ready (retry: true): the field is not created yet
 ```
 
 ## Serializing a result

@@ -355,8 +355,8 @@ module Actionable
       end
 
       # A structured, at-a-glance summary of the action — its name, input/output
-      # field metadata, ordered steps (with type), declared failures (each code's
-      # message and metadata, decision D20), lifecycle hooks, measurement mode,
+      # field metadata, ordered steps (with type), declared failures and skips
+      # (each code's message and metadata, decisions D20/D21), lifecycle hooks, measurement mode,
       # and transaction config (decision D18). Lets humans and agents
       # understand an action without reading its source.
       #
@@ -368,6 +368,7 @@ module Actionable
           output: output_schema&.metadata&.to_h,
           steps: steps.map { |step| {type: step.kind, name: step.name, options: step.options} },
           failures: failure_declarations.dup,
+          skips: skip_declarations.dup,
           hooks: {
             on_success: success_hooks.map(&:name),
             on_failure: failure_hooks.map(&:name),
@@ -383,7 +384,7 @@ module Actionable
       # a multi-line summary instead of a Hash (decision D18). The input/output
       # field lines reuse FieldStruct's own +Metadata#describe+ (type,
       # required-ness, and the options each field's type accepts); declared
-      # failures and hook sections are listed only when there are any.
+      # failures, declared skips and hook sections are listed only when there are any.
       #
       #   Greet.describe_text
       #   # => "Greet (measure: none)\n  Input: (free-form)\n  ..."
@@ -402,7 +403,8 @@ module Actionable
         lines << '    (none)' if steps_summary.empty?
         steps_summary.each { |step| lines << "    - #{step[:name]} (#{step[:type]})" }
 
-        lines.concat(failures_summary)
+        lines.concat(declarations_summary('Failures', failure_declarations))
+        lines.concat(declarations_summary('Skips', skip_declarations))
 
         present_hooks = summary[:hooks].reject { |_, names| names.empty? }
         unless present_hooks.empty?
@@ -481,15 +483,18 @@ module Actionable
         "\n#{schema.metadata.describe.lines(chomp: true).map { |line| "  #{line}" }.join("\n")}"
       end
 
-      # The +Failures:+ lines for {.describe_text}, one per declared code with its
-      # metadata and default message, or none when nothing is declared.
+      # The +Failures:+ or +Skips:+ lines for {.describe_text}, one per declared
+      # code with its metadata and default message, or none when nothing is
+      # declared (decisions D20/D21).
       #
+      # @param heading [String] the section heading
+      # @param declarations [Hash{Symbol=>Hash{Symbol=>Object}}] code => {message:, metadata:}
       # @return [Array<String>]
-      def failures_summary
-        return [] if failure_declarations.empty?
+      def declarations_summary(heading, declarations)
+        return [] if declarations.empty?
 
-        lines = ['  Failures:']
-        failure_declarations.each do |code, declaration|
+        lines = ["  #{heading}:"]
+        declarations.each do |code, declaration|
           metadata = declaration[:metadata].map { |key, value| "#{key}: #{value.inspect}" }.join(', ')
           line = "    - #{code}"
           line += " (#{metadata})" unless metadata.empty?
