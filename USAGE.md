@@ -112,6 +112,41 @@ result.skipped?    # => true
 result.existing_id # => 42
 ```
 
+## Declared failures
+
+`fails(code, message = nil, **metadata)` declares one failure code an action can
+end with. The keywords after the message are neutral per-code metadata: the gem
+stores them, attaches them to the failure, and shows them in `describe`, but
+never reads them. Your app gives the keys their meaning. A `fail` or `fail_with`
+with a declared code carries its metadata as `result.metadata`, and its declared
+message when the call gives none. `declared_failures` reads the declarations
+back as `{code => metadata}`, and `failure_declarations` as
+`{code => {message:, metadata:}}`:
+
+<!-- doctest -->
+```ruby
+class Charge < Actionable::Action
+  fails :refused, 'the card was refused', kind: :rejected
+  fails :not_found, kind: :not_found
+
+  step :charge
+  def charge = fail!(:refused, nil, kind: 'is not a known kind')
+end
+
+result = Charge.run
+result.code           # => :refused
+result.message        # => "the card was refused"
+result.metadata       # => {kind: :rejected}
+result.errors[:kind]  # => ["is not a known kind"]
+Charge.declared_failures # => {refused: {kind: :rejected}, not_found: {kind: :not_found}}
+```
+
+Nothing but `**errors` follows `fail`'s message, so an error on a field named
+like a metadata key (`kind` above) stays an error. Declarations are inherited,
+and a subclass can add more. Declaring `:invalid_input` or `:invalid_output`
+attaches that metadata to the failures the gem builds itself. A failure whose
+code isn't declared has `metadata == {}`, and `Failure#to_h` includes it.
+
 ## Output
 
 `output do … end` declares a typed schema. Matching ivars are captured at the
@@ -411,7 +446,7 @@ cryptic `NoMethodError`:
 
 - **Reserved output field names (at declaration):** an `output` field that
   shadows a result attribute (`code` / `message` / `output` / `history` /
-  `errors`) or a reserved instance variable (`result` / `input`) raises
+  `errors` / `metadata`) or a reserved instance variable (`result` / `input`) raises
   immediately. Pick another name. (Input fields aren't affected — they're read
   via `input.x`.)
 - **Missing step methods (at run start):** every method a step needs (method

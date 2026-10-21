@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+Declared failures (decision D20). All additive and backward-compatible: an
+action that declares no failures behaves exactly as before.
+
+### Added
+
+- **`fails(code, message = nil, **metadata)`** declares a failure code the
+  action can end with, plus neutral per-code metadata (arbitrary keywords the
+  gem stores and passes through but never interprets). Declarations are
+  inherited and a subclass can add to them. **`declared_failures`** reads them
+  back as `{code => metadata}`.
+- **`Failure#metadata`** (default `{}`): a `fail`, `fail!`, `fail_with` or
+  `fail_with!` with a declared code carries its metadata, and its declared
+  message when the call gives none. Declaring `:invalid_input` or
+  `:invalid_output` attaches metadata to the failures the gem builds itself.
+  `Failure#to_h` includes `metadata`.
+
+### Changed
+
+- `metadata` joins the reserved output field names, since an output field of
+  that name would be shadowed on a failure.
+
 ## [1.2.2] - 2026-06-03
 
 ### Tooling

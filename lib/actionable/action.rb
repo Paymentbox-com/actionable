@@ -25,8 +25,8 @@ module Actionable
       # Output field names that would collide with the result's own attributes
       # (so delegation silently breaks) or with the action's reserved instance
       # variables (+@result+ / +@input+, which the runner reads). Declaring one
-      # raises a {DefinitionError} (decision D18).
-      RESERVED_OUTPUT_FIELDS = %i[code message output history errors result input].freeze
+      # raises a {DefinitionError} (decisions D18/D20).
+      RESERVED_OUTPUT_FIELDS = %i[code message output history errors metadata result input].freeze
 
       # Declare the action's typed output schema, or read it back.
       #
@@ -110,6 +110,44 @@ module Actionable
       # @return [InputDispatch, nil] the discriminated-input dispatch, or +nil+
       #   when input isn't discriminated
       attr_reader :input_dispatch
+
+      # Declare one failure code this action can end with, and the metadata a
+      # failure with that code carries (decision D20).
+      #
+      # The metadata is neutral: arbitrary keywords the gem stores, attaches to
+      # the {Failure} as +result.metadata+, and shows in {.describe}, but never
+      # interprets. A host app gives the keys their meaning (say, +kind:+ for
+      # how an adapter answers the failure). +message+ is the default message
+      # for a +fail+ that gives none.
+      #
+      #   fails :refused, 'the card was refused', kind: :rejected
+      #   fails :not_found, kind: :not_found
+      #
+      # Declarations are inherited and a subclass can add to them; redeclaring a
+      # code replaces its message and metadata.
+      #
+      # @param code [Symbol, String] the failure code
+      # @param message [String, nil] the default message for this code
+      # @param metadata [Hash{Symbol=>Object}] per-code metadata, passed through
+      # @return [Hash{Symbol=>Hash{Symbol=>Object}}] {.declared_failures}
+      def fails(code, message = nil, **metadata)
+        failure_declarations[code.to_sym] = {message: message, metadata: metadata.freeze}.freeze
+        declared_failures
+      end
+
+      # The failure codes this action declares with {.fails}, each mapped to its
+      # metadata (decision D20). Empty when the action declares none.
+      #
+      # @return [Hash{Symbol=>Hash{Symbol=>Object}}]
+      def declared_failures
+        failure_declarations.transform_values { |declaration| declaration[:metadata] }
+      end
+
+      # Every {.fails} declaration, keyed by code, as +{message:, metadata:}+.
+      # @return [Hash{Symbol=>Hash{Symbol=>Object}}]
+      def failure_declarations
+        @failure_declarations ||= {}
+      end
 
       # Declare a step. The step type is inferred from +target+ (a Symbol or
       # String names an instance method — a {Steps::Method}).
@@ -441,15 +479,19 @@ module Actionable
       def unmatched_discriminator_failure(value)
         Failure.new(
           code: :invalid_input,
-          message: "no input shape for #{input_dispatch.discriminator} #{value.inspect}"
+          message: "no input shape for #{input_dispatch.discriminator} #{value.inspect}",
+          metadata: declared_failures.fetch(:invalid_input, {})
         )
       end
 
       # @param input [FieldStruct::Base] the invalid input struct
       # @return [Failure] code +:invalid_input+, carrying the input's errors
       def invalid_input_failure(input)
-        Failure.new(code: :invalid_input, message: 'input failed validation')
-          .absorb_errors_from(input)
+        Failure.new(
+          code: :invalid_input,
+          message: 'input failed validation',
+          metadata: declared_failures.fetch(:invalid_input, {})
+        ).absorb_errors_from(input)
       end
 
       public
@@ -470,6 +512,7 @@ module Actionable
         subclass.instance_variable_set(:@failure_hooks, failure_hooks.dup)
         subclass.instance_variable_set(:@skip_hooks, skip_hooks.dup)
         subclass.instance_variable_set(:@always_hooks, always_hooks.dup)
+        subclass.instance_variable_set(:@failure_declarations, failure_declarations.dup)
         subclass.instance_variable_set(:@measure, measure)
         subclass.instance_variable_set(:@measure_rate, measure_rate)
       end
@@ -501,13 +544,18 @@ module Actionable
     # still run, and the final result reflects the most recent record (decision
     # D4, "last write wins").
     #
+    # A code declared with {Action.fails} attaches its metadata to the failure,
+    # and its declared message when +message+ is +nil+ (decision D20). Nothing
+    # but +errors+ follows the message, so an error on any field name, +kind+
+    # included, lands in +errors+.
+    #
     # @param code [Symbol] the error code
     # @param message [String, nil] human-readable description
     # @param errors [Hash{Symbol=>String, Array<String>}] field => message(s)
     #   added to the result's errors collection
     # @return [false] so a step can branch on the call
     def fail(code, message = nil, **errors)
-      failure = Failure.new(code: code, message: message)
+      failure = declared_failure(code, message)
       errors.each { |field, messages| Array(messages).each { |m| failure.errors.add(field, m) } }
       @result = failure
       false
@@ -527,7 +575,7 @@ module Actionable
     # @param message [String, nil] human-readable description
     # @return [false] so a step can branch on the call
     def fail_with(source, code: :invalid, message: nil)
-      @result = Failure.new(code: code, message: message).absorb_errors_from(source)
+      @result = declared_failure(code, message).absorb_errors_from(source)
       false
     end
 
@@ -602,6 +650,17 @@ module Actionable
     def skip!(code = :skipped, message = nil, **output)
       skip(code, message, **output)
       halt!
+    end
+
+    # Build a {Failure} for +code+ carrying what {Action.fails} declared for it:
+    # its metadata, and its message when +message+ is +nil+ (decision D20).
+    #
+    # @param code [Symbol, String] the error code
+    # @param message [String, nil] the message given at the call
+    # @return [Failure]
+    def declared_failure(code, message)
+      declaration = self.class.failure_declarations.fetch(code.to_sym, {message: nil, metadata: {}})
+      Failure.new(code: code, message: message || declaration[:message], metadata: declaration[:metadata])
     end
 
     # Halt the run immediately, keeping whatever result was already recorded
