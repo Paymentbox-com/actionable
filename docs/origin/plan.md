@@ -630,6 +630,61 @@ fail or skip), and judging a partial run against the baseline._
 
 ---
 
+### D23. Typed outcomes (added 2026-10, stage 3 of the PBX typed-results work)
+
+A success's output had a schema (D6), but a skip's and a failure's did not: they
+were coerced into the *success* schema, never validated, and filled from
+whatever instance variables the steps left behind, so a host could not say what
+a skip or failure carries and the generated RBS typed every outcome's `output`
+as the success's. Typed outcomes give each outcome its own contract.
+
+- **`typed_outcomes`** is the opt-in, inherited (copied on inherit, like the
+  declarations) so a host base class turns it on for its descendants;
+  `typed_outcomes enabled: false` turns it off for a subclass. Off, nothing
+  changes except below. It ships in 1.5 as an opt-in and is meant to become the
+  default in 2.0.
+- **A schema per code.** A block on `fails` / `skips` declares, in the `output`
+  DSL and with the same reserved-name check, the output a result with that code
+  carries. One schema per code, not one shared skip schema: a shared default
+  can be added later if a host needs it. The block is its own opt-in, so a code
+  with one is validated whether or not `typed_outcomes` is on (new syntax, so no
+  existing action changes).
+- **From keywords only.** A skip's or failure's output is built from the
+  keywords it was recorded with, never from instance variables, which is how
+  records leaked into failures before. A success keeps instance-variable
+  capture. Output that breaks the code's schema ends the run as
+  `invalid_output` carrying it, as a success's does (*amends D6/D17*), rather
+  than raising a `DefinitionError`.
+- **No schema, no output.** Under typed outcomes a code without a schema carries
+  an empty output. The failures the gem builds (`GEM_FAILURE_CODES`) keep
+  theirs, since the invalid struct is what explains them.
+- **`output:` on `fail`.** D20 made every keyword after `fail`'s message an
+  error. Under typed outcomes alone, `fail` / `fail!` reserve `output:` as the
+  failure's output, and `fail_with` / `fail_with!` take it as an explicit
+  keyword (refused when the opt-in is off), so 1.5 changes nothing for an
+  action that doesn't opt in (*amends D20*). A separate verb and
+  failure-only instance-variable capture were considered and dropped: the first
+  adds a verb to learn, the second keeps the leak.
+- **Real result classes.** `.run` returns the action's own `Success`, `Failure`
+  and `Skipped`, defined inside it and subclassing the gem classes (or the
+  parent action's own), so the generated RBS describes classes that exist and a
+  `case` on them works. An action with its own constant by one of those names is
+  refused; a host's own result subclass is returned as it is.
+- **Nested failures** (*amends D20*). A child's failure that crosses becomes the
+  parent's own `Failure`. Its output is judged by the schema the parent declares
+  for the code, not the child's, and the parent must still declare the code.
+- `describe` shows each code's output fields; the RSpec stubs return the
+  action's own classes (*amends D12*); `Actionable::RBS` types `.run` as
+  `(Success | Skipped | Failure)` with `code` and `output` narrowed per outcome,
+  a failure's output also admitting every skip schema and `Output` (*amends
+  D13*).
+
+_Deferred: validating a stubbed result's output against its code's schema, and
+whether Steep narrows `Success | Skipped | Failure` on `success?` (it may need
+`is_a?` / `case`)._
+
+---
+
 ## Slice plan
 
 16 slices (plus Slice 17, the post-plan `:skip` outcome), ordered so each is

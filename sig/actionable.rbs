@@ -112,6 +112,14 @@ module Actionable
   #   listing every code it can skip with (decision D21). The gem emits no skip
   #   codes of its own, so the alias holds the declared ones only.
   # 
+  # Under typed outcomes (decision D23) +.run+ returns the action's own
+  # +Success | Skipped | Failure+ instead, each typed with its +code+ and an
+  # +output+ that names what the outcome can carry: a nested class per code
+  # that declares an output schema (+AlreadyActiveSkipOutput+,
+  # +InvalidFailureOutput+), and a Hash for a code without one. A failure's
+  # output also admits every skip schema and +Output+, since a broken one ends
+  # the run as +invalid_output+ carrying it.
+  # 
   #   class CreateInvoice < Actionable::Action
   #     input  { required :amount, :integer }
   #     output { required :invoice, :string }
@@ -139,10 +147,64 @@ module Actionable
     # _@param_ `klass`
     def self.class_block: (singleton(Actionable::Action) klass) -> String
 
+    # The class block of an action with typed outcomes (decision D23).
+    # 
+    # _@param_ `klass`
+    def self.typed_class_block: (singleton(Actionable::Action) klass) -> String
+
+    # The nested output class of every skip, then every failure, code that
+    # declares an output schema, named after the code.
+    # 
+    # _@param_ `klass`
+    # 
+    # _@return_ — name, schema
+    def self.outcome_schemas: (singleton(Actionable::Action) klass) -> ::Array[[String, singleton(FieldStruct::Base)]]
+
+    # The +Success+, +Skipped+ and +Failure+ blocks of a typed action.
+    # 
+    # _@param_ `klass`
+    def self.outcome_blocks: (singleton(Actionable::Action) klass) -> ::Array[String]
+
+    # _@param_ `klass`
+    # 
+    # _@return_ — the +Success+ block's signatures
+    def self.success_lines: (singleton(Actionable::Action) klass) -> ::Array[String]
+
+    # _@param_ `declared` — the declared codes
+    # 
+    # _@param_ `name` — the alias naming them
+    # 
+    # _@return_ — the alias, or +::Symbol+ when none are declared
+    def self.code_type: (::Hash[untyped, untyped] declared, String name) -> String
+
+    # _@param_ `types` — the output classes an outcome can carry
+    # 
+    # _@return_ — them and a Hash, as one RBS type
+    def self.union: (::Array[String] types) -> String
+
+    # _@param_ `klass`
+    # 
+    # _@param_ `name` — +Success+, +Skipped+ or +Failure+
+    # 
+    # _@param_ `lines` — the block's method signatures
+    # 
+    # _@return_ — the class block, subclassing the parent action's own
+    # result class when the parent has typed outcomes, else the gem's
+    def self.outcome_block: (singleton(Actionable::Action) klass, String name, ::Array[String] lines) -> String
+
+    # _@param_ `code`
+    # 
+    # _@return_ — +:already_active+ as +AlreadyActive+
+    def self.camelize: (Symbol code) -> String
+
+    # _@param_ `klass`
+    # 
+    # _@param_ `return_type` — what +.run+ returns
+    # 
     # _@return_ — the +.run+ signature: typed kwargs from the input schema
     # (or +(*untyped)+ free-form), returning the generated +Result+ when an
     # output schema is declared, else +::Actionable::Result+.
-    def self.run_signature: (untyped klass) -> String
+    def self.run_signature: (singleton(Actionable::Action) klass, ?return_type: String) -> String
 
     # _@param_ `klass` — an action that declares failures
     # 
@@ -164,8 +226,10 @@ module Actionable
 
     # _@param_ `schema` — the output schema
     # 
-    # _@return_ — the nested +Output+ class block
-    def self.output_block: (singleton(FieldStruct::Base) schema) -> String
+    # _@param_ `name` — the nested class name
+    # 
+    # _@return_ — the nested output class block
+    def self.output_block: (singleton(FieldStruct::Base) schema, ?String name) -> String
 
     # _@param_ `schema` — the output schema
     # 
@@ -506,6 +570,9 @@ module Actionable
     # code, failing with an undeclared one raises a {DefinitionError} at the
     # +fail+ call; the {GEM_FAILURE_CODES} are exempt.
     # 
+    # A block declares the output a failure with this code carries, in the
+    # FieldStruct DSL of {.output} (decision D23); see {.failure_output_schema}.
+    # 
     # _@param_ `code` — the failure code
     # 
     # _@param_ `message` — the default message for this code
@@ -514,6 +581,12 @@ module Actionable
     # 
     # _@return_ — {.declared_failures}
     def self.fails: ((Symbol | String) code, ?String? message, **::Hash[Symbol, Object] metadata) -> ::Hash[Symbol, ::Hash[Symbol, Object]]
+
+    # The output schema declared for failure +code+ with a {.fails} block, or
+    # +nil+ when the code has none (decision D23).
+    # 
+    # _@param_ `code`
+    def self.failure_output_schema: ((Symbol | String) code) -> singleton(FieldStruct::Base)?
 
     # The failure codes this action declares with {.fails}, each mapped to its
     # metadata (decision D20). Empty when the action declares none.
@@ -546,6 +619,13 @@ module Actionable
     # skip, skipping with an undeclared code raises a {DefinitionError} at the
     # +skip+ call, and that includes +skip+'s implicit default +:skipped+.
     # 
+    # A block declares the output a skip with this code carries, in the
+    # FieldStruct DSL of {.output} (decision D23); see {.skip_output_schema}.
+    # 
+    #   skips :already_active do
+    #     required :id, :integer
+    #   end
+    # 
     # _@param_ `code` — the skip code
     # 
     # _@param_ `message` — the default message for this code
@@ -554,6 +634,27 @@ module Actionable
     # 
     # _@return_ — {.declared_skips}
     def self.skips: ((Symbol | String) code, ?String? message, **::Hash[Symbol, Object] metadata) -> ::Hash[Symbol, ::Hash[Symbol, Object]]
+
+    # The output schema declared for skip +code+ with a {.skips} block, or
+    # +nil+ when the code has none (decision D23).
+    # 
+    # _@param_ `code`
+    def self.skip_output_schema: ((Symbol | String) code) -> singleton(FieldStruct::Base)?
+
+    # Turn typed outcomes on (or off) for this action and its descendants
+    # (decision D23). With it on, a skip or failure whose code declares no
+    # output schema carries an empty output instead of a best-effort capture,
+    # and {.run} returns the action's own result classes: +Success+,
+    # +Failure+ and +Skipped+ defined inside it, each a subclass of the gem
+    # class (or of the parent action's own, for a subclass).
+    # 
+    # _@param_ `enabled`
+    # 
+    # _@return_ — the new setting
+    def self.typed_outcomes: (?enabled: bool) -> bool
+
+    # _@return_ — whether typed outcomes are on (decision D23)
+    def self.typed_outcomes?: () -> bool
 
     # The skip codes this action declares with {.skips}, each mapped to its
     # metadata (decision D21). Empty when the action declares none.
@@ -687,6 +788,9 @@ module Actionable
     # (decision D7). Without an input schema, the arguments are forwarded
     # verbatim to the action's constructor (the free-form path).
     # 
+    # Under typed outcomes the result is an instance of the action's own
+    # result class for its outcome (decision D23).
+    # 
     # _@return_ — the run's {Success} or {Failure}
     def self.run: (*untyped args, **untyped kwargs) -> Result
 
@@ -708,6 +812,58 @@ module Actionable
     # 
     # _@return_ — the per-item results
     def self.run_each: (::Enumerable[untyped] enumerable) ?{ (Object item) -> (::Hash[untyped, untyped] | ::Array[untyped] | Object) } -> BatchResult
+
+    # The body of {.run}: build the input, then run the steps.
+    # 
+    # _@param_ `args`
+    # 
+    # _@param_ `kwargs`
+    def self.run_untyped: (::Array[Object] args, ::Hash[Symbol, Object] kwargs) -> Result
+
+    # Define this action's own +Success+, +Failure+ and +Skipped+ (decision
+    # D23), each subclassing the parent action's own when it has them, else
+    # the gem class. Defined once; a later call is a no-op.
+    # 
+    # _@return_ — status => result class
+    def self.define_outcome_classes: () -> ::Hash[Symbol, singleton(Result)]
+
+    # _@param_ `const` — the constant to define
+    # 
+    # _@param_ `status` — the outcome {Result#status}
+    # 
+    # _@param_ `base` — the gem result class
+    def self.define_outcome_class: (Symbol const, Symbol status, singleton(Result) base) -> singleton(Result)
+
+    # The result as this action's own result class for its outcome, under
+    # typed outcomes (decision D23). A result already of that class, or of a
+    # host's own result subclass, is returned as it is; a gem result, or
+    # another action's own (a nested failure that crossed), is rebuilt with
+    # its attributes and errors.
+    # 
+    # _@param_ `result`
+    def self.typed_result: (Result result) -> Result
+
+    # Build an output schema from a FieldStruct DSL block, refusing a field
+    # named like a result attribute (decisions D6/D18/D23).
+    # 
+    # _@param_ `block` — the FieldStruct field declarations
+    def self.build_output_schema: (Proc block) -> singleton(FieldStruct::Base)
+
+    # One {.fails} / {.skips} declaration: the default message, the frozen
+    # metadata, and the output schema when a block declares one (D20/D21/D23).
+    # 
+    # _@param_ `message`
+    # 
+    # _@param_ `metadata`
+    # 
+    # _@param_ `block`
+    def self.declaration: (String? message, ::Hash[Symbol, Object] metadata, Proc? block) -> ::Hash[Symbol, Object]
+
+    # {.describe}'s view of the declarations: each code's message and
+    # metadata, plus its output fields when it declares an output schema.
+    # 
+    # _@param_ `declarations`
+    def self.describe_declarations: (::Hash[Symbol, ::Hash[Symbol, Object]] declarations) -> ::Hash[Symbol, ::Hash[Symbol, Object]]
 
     # One {.describe_text} block for an input/output schema: +" (free-form)"+
     # when none is declared, otherwise the FieldStruct +Metadata#describe+
@@ -785,6 +941,11 @@ module Actionable
     # but +errors+ follows the message, so an error on any field name, +kind+
     # included, lands in +errors+.
     # 
+    # Under typed outcomes alone, +output:+ is reserved: it is the failure's
+    # output, held to the schema its code declares (decision D23).
+    # 
+    #   fail!(:invalid, 'check the form', output: {form_record: record}, name: 'is blank')
+    # 
     # _@param_ `code` — the error code
     # 
     # _@param_ `message` — human-readable description
@@ -808,8 +969,15 @@ module Actionable
     # 
     # _@param_ `message` — human-readable description
     # 
+    # _@param_ `output` — the failure's output, held to the schema its code declares; typed outcomes only (decision D23)
+    # 
     # _@return_ — so a step can branch on the call
-    def fail_with: (untyped source, ?code: Symbol, ?message: String?) -> bool
+    def fail_with: (
+                     untyped source,
+                     ?code: Symbol,
+                     ?message: String?,
+                     ?output: ::Hash[Symbol, Object]?
+                   ) -> bool
 
     # Record a {Failure} absorbing +source+'s errors and halt the run
     # (decision D19). The halting companion to {#fail_with}.
@@ -819,7 +987,14 @@ module Actionable
     # _@param_ `code` — the error code; defaults to +:invalid+
     # 
     # _@param_ `message` — human-readable description
-    def fail_with!: (untyped source, ?code: Symbol, ?message: String?) -> void
+    # 
+    # _@param_ `output` — see {#fail_with}
+    def fail_with!: (
+                      untyped source,
+                      ?code: Symbol,
+                      ?message: String?,
+                      ?output: ::Hash[Symbol, Object]?
+                    ) -> void
 
     # Record a {Success} as the run's result without halting (decision D4).
     # 
@@ -892,8 +1067,18 @@ module Actionable
     # in keys the child didn't set. The child's output and history stay on the
     # child. A declaring parent must declare the child's code too.
     # 
+    # Under typed outcomes the child's output crosses as this action's failure
+    # output, so it is held to the schema this action declares for the code,
+    # not the child's (decision D23), and the failure becomes this action's own
+    # +Failure+ when {.run} returns.
+    # 
     # _@param_ `child` — the nested action's failure
     def adopt_failure!: (Failure child) -> void
+
+    # _@param_ `output` — a nested failure's output
+    # 
+    # _@return_ — its fields, for this action's schema
+    def crossing_output: ((FieldStruct::Base | ::Hash[untyped, untyped] | Object) output) -> ::Hash[Symbol, Object]
 
     # Strictness (decision D20): once an action declares any failure, every
     # code it fails with must be declared, so its declarations are its whole
@@ -1115,9 +1300,37 @@ module Actionable
     # capture the declared-field ivars overlaid with any +succeed+ kwargs
     # (kwargs win) and coerce them. Only a strict {Success} is validated — its
     # output failing validation means it can't really have succeeded, so
-    # +@result+ becomes a +Failure(:invalid_output)+. A {Failure} or {Skipped}
-    # captures best-effort and is never validated (decisions D6/D17).
+    # +@result+ becomes a +Failure(:invalid_output)+.
+    # 
+    # A {Failure} or {Skipped} whose code declares its own output schema
+    # (decision D23) is built from its kwargs alone and validated the same way.
+    # Without one it carries an empty output under typed outcomes, and
+    # otherwise a best-effort, unvalidated capture into the success schema
+    # (decisions D6/D17). The failures the gem builds keep their output.
     def refresh_output: () -> void
+
+    def refresh_success_output: () -> void
+
+    # Attach +output+ when it is valid; otherwise the run ends as a
+    # +Failure(:invalid_output)+ carrying it.
+    # 
+    # _@param_ `output`
+    def attach_validated: (FieldStruct::Base output) -> void
+
+    # _@return_ — the output schema the skip or
+    # failure's code declares (decision D23), if any
+    def outcome_schema: () -> singleton(FieldStruct::Base)?
+
+    # A skip or failure's output fields, from the kwargs it was recorded with,
+    # never from instance variables (decision D23). After a hook refresh the
+    # output is already the struct, so its own attributes are reused.
+    # 
+    # _@param_ `schema`
+    def outcome_attributes: (singleton(FieldStruct::Base) schema) -> ::Hash[Symbol, Object]
+
+    # _@return_ — whether the result is a failure the gem itself built
+    # ({Action::GEM_FAILURE_CODES}), whose output is left as it is
+    def gem_failure?: () -> bool
 
     # Declared-field ivars from the action instance, overlaid with the recorded
     # +succeed+ kwargs (kept on +@result.output+ as a Hash until captured),
