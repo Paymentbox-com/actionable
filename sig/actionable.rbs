@@ -501,6 +501,14 @@ module Actionable
     # metadata (decision D20). Empty when the action declares none.
     def self.declared_failures: () -> ::Hash[Symbol, ::Hash[Symbol, Object]]
 
+    # Whether this action may end with a failure of +code+ (decision D20):
+    # always when it declares no failures, otherwise when it declares +code+
+    # or +code+ is one of the {GEM_FAILURE_CODES}. The check behind the
+    # strictness guard, the RSpec stubs and +and_fail+.
+    # 
+    # _@param_ `code`
+    def self.allows_failure_code?: ((Symbol | String) code) -> bool
+
     # Every {.fails} declaration, keyed by code, as +{message:, metadata:}+.
     def self.failure_declarations: () -> ::Hash[Symbol, ::Hash[Symbol, Object]]
 

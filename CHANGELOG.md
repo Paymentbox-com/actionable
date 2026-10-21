@@ -26,6 +26,14 @@ action that declares no failures behaves exactly as before.
   and the codes the gem emits itself, `Actionable::Action::GEM_FAILURE_CODES`
   (`:invalid_input`, `:invalid_output`).
 
+- **`allows_failure_code?(code)`** answers whether an action may fail with a
+  code under those rules.
+- **RSpec support follows the declarations.** On an action that declares
+  failures, `allow_actionable_failure` / `stub_actionable_failure` build a
+  failure carrying the code's declared metadata (and message, when none is
+  given), and they and `and_fail` raise `ArgumentError` for a code the action
+  doesn't declare. `actionable_failure_result` takes `metadata:`.
+
 ### Changed
 
 - **A nested action's failure crosses intact.** `Steps::Action` used to re-fail

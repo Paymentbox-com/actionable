@@ -59,6 +59,38 @@ RSpec.describe 'perform_actionable matcher' do
     end
   end
 
+  describe 'failure expectations on an action that declares failures' do
+    let(:declaring) do
+      Class.new(Actionable::Action) do
+        fails :refused, kind: :rejected
+        def go = fail!(:refused)
+        step :go
+      end
+    end
+
+    it 'passes for a declared code' do
+      expect(declaring).to perform_actionable.and_fail(:refused)
+    end
+
+    it 'passes for a code the gem emits itself' do
+      expect(declaring).not_to perform_actionable.and_fail(:invalid_input)
+    end
+
+    it 'refuses a code the action does not declare' do
+      expect { expect(declaring).to perform_actionable.and_fail(:nope) }
+        .to raise_error(ArgumentError, /does not declare :nope.*:refused/)
+    end
+
+    it 'refuses an undeclared code in a negated expectation too' do
+      expect { expect(declaring).not_to perform_actionable.and_fail(:nope) }
+        .to raise_error(ArgumentError, /does not declare :nope/)
+    end
+
+    it 'still accepts any code for an action that declares none' do
+      expect(fails).not_to perform_actionable.and_fail(:anything)
+    end
+  end
+
   describe 'raise expectations' do
     it 'asserts a raised exception of the expected class' do
       expect(raises).to perform_actionable.and_raise(ArgumentError)

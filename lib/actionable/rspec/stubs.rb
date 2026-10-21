@@ -9,6 +9,12 @@ module Actionable
     #
     # +allow_*+ permits the call (a stub); +stub_*+ also sets a call expectation
     # (a mock, verified on the example) — mirroring RSpec's allow/expect split.
+    #
+    # A stubbed failure of an action that declares failures with
+    # {Actionable::Action.fails} carries the declared metadata (and message,
+    # when none is given) for its code, and a code the action doesn't declare
+    # raises +ArgumentError+, so a stub can't return what the action never
+    # could (decision D20).
     module Stubs
       # @return [Success] the stubbed result
       def allow_actionable_success(action_class, **opts)
@@ -21,13 +27,15 @@ module Actionable
       end
 
       # @return [Failure] the stubbed result
+      # @raise [ArgumentError] when the action declares failures but not the code
       def allow_actionable_failure(action_class, **opts)
-        allow_run(action_class, actionable_failure_result(**opts))
+        allow_run(action_class, declared_failure_result(action_class, **opts))
       end
 
       # @return [Failure] the stubbed result
+      # @raise [ArgumentError] when the action declares failures but not the code
       def stub_actionable_failure(action_class, **opts)
-        expect_run(action_class, actionable_failure_result(**opts))
+        expect_run(action_class, declared_failure_result(action_class, **opts))
       end
 
       # @return [Skipped] the stubbed result
@@ -56,9 +64,11 @@ module Actionable
       # @param message [String, nil]
       # @param output [Hash]
       # @param errors [Hash{Symbol=>String, Array<String>}]
+      # @param metadata [Hash{Symbol=>Object}] the failure's per-code metadata
       # @return [Failure]
-      def actionable_failure_result(code: :error, message: nil, output: {}, errors: {})
-        apply_errors(Actionable::Failure.new(code: code, message: message, output: output), errors)
+      def actionable_failure_result(code: :error, message: nil, output: {}, errors: {}, metadata: {})
+        failure = Actionable::Failure.new(code: code, message: message, output: output, metadata: metadata)
+        apply_errors(failure, errors)
       end
 
       # Build a real {Skipped} from a hash (no stubbing).
@@ -72,6 +82,18 @@ module Actionable
       end
 
       private
+
+      # A {Failure} for +action_class+: the declared metadata and message for
+      # its code, or a refusal when the action declares failures but not it.
+      def declared_failure_result(action_class, code: :error, **opts)
+        unless action_class.allows_failure_code?(code)
+          raise ArgumentError, Actionable::RSpec.undeclared_code_message(action_class, code)
+        end
+
+        declaration = action_class.failure_declarations.fetch(code.to_sym, {message: nil, metadata: {}})
+        opts[:message] ||= declaration[:message]
+        actionable_failure_result(code: code, metadata: declaration[:metadata], **opts)
+      end
 
       def allow_run(action_class, result)
         allow(action_class).to receive(:run).and_return(result)

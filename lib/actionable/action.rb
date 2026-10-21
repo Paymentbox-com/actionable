@@ -152,6 +152,18 @@ module Actionable
         failure_declarations.transform_values { |declaration| declaration[:metadata] }
       end
 
+      # Whether this action may end with a failure of +code+ (decision D20):
+      # always when it declares no failures, otherwise when it declares +code+
+      # or +code+ is one of the {GEM_FAILURE_CODES}. The check behind the
+      # strictness guard, the RSpec stubs and +and_fail+.
+      #
+      # @param code [Symbol, String]
+      # @return [Boolean]
+      def allows_failure_code?(code)
+        code = code.to_sym
+        failure_declarations.empty? || failure_declarations.key?(code) || GEM_FAILURE_CODES.include?(code)
+      end
+
       # Every {.fails} declaration, keyed by code, as +{message:, metadata:}+.
       # @return [Hash{Symbol=>Hash{Symbol=>Object}}]
       def failure_declarations
@@ -736,7 +748,7 @@ module Actionable
     # @raise [DefinitionError] when +code+ is undeclared
     # @return [void]
     def ensure_failure_declared!(code, declarations)
-      return if declarations.empty? || declarations.key?(code) || GEM_FAILURE_CODES.include?(code)
+      return if self.class.allows_failure_code?(code)
 
       raise DefinitionError,
         "#{self.class.name || "action"} fails with #{code.inspect}, which it does not declare; " \

@@ -148,7 +148,7 @@ attaches that metadata to the failures the gem builds itself. A failure whose
 code isn't declared has `metadata == {}`, and `Failure#to_h` includes it.
 
 **Strict once declared.** An action that declares at least one code may only fail
-with codes it declares. Any other `fail` / `fail!` / `fail_with` / `fail_with!`
+with codes it declares (`allows_failure_code?(code)` answers whether it may). Any other `fail` / `fail!` / `fail_with` / `fail_with!`
 raises `Actionable::DefinitionError` from the call itself, naming the code and
 the declared list:
 
@@ -523,7 +523,15 @@ cryptic `NoMethodError`:
   `(result, exception)`.
 - `allow_actionable_success` / `stub_actionable_success` (and `_failure` /
   `_skip` variants) build real result objects so `.run` returns them without
-  executing the action.
+  executing the action. `actionable_failure_result(code:, message:, output:,
+  errors:, metadata:)` builds a failure without stubbing anything.
+
+On an action that declares failures, the RSpec support holds to the
+declarations. A stubbed failure carries the declared metadata for its code (and
+the declared message when you give none), and a stub or `and_fail` with a code
+the action doesn't declare raises `ArgumentError`, since it would test a
+failure the action can never return. The exemptions match the runtime: actions
+that declare none, and `GEM_FAILURE_CODES`.
 
 ## Background jobs
 
