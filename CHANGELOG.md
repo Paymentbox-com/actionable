@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`Coverage.new_gap_hint`** sets the advice the baseline-mismatch message
+  gives for a new gap. The default (`Coverage::DEFAULT_NEW_GAP_HINT`) is
+  unchanged; a host whose baseline only shrinks can drop "or add it to the
+  baseline".
+
 ### Fixed
 
 - **RBS for a subclass of a typed action now resolves on its own.** Its result

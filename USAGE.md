@@ -740,6 +740,7 @@ Settings, all on `Actionable::Coverage`:
 | `gem_codes` | `[]` | Gem codes to expect too. `:invalid_input` counts for an action whose input has a required field, `:invalid_output` for one whose output does. |
 | `only_observed` | `false` | Report only actions with at least one real run, so a targeted run doesn't flag every action it never touched. |
 | `baseline` | `nil` | Path to a committed JSON or YAML baseline of known gaps (below). |
+| `new_gap_hint` | `DEFAULT_NEW_GAP_HINT` | The advice after "New untested outcomes." in the mismatch message. The default, `'Write a spec that reaches each one, or add it to the baseline:'`, offers both fixes; a host whose baseline only shrinks sets its own. |
 
 `reset_config!` restores the defaults; `enable!`, `disable!`, `enabled?` and
 `reset!` control the recording, and `observed` holds the real runs.
