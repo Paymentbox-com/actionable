@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+Outcome coverage for test suites (decision D22). Opt-in with
+`require 'actionable/rspec/coverage'`; nothing changes for a suite that
+doesn't require it.
+
+### Added
+
+- **`Actionable::Coverage`** records every real `.run` of a named action as
+  `[class name, outcome, code]`, nested runs and `run_each` included. It hooks
+  `Action.run` by prepending onto its singleton class, so an RSpec stub of
+  `.run` replaces it and a stubbed result never counts as the action tested.
+
 ## [1.4.0] - 2026-10-21
 
 Declared skips (decision D21), the skip counterpart of 1.3.0's declared
