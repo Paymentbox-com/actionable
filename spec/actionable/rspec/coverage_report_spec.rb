@@ -159,6 +159,25 @@ RSpec.describe Actionable::Coverage::Report do
       expect(report.baseline_message).to include('ReportRefund: success')
     end
 
+    it 'tells you to write a spec or extend the baseline for a new gap, by default' do
+      File.write(baseline_path, Oj.dump({'ReportCharge' => %w[failure:refused failure:not_found success]}, mode: :compat))
+      coverage.baseline = baseline_path
+
+      expect(described_class.new.baseline_message)
+        .to include('New untested outcomes. Write a spec that reaches each one, or add it to the baseline:')
+    end
+
+    it 'gives the host’s own hint for a new gap, for a baseline that only shrinks' do
+      File.write(baseline_path, Oj.dump({'ReportCharge' => %w[failure:refused failure:not_found success]}, mode: :compat))
+      coverage.baseline = baseline_path
+      coverage.new_gap_hint = 'Write a spec that reaches each one; the baseline only shrinks.'
+
+      message = described_class.new.baseline_message
+
+      expect(message).to include("New untested outcomes. Write a spec that reaches each one; the baseline only shrinks.\n")
+      expect(message).not_to include('add it to the baseline')
+    end
+
     it 'fails on a baseline entry that is now covered, telling you to remove it' do
       described_class.new.write_baseline(baseline_path)
       coverage.baseline = baseline_path

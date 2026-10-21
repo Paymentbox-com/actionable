@@ -2,6 +2,24 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`Coverage.new_gap_hint`** sets the advice the baseline-mismatch message
+  gives for a new gap. The default (`Coverage::DEFAULT_NEW_GAP_HINT`) is
+  unchanged; a host whose baseline only shrinks can drop "or add it to the
+  baseline".
+
+### Fixed
+
+- **RBS for a subclass of a typed action now resolves on its own.** Its result
+  classes subclass the parent's (`< ::ApiAuth::BaseAction::Success`), which
+  nothing declared when the parent is an abstract base that is never
+  generated. `RBS.generate` now declares those parent classes, empty, up the
+  chain of typed ancestors.
+- **RBS readers on `Failure` are nullable.** An `invalid_output` failure
+  carries the output that broke its schema, so a required field can be
+  missing; the readers were typed non-nil.
+
 ## [1.5.0] - 2026-10-21
 
 Typed outcomes (decision D23). Opt-in with `typed_outcomes`: an action that

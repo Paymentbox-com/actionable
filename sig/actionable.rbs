@@ -144,6 +144,22 @@ module Actionable
     # _@return_ — RBS for the action, wrapped in its module nesting
     def self.generate: (singleton(Actionable::Action) klass) -> String
 
+    # The result classes a typed action's own subclass, declared empty up its
+    # typed ancestors, so the generated RBS resolves on its own. A host often
+    # never generates its abstract base action. Being empty, each merges with
+    # the ancestor's full signature when that is generated too, and repeats
+    # harmlessly across the subclasses of one base.
+    # 
+    # _@param_ `klass`
+    # 
+    # _@return_ — one namespaced block per typed ancestor, outermost first
+    def self.ancestor_blocks: (singleton(Actionable::Action) klass) -> String
+
+    # _@param_ `parent`
+    # 
+    # _@return_ — whether a subclass's result classes subclass +parent+'s
+    def self.typed_parent?: (Class parent) -> bool
+
     # _@param_ `klass`
     def self.class_block: (singleton(Actionable::Action) klass) -> String
 
@@ -167,10 +183,14 @@ module Actionable
 
     # The readers a result delegates to its output struct, one per field any
     # of +schemas+ declares. A field several declare types as the union of
-    # their types, nullable when any declares it optional.
+    # their types, nullable when any declares it optional, or when +nullable+.
+    # A failure's readers are all nullable: an +invalid_output+ failure carries
+    # the output that broke its schema, so a required field can be missing.
     # 
     # _@param_ `schemas`
-    def self.delegator_lines: (::Array[singleton(FieldStruct::Base)] schemas) -> ::Array[String]
+    # 
+    # _@param_ `nullable` — make every reader nullable
+    def self.delegator_lines: (::Array[singleton(FieldStruct::Base)] schemas, ?nullable: bool) -> ::Array[String]
 
     # _@param_ `klass`
     # 
@@ -198,6 +218,14 @@ module Actionable
     # _@return_ — the class block, subclassing the parent action's own
     # result class when the parent has typed outcomes, else the gem's
     def self.outcome_block: (singleton(Actionable::Action) klass, String name, ::Array[String] lines) -> String
+
+    # _@param_ `parent` — the superclass of the action being generated
+    # 
+    # _@param_ `name` — +Success+, +Skipped+ or +Failure+
+    # 
+    # _@return_ — the parent's result class when it has typed outcomes,
+    # else the gem's
+    def self.outcome_base: (Class parent, String name) -> String
 
     # _@param_ `code`
     # 

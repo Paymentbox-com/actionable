@@ -740,6 +740,7 @@ Settings, all on `Actionable::Coverage`:
 | `gem_codes` | `[]` | Gem codes to expect too. `:invalid_input` counts for an action whose input has a required field, `:invalid_output` for one whose output does. |
 | `only_observed` | `false` | Report only actions with at least one real run, so a targeted run doesn't flag every action it never touched. |
 | `baseline` | `nil` | Path to a committed JSON or YAML baseline of known gaps (below). |
+| `new_gap_hint` | `DEFAULT_NEW_GAP_HINT` | The advice after "New untested outcomes." in the mismatch message. The default, `'Write a spec that reaches each one, or add it to the baseline:'`, offers both fixes; a host whose baseline only shrinks sets its own. |
 
 `reset_config!` restores the defaults; `enable!`, `disable!`, `enabled?` and
 `reset!` control the recording, and `observed` holds the real runs.
@@ -876,5 +877,14 @@ end
 ```
 
 A failure's output also admits every skip schema and `Output`, since output that
-breaks one ends the run as `invalid_output` carrying it. A code with no schema,
-or no declarations at all, types as a Hash and a plain `::Symbol`.
+breaks one ends the run as `invalid_output` carrying it. For the same reason
+every reader declared on `Failure` is nullable (`def key: () -> ::KeySummary?`):
+a broken output can lack a required field. A code with no schema, or no
+declarations at all, types as a Hash and a plain `::Symbol`.
+
+A subclass of a typed action subclasses its parent's result classes
+(`class Success < ::Billing::BaseAction::Success`). So that the output resolves
+when the parent is an abstract base nobody generates, it also declares those
+parent classes, empty, up the chain of typed ancestors. Empty declarations merge
+with the parent's own signature when that is generated too, and repeat
+harmlessly across one base's subclasses.

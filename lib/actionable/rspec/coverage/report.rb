@@ -177,7 +177,7 @@ module Actionable
         problems = baseline_problems
         lines = ["Actionable outcome coverage differs from the baseline in #{Coverage.baseline}."]
         unless problems[:new_gaps].empty?
-          lines << 'New untested outcomes. Write a spec that reaches each one, or add it to the baseline:'
+          lines << "New untested outcomes. #{Coverage.new_gap_hint}"
           lines.concat(entry_lines(problems[:new_gaps]))
         end
         unless problems[:stale].empty?

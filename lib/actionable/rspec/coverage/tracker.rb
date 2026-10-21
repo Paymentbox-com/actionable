@@ -36,6 +36,9 @@ module Actionable
     @stubbed = Set.new
     @enabled = false
 
+    # The default {.new_gap_hint}.
+    DEFAULT_NEW_GAP_HINT = 'Write a spec that reaches each one, or add it to the baseline:'
+
     class << self
       # The class whose named descendants are reported. Defaults to
       # {Actionable::Action}.
@@ -65,6 +68,12 @@ module Actionable
       # {Report#baseline_problems}. +nil+ (the default) never fails.
       # @return [String, nil]
       attr_accessor :baseline
+
+      # The advice after "New untested outcomes." in {Report#baseline_message}.
+      # The default offers both fixes; a host whose baseline only shrinks can
+      # drop the second, e.g. +"Write a spec that reaches each one."+
+      # @return [String]
+      attr_accessor :new_gap_hint
 
       # @return [Array<Symbol>] the gem failure codes counted as expected
       #   outcomes; see {.gem_codes=}
@@ -101,6 +110,7 @@ module Actionable
         @gem_codes = []
         @only_observed = false
         @baseline = nil
+        @new_gap_hint = DEFAULT_NEW_GAP_HINT
       end
 
       # The outcomes +action_class+ can end with, as outcome keys:
