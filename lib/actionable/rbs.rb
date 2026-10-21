@@ -14,7 +14,10 @@ module Actionable
   #   which +.run+ returns;
   # * when the action declares failures with +fails+, a +failure_code+ type
   #   alias listing every code it can fail with: the declared ones, then the
-  #   {Action::GEM_FAILURE_CODES} (decision D20).
+  #   {Action::GEM_FAILURE_CODES} (decision D20);
+  # * when the action declares skips with +skips+, a +skip_code+ type alias
+  #   listing every code it can skip with (decision D21). The gem emits no skip
+  #   codes of its own, so the alias holds the declared ones only.
   #
   #   class CreateInvoice < Actionable::Action
   #     input  { required :amount, :integer }
@@ -54,8 +57,11 @@ module Actionable
     # @return [String]
     def self.class_block(klass)
       simple = klass.name.split('::').last
+      aliases = []
+      aliases << failure_code_alias(klass) unless klass.declared_failures.empty?
+      aliases << skip_code_alias(klass) unless klass.declared_skips.empty?
       body = ["def self.run: #{run_signature(klass)}"]
-      body.unshift(failure_code_alias(klass), '') unless klass.declared_failures.empty?
+      body.unshift(*aliases, '') unless aliases.empty?
       if (schema = klass.output_schema)
         body << ''
         body << output_block(schema)
@@ -85,6 +91,14 @@ module Actionable
       "type failure_code = #{codes.map(&:inspect).join(" | ")}"
     end
     private_class_method :failure_code_alias
+
+    # @param klass [Class<Actionable::Action>] an action that declares skips
+    # @return [String] the +skip_code+ alias: a union of the declared skip codes
+    #   as Symbol literal types
+    def self.skip_code_alias(klass)
+      "type skip_code = #{klass.declared_skips.keys.map(&:inspect).join(" | ")}"
+    end
+    private_class_method :skip_code_alias
 
     # @param field [FieldStruct::Field]
     # @return [String] +name: Type+ (required) or +?name: Type+ (optional). The

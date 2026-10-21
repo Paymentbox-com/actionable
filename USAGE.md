@@ -176,6 +176,62 @@ Two cases stay unchecked, so existing actions keep working unchanged:
 `fail_with`'s default code `:invalid` is not exempt: the action writes that
 `fail_with`, so a declaring action declares `:invalid` or passes its own `code:`.
 
+## Declared skips
+
+`skips(code, message = nil, **metadata)` declares one skip code an action can end
+with, so skips get the same contract as failures (decision D21). The metadata is
+neutral, as with `fails`. A `skip` or `skip!` with a declared code
+carries its metadata as `result.metadata`, and its declared message when the
+call gives none. `declared_skips` reads the declarations back as
+`{code => metadata}`, and `skip_declarations` as `{code => {message:, metadata:}}`:
+
+<!-- doctest -->
+```ruby
+class SyncField < Actionable::Action
+  skips :not_ready, 'the field is not created yet', retry: true
+  skips :already_synced, retry: false
+
+  step :sync
+  def sync = skip!(:not_ready)
+end
+
+result = SyncField.run
+result.skipped?   # => true
+result.code       # => :not_ready
+result.message    # => "the field is not created yet"
+result.metadata   # => {retry: true}
+SyncField.declared_skips # => {not_ready: {retry: true}, already_synced: {retry: false}}
+```
+
+Declarations are inherited, and a subclass can add more. A skip whose code isn't
+declared has `metadata == {}`, and `Skipped#to_h` includes it.
+
+**Strict once declared.** An action that declares at least one skip code may only
+skip with codes it declares (`allows_skip_code?(code)` answers whether it may).
+Any other `skip` / `skip!` raises `Actionable::DefinitionError` from the call
+itself. The gem emits no skip codes of its own, so nothing is exempt, and that
+includes `skip`'s implicit default `:skipped`: a declaring action that calls a
+bare `skip!` declares `:skipped` too.
+
+<!-- doctest -->
+```ruby
+class Archive < Actionable::Action
+  skips :already_archived
+  step :go
+  def go = skip!
+end
+
+begin
+  Archive.run
+rescue Actionable::DefinitionError => e
+  e.message.include?('skips with :skipped, which it does not declare') # => true
+end
+```
+
+An action that declares no skips skips with any code, as before. Declared
+failures and declared skips are independent, so declaring one never makes the
+other strict.
+
 ## Output
 
 `output do … end` declares a typed schema. Matching ivars are captured at the
@@ -342,6 +398,10 @@ it. The parent's own declaration for that code fills in metadata keys the child
 didn't set. A parent that declares failures must declare the codes its children
 can fail with, since they become its own.
 
+A child skip never becomes the parent's outcome (decision D17), so a parent that
+declares skips does not declare its children's skip codes. The child's skip and
+its metadata stay on the child's result.
+
 ## Case steps
 
 <!-- doctest -->
@@ -422,9 +482,9 @@ Actionable.registry[Registered.name].equal?(Registered) # => true
 ## Introspection — `Action.describe`
 
 A structured, at-a-glance summary of an action (name, input/output field
-metadata, ordered steps with type, declared failures, hooks, measure mode,
-transaction config) so humans and agents can understand it without reading
-source. `describe[:failures]` maps each declared code to
+metadata, ordered steps with type, declared failures and skips, hooks, measure
+mode, transaction config) so humans and agents can understand it without reading
+source. `describe[:failures]` and `describe[:skips]` each map a declared code to
 `{message:, metadata:}`:
 
 <!-- doctest -->
@@ -443,8 +503,8 @@ Probe.describe[:measure]            # => :none
 `Action.describe_text` renders the same information as a human/agent-readable
 multi-line summary instead of a Hash. The input/output field lines reuse
 FieldStruct's own `Metadata#describe` (each field's type, required-ness, and the
-options its type accepts). Declared failures and hook sections are listed only
-when there are any:
+options its type accepts). Declared failures, declared skips and hook sections
+are listed only when there are any:
 
 ```
 Probe (measure: none)
@@ -461,6 +521,14 @@ With `fails :refused, 'the card was refused', kind: :rejected` declared, a
 ```
   Failures:
     - refused (kind: :rejected): the card was refused
+```
+
+With `skips :not_ready, 'the field is not created yet', retry: true` declared, a
+`Skips:` section follows the failures:
+
+```
+  Skips:
+    - not_ready (retry: true): the field is not created yet
 ```
 
 ## Serializing a result
@@ -498,6 +566,9 @@ cryptic `NoMethodError`:
 - **Undeclared failure codes (at the `fail` call):** once an action declares a
   failure with `fails`, failing with a code it doesn't declare raises. See
   [Declared failures](#declared-failures).
+- **Undeclared skip codes (at the `skip` call):** once an action declares a skip
+  with `skips`, skipping with a code it doesn't declare raises, the default
+  `:skipped` included. See [Declared skips](#declared-skips).
 - **Missing step methods (at run start):** every method a step needs (method
   steps, case value sources and method branch targets, hook steps) must be
   implemented, or the run raises a `DefinitionError` naming the action and the
@@ -524,7 +595,8 @@ cryptic `NoMethodError`:
 - `allow_actionable_success` / `stub_actionable_success` (and `_failure` /
   `_skip` variants) build real result objects so `.run` returns them without
   executing the action. `actionable_failure_result(code:, message:, output:,
-  errors:, metadata:)` builds a failure without stubbing anything.
+  errors:, metadata:)` and `actionable_skip_result(code:, message:, output:,
+  metadata:)` build a failure or a skip without stubbing anything.
 
 On an action that declares failures, the RSpec support holds to the
 declarations. A stubbed failure carries the declared metadata for its code (and
@@ -532,6 +604,13 @@ the declared message when you give none), and a stub or `and_fail` with a code
 the action doesn't declare raises `ArgumentError`, since it would test a
 failure the action can never return. The exemptions match the runtime: actions
 that declare none, and `GEM_FAILURE_CODES`.
+
+Skips work the same way on an action that declares skips. A stubbed skip
+carries the declared metadata and message for its code, and a stub or
+`and_skip` with an undeclared code raises `ArgumentError`. As at runtime, the
+default `:skipped` is not exempt, so `allow_actionable_skip(action)` with no
+`code:` raises unless the action declares `:skipped`. A bare `and_skip` names no
+code and is always accepted.
 
 ## Background jobs
 
@@ -578,5 +657,13 @@ every code it can fail with, the declared ones first, then `GEM_FAILURE_CODES`:
 type failure_code = :refused | :not_found | :invalid_input | :invalid_output
 ```
 
-The alias is a type aid for now. Nothing in the generated `Result` uses it yet,
-since `code` is shared with success and skip.
+An action that declares skips gets a `skip_code` alias the same way, after
+`failure_code` when both are declared. It lists the declared codes only, since
+the gem emits no skips of its own:
+
+```
+type skip_code = :not_ready | :already_synced
+```
+
+The aliases are type aids for now. Nothing in the generated `Result` uses them
+yet, since `code` is shared by all three outcomes.

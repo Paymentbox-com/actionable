@@ -2,6 +2,48 @@
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-21
+
+Declared skips (decision D21), the skip counterpart of 1.3.0's declared
+failures. Additive: an action that declares no skips runs as before, and a
+child skip still continues its parent. One edge can reach existing code, listed
+under Changed: a skip's `to_h`, `inspect` and `attributes` have a `metadata`
+key.
+
+### Added
+
+- **`skips(code, message = nil, **metadata)`** declares a skip code the action
+  can end with, plus neutral per-code metadata, the skip counterpart of `fails`
+  (decision D21). Declarations are inherited and a subclass can add to them.
+  **`declared_skips`** reads them back as `{code => metadata}`, and
+  **`skip_declarations`** as `{code => {message:, metadata:}}`.
+- **`Skipped#metadata`** (default `{}`): a `skip` or `skip!` with a declared
+  code carries its metadata, and its declared message when the call gives none.
+  `Skipped#to_h` includes `metadata`.
+- **Strict once declared.** An action that declares at least one skip code may
+  only skip with declared codes; any other `skip` / `skip!` raises
+  `Actionable::DefinitionError` at the call, including the implicit default
+  `:skipped`. An action that declares no skips is unchecked, and declared
+  failures don't make skips strict. **`allows_skip_code?(code)`** answers
+  whether an action may skip with a code.
+- **`describe` shows declared skips** as `skips: {code => {message:,
+  metadata:}}`, and `describe_text` lists them under `Skips:`, after
+  `Failures:`.
+- **RSpec support follows the skip declarations.** On an action that declares
+  skips, `allow_actionable_skip` / `stub_actionable_skip` build a skip carrying
+  the code's declared metadata (and message, when none is given), and they and
+  `and_skip` raise `ArgumentError` for a code the action doesn't declare,
+  `:skipped` included. `actionable_skip_result` takes `metadata:`.
+- **`Actionable::RBS` emits a `skip_code` type alias** for an action that
+  declares skips, listing the declared codes, after `failure_code` when both
+  are declared.
+
+### Changed
+
+- **`Skipped#to_h` includes `metadata`** (`{}` unless the code is declared),
+  so code comparing a skip's `to_h` to an exact Hash sees one more key.
+  `Skipped#inspect` and `#attributes` show it too.
+
 ## [1.3.0] - 2026-10-21
 
 Declared failures (decision D20). Additive: an action that declares no

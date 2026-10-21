@@ -123,6 +123,43 @@ RSpec.describe 'perform_actionable matcher' do
     end
   end
 
+  describe 'skip expectations on an action that declares skips' do
+    let(:declaring) do
+      Class.new(Actionable::Action) do
+        skips :not_ready, retry: true
+        def go = skip!(:not_ready)
+        step :go
+      end
+    end
+
+    it 'passes for a declared code' do
+      expect(declaring).to perform_actionable.and_skip(:not_ready)
+    end
+
+    it 'refuses a code the action does not declare' do
+      expect { expect(declaring).to perform_actionable.and_skip(:paused) }
+        .to raise_error(ArgumentError, /does not declare skip :paused.*:not_ready/)
+    end
+
+    it 'refuses an undeclared code in a negated expectation too' do
+      expect { expect(declaring).not_to perform_actionable.and_skip(:skipped) }
+        .to raise_error(ArgumentError, /does not declare skip :skipped/)
+    end
+
+    it 'still accepts a bare and_skip' do
+      expect(declaring).to perform_actionable.and_skip
+    end
+
+    it 'still accepts any code for an action that declares none' do
+      undeclared = Class.new(Actionable::Action) do
+        def go = skip!(:not_ready)
+        step :go
+      end
+
+      expect(undeclared).not_to perform_actionable.and_skip(:anything)
+    end
+  end
+
   describe 'block form' do
     it 'yields the result and exception for extra assertions' do
       expect(succeeds).to perform_actionable.and_succeed do |result, exception|

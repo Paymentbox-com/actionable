@@ -107,7 +107,10 @@ module Actionable
   #   which +.run+ returns;
   # * when the action declares failures with +fails+, a +failure_code+ type
   #   alias listing every code it can fail with: the declared ones, then the
-  #   {Action::GEM_FAILURE_CODES} (decision D20).
+  #   {Action::GEM_FAILURE_CODES} (decision D20);
+  # * when the action declares skips with +skips+, a +skip_code+ type alias
+  #   listing every code it can skip with (decision D21). The gem emits no skip
+  #   codes of its own, so the alias holds the declared ones only.
   # 
   #   class CreateInvoice < Actionable::Action
   #     input  { required :amount, :integer }
@@ -146,6 +149,12 @@ module Actionable
     # _@return_ — the +failure_code+ alias: a union of the declared codes
     # and the codes the gem emits itself, as Symbol literal types
     def self.failure_code_alias: (singleton(Actionable::Action) klass) -> String
+
+    # _@param_ `klass` — an action that declares skips
+    # 
+    # _@return_ — the +skip_code+ alias: a union of the declared skip codes
+    # as Symbol literal types
+    def self.skip_code_alias: (singleton(Actionable::Action) klass) -> String
 
     # _@param_ `field`
     # 
@@ -521,6 +530,48 @@ module Actionable
     # Every {.fails} declaration, keyed by code, as +{message:, metadata:}+.
     def self.failure_declarations: () -> ::Hash[Symbol, ::Hash[Symbol, Object]]
 
+    # Declare one skip code this action can end with, and the metadata a skip
+    # with that code carries (decision D21). The skip counterpart of {.fails}.
+    # 
+    # The metadata is neutral: arbitrary keywords the gem stores, attaches to
+    # the {Skipped} as +result.metadata+, and shows in {.describe}, but never
+    # interprets. +message+ is the default message for a +skip+ that gives
+    # none.
+    # 
+    #   skips :not_ready, 'the field is not created yet', retry: true
+    #   skips :already_synced
+    # 
+    # Declarations are inherited and a subclass can add to them; redeclaring a
+    # code replaces its message and metadata. Once an action declares any
+    # skip, skipping with an undeclared code raises a {DefinitionError} at the
+    # +skip+ call, and that includes +skip+'s implicit default +:skipped+.
+    # 
+    # _@param_ `code` — the skip code
+    # 
+    # _@param_ `message` — the default message for this code
+    # 
+    # _@param_ `metadata` — per-code metadata, passed through
+    # 
+    # _@return_ — {.declared_skips}
+    def self.skips: ((Symbol | String) code, ?String? message, **::Hash[Symbol, Object] metadata) -> ::Hash[Symbol, ::Hash[Symbol, Object]]
+
+    # The skip codes this action declares with {.skips}, each mapped to its
+    # metadata (decision D21). Empty when the action declares none.
+    def self.declared_skips: () -> ::Hash[Symbol, ::Hash[Symbol, Object]]
+
+    # Whether this action may end with a skip of +code+ (decision D21): always
+    # when it declares no skips, otherwise only when it declares +code+. The
+    # gem emits no skip codes of its own, so nothing is exempt, +skip+'s
+    # default +:skipped+ included. The check behind the strictness guard, the
+    # RSpec skip stubs and +and_skip+.
+    # 
+    # _@param_ `code`
+    def self.allows_skip_code?: ((Symbol | String) code) -> bool
+
+    # Every {.skips} declaration, keyed by code, as +{message:, metadata:}+
+    # (decision D21).
+    def self.skip_declarations: () -> ::Hash[Symbol, ::Hash[Symbol, Object]]
+
     # Declare a step. The step type is inferred from +target+ (a Symbol or
     # String names an instance method — a {Steps::Method}).
     # 
@@ -613,8 +664,8 @@ module Actionable
     def self.measure_sample_hit?: () -> bool
 
     # A structured, at-a-glance summary of the action — its name, input/output
-    # field metadata, ordered steps (with type), declared failures (each code's
-    # message and metadata, decision D20), lifecycle hooks, measurement mode,
+    # field metadata, ordered steps (with type), declared failures and skips
+    # (each code's message and metadata, decisions D20/D21), lifecycle hooks, measurement mode,
     # and transaction config (decision D18). Lets humans and agents
     # understand an action without reading its source.
     def self.describe: () -> ::Hash[Symbol, Object]
@@ -623,7 +674,7 @@ module Actionable
     # a multi-line summary instead of a Hash (decision D18). The input/output
     # field lines reuse FieldStruct's own +Metadata#describe+ (type,
     # required-ness, and the options each field's type accepts); declared
-    # failures and hook sections are listed only when there are any.
+    # failures, declared skips and hook sections are listed only when there are any.
     # 
     #   Greet.describe_text
     #   # => "Greet (measure: none)\n  Input: (free-form)\n  ..."
@@ -665,9 +716,14 @@ module Actionable
     # _@param_ `schema`
     def self.schema_summary: (singleton(FieldStruct::Base)? schema) -> String
 
-    # The +Failures:+ lines for {.describe_text}, one per declared code with its
-    # metadata and default message, or none when nothing is declared.
-    def self.failures_summary: () -> ::Array[String]
+    # The +Failures:+ or +Skips:+ lines for {.describe_text}, one per declared
+    # code with its metadata and default message, or none when nothing is
+    # declared (decisions D20/D21).
+    # 
+    # _@param_ `heading` — the section heading
+    # 
+    # _@param_ `declarations` — code => {message:, metadata:}
+    def self.declarations_summary: (String heading, ::Hash[Symbol, ::Hash[Symbol, Object]] declarations) -> ::Array[String]
 
     # The +input+ value for {.describe}: a fixed schema's field metadata, a
     # discriminated-input descriptor (+discriminated_on+ + +shapes+), or +nil+
@@ -796,6 +852,10 @@ module Actionable
     # nothing to do (decision D17). Not a failure; later steps still run and the
     # final result reflects the most recent record (last write wins).
     # 
+    # A code declared with {Action.skips} attaches its metadata to the skip,
+    # and its declared message when +message+ is +nil+ (decision D21). Once the
+    # action declares any skip, an undeclared +code+ raises.
+    # 
     # _@param_ `code` — the skip reason; defaults to +:skipped+
     # 
     # _@param_ `message` — human-readable description
@@ -842,6 +902,13 @@ module Actionable
     # 
     # _@param_ `code`
     def ensure_failure_declared!: (Symbol code) -> void
+
+    # Strictness (decision D21): once an action declares any skip, every code
+    # it skips with must be declared, the implicit default +:skipped+ included.
+    # An action that declares none is unchecked.
+    # 
+    # _@param_ `code`
+    def ensure_skip_declared!: (Symbol code) -> void
 
     # Halt the run immediately, keeping whatever result was already recorded
     # (a prior +fail+/+succeed+/+skip+, or auto-{Success} if none). Control flow
@@ -1375,7 +1442,17 @@ module Actionable
     # _@return_ — the skip reason; defaults to +:skipped+
     def code: () -> Symbol
 
+    # _@return_ — the metadata the action declared for this
+    # code with {Action.skips} (decision D21), so an adapter can read it off the
+    # result without the action class. Empty when the code isn't declared.
+    # The gem stores and passes it through but never interprets it.
+    def metadata: () -> ::Hash[Symbol, Object]
+
     def skipped?: () -> bool
+
+    # A plain-Hash view of the skip: {Result#to_h} plus its declared +metadata+
+    # (decision D21).
+    def to_h: () -> ::Hash[Symbol, Object]
   end
 
   # A successful run's result. Its +code+ defaults to +:success+.

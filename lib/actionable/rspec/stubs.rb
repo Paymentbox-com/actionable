@@ -14,7 +14,8 @@ module Actionable
     # {Actionable::Action.fails} carries the declared metadata (and message,
     # when none is given) for its code, and a code the action doesn't declare
     # raises +ArgumentError+, so a stub can't return what the action never
-    # could (decision D20).
+    # could (decision D20). A stubbed skip follows {Actionable::Action.skips}
+    # the same way (decision D21), the default +:skipped+ included.
     module Stubs
       # @return [Success] the stubbed result
       def allow_actionable_success(action_class, **opts)
@@ -39,13 +40,15 @@ module Actionable
       end
 
       # @return [Skipped] the stubbed result
+      # @raise [ArgumentError] when the action declares skips but not the code
       def allow_actionable_skip(action_class, **opts)
-        allow_run(action_class, actionable_skip_result(**opts))
+        allow_run(action_class, declared_skip_result(action_class, **opts))
       end
 
       # @return [Skipped] the stubbed result
+      # @raise [ArgumentError] when the action declares skips but not the code
       def stub_actionable_skip(action_class, **opts)
-        expect_run(action_class, actionable_skip_result(**opts))
+        expect_run(action_class, declared_skip_result(action_class, **opts))
       end
 
       # Build a real {Success} from a hash (no stubbing).
@@ -76,9 +79,10 @@ module Actionable
       # @param code [Symbol]
       # @param message [String, nil]
       # @param output [Hash]
+      # @param metadata [Hash{Symbol=>Object}] the skip's per-code metadata
       # @return [Skipped]
-      def actionable_skip_result(code: :skipped, message: nil, output: {})
-        Actionable::Skipped.new(code: code, message: message, output: output)
+      def actionable_skip_result(code: :skipped, message: nil, output: {}, metadata: {})
+        Actionable::Skipped.new(code: code, message: message, output: output, metadata: metadata)
       end
 
       private
@@ -93,6 +97,18 @@ module Actionable
         declaration = action_class.failure_declarations.fetch(code.to_sym, {message: nil, metadata: {}})
         opts[:message] ||= declaration[:message]
         actionable_failure_result(code: code, metadata: declaration[:metadata], **opts)
+      end
+
+      # A {Skipped} for +action_class+: the declared metadata and message for
+      # its code, or a refusal when the action declares skips but not it.
+      def declared_skip_result(action_class, code: :skipped, **opts)
+        unless action_class.allows_skip_code?(code)
+          raise ArgumentError, Actionable::RSpec.undeclared_code_message(action_class, code, outcome: :skip)
+        end
+
+        declaration = action_class.skip_declarations.fetch(code.to_sym, {message: nil, metadata: {}})
+        opts[:message] ||= declaration[:message]
+        actionable_skip_result(code: code, metadata: declaration[:metadata], **opts)
       end
 
       def allow_run(action_class, result)

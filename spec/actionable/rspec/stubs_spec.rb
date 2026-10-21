@@ -93,6 +93,55 @@ RSpec.describe 'actionable rspec stubs' do
     end
   end
 
+  describe 'stubbing an action that declares skips' do
+    let(:declaring) do
+      Class.new(Actionable::Action) do
+        skips :not_ready, 'the field is not created yet', retry: true
+        def go = raise('the action should not actually run')
+        step :go
+      end
+    end
+
+    it 'builds a Skipped carrying the declared metadata and message' do
+      allow_actionable_skip(declaring, code: :not_ready)
+      run = declaring.run
+
+      expect(run).to be_skipped
+      expect(run.metadata).to eq(retry: true)
+      expect(run.message).to eq('the field is not created yet')
+    end
+
+    it 'carries the declared metadata from stub_actionable_skip too' do
+      stub_actionable_skip(declaring, code: :not_ready, message: 'later')
+      run = declaring.run
+
+      expect(run.metadata).to eq(retry: true)
+      expect(run.message).to eq('later')
+    end
+
+    it 'refuses a code the action does not declare' do
+      expect { allow_actionable_skip(declaring, code: :paused) }
+        .to raise_error(ArgumentError, /does not declare skip :paused.*:not_ready/)
+    end
+
+    it 'refuses the default :skipped when the action does not declare it' do
+      expect { stub_actionable_skip(declaring) }
+        .to raise_error(ArgumentError, /does not declare skip :skipped/)
+    end
+
+    it 'builds an empty metadata Skipped for an action that declares none' do
+      expect(allow_actionable_skip(action, code: :anything).metadata).to eq({})
+    end
+  end
+
+  describe 'actionable_skip_result' do
+    it 'takes explicit metadata, for a skip built without an action' do
+      result = actionable_skip_result(code: :not_ready, metadata: {retry: true})
+
+      expect(result.metadata).to eq(retry: true)
+    end
+  end
+
   describe 'stub_actionable_success' do
     it 'sets a call expectation satisfied when the action is run' do
       stub_actionable_success(action, message: 'ok')

@@ -62,11 +62,18 @@ result.invoice        # => same, via convenience delegation
    `DefinitionError`. `:invalid_input` / `:invalid_output` are exempt. The
    metadata after the message is the app's, read back as `result.metadata`;
    `fail`'s keywords are only ever errors.
+8. **Declared skips are strict too, the default included.** Once an action says
+   `skips :not_ready`, every `skip` / `skip!` must use a declared code, or it
+   raises `DefinitionError`. Nothing is exempt, so a bare `skip!` (code
+   `:skipped`) on a declaring action needs `skips :skipped`. A child's skip
+   continues the parent, so a parent never declares its children's skip codes.
 
 ## Fast paths
 
 - Declare what an action can fail with: `fails :not_found, kind: :not_found`;
   read it back with `Action.declared_failures` or off the result as `result.metadata`.
+- Declare what an action can skip with: `skips :not_ready, retry: true`; read it
+  back with `Action.declared_skips` or off the skipped result as `result.metadata`.
 - See an action's contract without reading source: `pp CreateInvoice.describe`
   (or `CreateInvoice.describe_text` for a readable summary).
 - Run over a collection: `Action.run_each(items) { |i| {…} }` → a `BatchResult`

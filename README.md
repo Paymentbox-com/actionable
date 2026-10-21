@@ -157,6 +157,28 @@ codes the gem emits itself (`:invalid_input`, `:invalid_output`), are unchecked.
 A nested action's failure reaches its parent with its code, message, errors and
 metadata intact. See [USAGE](USAGE.md#declared-failures).
 
+Skips are declared the same way with `skips`, so every way an action can end is
+part of its contract:
+
+<!-- doctest -->
+```ruby
+class Reindex < Actionable::Action
+  skips :not_ready, 'the index is still building', retry: true
+
+  step :reindex
+  def reindex = skip!(:not_ready)
+end
+
+skipped = Reindex.run
+skipped.code     # => :not_ready
+skipped.metadata # => {retry: true}
+Reindex.declared_skips # => {not_ready: {retry: true}}
+```
+
+Once an action declares any skip code, a `skip` with an undeclared one raises
+`Actionable::DefinitionError`, and that includes the default `:skipped`. See
+[USAGE](USAGE.md#declared-skips).
+
 ## Typed output
 
 `output do … end` builds a FieldStruct schema. Matching instance variables are

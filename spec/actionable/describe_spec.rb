@@ -98,6 +98,22 @@ RSpec.describe 'Actionable::Action.describe' do
   it 'reports no failures for an action that declares none' do
     expect(described[:failures]).to eq({})
   end
+
+  it 'reports declared skips with their message and metadata' do
+    klass = Class.new(Actionable::Action) do
+      skips :not_ready, 'the field is not created yet', retry: true
+      skips :already_synced
+    end
+
+    expect(klass.describe[:skips]).to eq(
+      not_ready: {message: 'the field is not created yet', metadata: {retry: true}},
+      already_synced: {message: nil, metadata: {}}
+    )
+  end
+
+  it 'reports no skips for an action that declares none' do
+    expect(described[:skips]).to eq({})
+  end
 end
 
 RSpec.describe 'Actionable::Action.describe_text' do
@@ -148,5 +164,22 @@ RSpec.describe 'Actionable::Action.describe_text' do
 
   it 'omits the failures section when none are declared' do
     expect(text).not_to include('Failures:')
+  end
+
+  it 'lists declared skips with their metadata and message, after the failures' do
+    klass = Class.new(Actionable::Action) do
+      fails :refused
+      skips :not_ready, 'the field is not created yet', retry: true
+      skips :already_synced
+    end
+
+    expect(klass.describe_text).to include(
+      "  Failures:\n    - refused\n  Skips:\n    - not_ready (retry: true): the field is not created yet\n    " \
+      '- already_synced'
+    )
+  end
+
+  it 'omits the skips section when none are declared' do
+    expect(text).not_to include('Skips:')
   end
 end
