@@ -123,10 +123,48 @@ module Actionable
         result
       end
 
-      # The stubbed result as the action's own result class when it has typed
-      # outcomes (decision D23), as a real run would return it.
+      # The stubbed result as a real run would return it (decision D23): its
+      # output shaped by the schema it is held to, then as the action's own
+      # result class when it has typed outcomes.
       def as_action_result(action_class, result)
+        shape_output(action_class, result)
         action_class.__send__(:typed_result, result)
+      end
+
+      # Mirror the runner: output for a code with a schema becomes that schema
+      # (refused when it breaks it, since a real run would end as
+      # +invalid_output+ instead), and under typed outcomes a code without one
+      # carries an empty output (refused when output is given, as a real run
+      # refuses it). The gem's own failure codes keep what they are given.
+      def shape_output(action_class, result)
+        schema = stubbed_output_schema(action_class, result)
+        return result.output = build_stubbed_output(action_class, result, schema) if schema
+        return unless action_class.typed_outcomes? && !result.success?
+        return if result.failure? && Actionable::Action::GEM_FAILURE_CODES.include?(result.code)
+
+        unless result.output.respond_to?(:empty?) && result.output.empty?
+          raise ArgumentError, "#{action_class.name || "action"} output for #{result.code.inspect}, which declares no " \
+                               'output schema; a real run refuses it'
+        end
+        result.output = {}
+      end
+
+      # @return [Class<FieldStruct::Base>, nil] the schema the result's output
+      #   is held to: its code's, or the success schema under typed outcomes
+      def stubbed_output_schema(action_class, result)
+        return action_class.skip_output_schema(result.code) if result.skipped?
+        return action_class.failure_output_schema(result.code) if result.failure?
+
+        action_class.output_schema if action_class.typed_outcomes?
+      end
+
+      def build_stubbed_output(action_class, result, schema)
+        given = result.output.is_a?(FieldStruct::Base) ? result.output.attributes : result.output.to_h
+        output = schema.new(**given.slice(*schema.attribute_names))
+        return output if output.valid?
+
+        raise ArgumentError, "#{action_class.name || "action"} output for #{result.code.inspect} breaks its schema " \
+                             "(#{output.errors.full_messages.join(", ")}); a real run would end as invalid_output"
       end
 
       # The stub's response: +result+, noted as a stubbed run when outcome

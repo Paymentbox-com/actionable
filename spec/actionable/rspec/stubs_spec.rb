@@ -162,11 +162,42 @@ RSpec.describe 'actionable rspec stubs' do
     let(:typed) do
       Class.new(Actionable::Action) do
         typed_outcomes
+        output { optional :name, :string }
         fails :refused
         skips :idle
+        skips(:already_active) { required :id, :integer }
         def go = raise('the action should not actually run')
         step :go
       end
+    end
+
+    it 'builds a skip’s output through its code’s schema, as a real run does' do
+      allow_actionable_skip(typed, code: :already_active, output: {id: '7'})
+      run = typed.run
+
+      expect([run.output.class, run.id]).to eq([typed.skip_output_schema(:already_active), 7])
+    end
+
+    it 'builds a success’s output through the output schema' do
+      expect(allow_actionable_success(typed, output: {name: 'x'}).name).to eq('x')
+    end
+
+    it 'gives a code without a schema an empty output' do
+      expect(allow_actionable_failure(typed, code: :refused).output).to eq({})
+    end
+
+    it 'refuses output for a code without a schema, which a real run refuses too' do
+      expect { allow_actionable_failure(typed, code: :refused, output: {card: 1}) }
+        .to raise_error(ArgumentError, /:refused.*schema/)
+    end
+
+    it 'refuses output its code’s schema rejects, which a real run never returns' do
+      expect { allow_actionable_skip(typed, code: :already_active, output: {id: 'seven'}) }
+        .to raise_error(ArgumentError, /already_active.*id/)
+    end
+
+    it 'keeps the output given for a code the gem builds' do
+      expect(allow_actionable_failure(typed, code: :invalid_output, output: {id: 'x'}).output).to eq(id: 'x')
     end
 
     it 'returns the action’s own Success' do
