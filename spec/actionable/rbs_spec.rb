@@ -24,6 +24,16 @@ class RbsDeclaringAction < Actionable::Action
   fails :invalid_input, kind: :invalid
 end
 
+class RbsSkippingAction < Actionable::Action
+  skips :not_ready, retry: true
+  skips :already_synced
+end
+
+class RbsBothAction < Actionable::Action
+  fails :refused
+  skips :not_ready
+end
+
 module RbsDemo
   class Namespaced < Actionable::Action
     output { required :id, :integer }
@@ -70,6 +80,28 @@ RSpec.describe Actionable::RBS do
 
     it 'emits no failure_code alias for an action that declares no failures' do
       expect(rbs).not_to include('failure_code')
+    end
+
+    it 'lists the declared skip codes as a type alias' do
+      skipping = described_class.generate(RbsSkippingAction)
+
+      expect(skipping).to include('type skip_code = :not_ready | :already_synced')
+      expect(skipping).not_to include('failure_code')
+      expect { RBS::Parser.parse_signature(skipping) }.not_to raise_error
+    end
+
+    it 'emits both aliases, failures first, when an action declares both' do
+      both = described_class.generate(RbsBothAction)
+
+      expect(both).to include(
+        "type failure_code = :refused | :invalid_input | :invalid_output\n  type skip_code = :not_ready\n"
+      )
+      expect { RBS::Parser.parse_signature(both) }.not_to raise_error
+    end
+
+    it 'emits no skip_code alias for an action that declares no skips' do
+      expect(rbs).not_to include('skip_code')
+      expect(described_class.generate(RbsDeclaringAction)).not_to include('skip_code')
     end
 
     it 'wraps a namespaced action in its module nesting' do

@@ -107,7 +107,10 @@ module Actionable
   #   which +.run+ returns;
   # * when the action declares failures with +fails+, a +failure_code+ type
   #   alias listing every code it can fail with: the declared ones, then the
-  #   {Action::GEM_FAILURE_CODES} (decision D20).
+  #   {Action::GEM_FAILURE_CODES} (decision D20);
+  # * when the action declares skips with +skips+, a +skip_code+ type alias
+  #   listing every code it can skip with (decision D21). The gem emits no skip
+  #   codes of its own, so the alias holds the declared ones only.
   # 
   #   class CreateInvoice < Actionable::Action
   #     input  { required :amount, :integer }
@@ -146,6 +149,12 @@ module Actionable
     # _@return_ — the +failure_code+ alias: a union of the declared codes
     # and the codes the gem emits itself, as Symbol literal types
     def self.failure_code_alias: (singleton(Actionable::Action) klass) -> String
+
+    # _@param_ `klass` — an action that declares skips
+    # 
+    # _@return_ — the +skip_code+ alias: a union of the declared skip codes
+    # as Symbol literal types
+    def self.skip_code_alias: (singleton(Actionable::Action) klass) -> String
 
     # _@param_ `field`
     # 

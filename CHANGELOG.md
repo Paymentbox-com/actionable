@@ -26,6 +26,9 @@
   the code's declared metadata (and message, when none is given), and they and
   `and_skip` raise `ArgumentError` for a code the action doesn't declare,
   `:skipped` included. `actionable_skip_result` takes `metadata:`.
+- **`Actionable::RBS` emits a `skip_code` type alias** for an action that
+  declares skips, listing the declared codes, after `failure_code` when both
+  are declared.
 
 ## [1.3.0] - 2026-10-21
 
