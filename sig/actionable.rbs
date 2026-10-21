@@ -104,7 +104,10 @@ module Actionable
   #   free-form);
   # * a nested +Output+ struct with a typed accessor per output field;
   # * a nested +Result+ with +output+ and the convenience-delegation readers,
-  #   which +.run+ returns.
+  #   which +.run+ returns;
+  # * when the action declares failures with +fails+, a +failure_code+ type
+  #   alias listing every code it can fail with: the declared ones, then the
+  #   {Action::GEM_FAILURE_CODES} (decision D20).
   # 
   #   class CreateInvoice < Actionable::Action
   #     input  { required :amount, :integer }
@@ -137,6 +140,12 @@ module Actionable
     # (or +(*untyped)+ free-form), returning the generated +Result+ when an
     # output schema is declared, else +::Actionable::Result+.
     def self.run_signature: (untyped klass) -> String
+
+    # _@param_ `klass` — an action that declares failures
+    # 
+    # _@return_ — the +failure_code+ alias: a union of the declared codes
+    # and the codes the gem emits itself, as Symbol literal types
+    def self.failure_code_alias: (singleton(Actionable::Action) klass) -> String
 
     # _@param_ `field`
     # 

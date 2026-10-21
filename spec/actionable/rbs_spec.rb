@@ -18,6 +18,12 @@ end
 class RbsFreeFormAction < Actionable::Action
 end
 
+class RbsDeclaringAction < Actionable::Action
+  fails :refused, kind: :rejected
+  fails :not_found
+  fails :invalid_input, kind: :invalid
+end
+
 module RbsDemo
   class Namespaced < Actionable::Action
     output { required :id, :integer }
@@ -53,6 +59,17 @@ RSpec.describe Actionable::RBS do
 
       expect(free_form).to include('def self.run: (*untyped) -> ::Actionable::Result')
       expect(free_form).not_to include('class Output')
+    end
+
+    it 'lists the declared failure codes, plus the codes the gem emits, as a type alias' do
+      declaring = described_class.generate(RbsDeclaringAction)
+
+      expect(declaring).to include('type failure_code = :refused | :not_found | :invalid_input | :invalid_output')
+      expect { RBS::Parser.parse_signature(declaring) }.not_to raise_error
+    end
+
+    it 'emits no failure_code alias for an action that declares no failures' do
+      expect(rbs).not_to include('failure_code')
     end
 
     it 'wraps a namespaced action in its module nesting' do

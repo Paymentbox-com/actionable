@@ -570,3 +570,13 @@ Actionable::RBS.generate(CreateInvoice)
 # => RBS with a typed `.run` (from the input schema) and output accessors /
 #    result delegation (from the output schema), wrapped in module nesting.
 ```
+
+An action that declares failures also gets a `failure_code` type alias listing
+every code it can fail with, the declared ones first, then `GEM_FAILURE_CODES`:
+
+```
+type failure_code = :refused | :not_found | :invalid_input | :invalid_output
+```
+
+The alias is a type aid for now. Nothing in the generated `Result` uses it yet,
+since `code` is shared with success and skip.

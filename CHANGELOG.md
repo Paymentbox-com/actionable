@@ -34,6 +34,10 @@ action that declares no failures behaves exactly as before.
   given), and they and `and_fail` raise `ArgumentError` for a code the action
   doesn't declare. `actionable_failure_result` takes `metadata:`.
 
+- **`Actionable::RBS.generate`** emits a `failure_code` type alias for an
+  action that declares failures: the declared codes, then the codes the gem
+  emits itself.
+
 ### Changed
 
 - **A nested action's failure crosses intact.** `Steps::Action` used to re-fail
