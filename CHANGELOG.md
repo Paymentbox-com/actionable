@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-10-21
+
 ### Added
 
 - **`Coverage.new_gap_hint`** sets the advice the baseline-mismatch message
