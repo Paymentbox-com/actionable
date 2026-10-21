@@ -421,3 +421,16 @@ RSpec.describe 'typed failure output (decision D23)' do
     end
   end
 end
+
+RSpec.describe 'typed outcome conversion (decision D23)' do
+  it 'copies a failure’s errors once, not again on top of those the rebuild finds' do
+    broken = Class.new(Actionable::Action) do
+      typed_outcomes
+      output { required :id, :integer }
+      step(:finish)
+      def finish = succeed(nil, id: 'x')
+    end
+
+    expect(broken.run.errors[:output]).to eq(['is invalid'])
+  end
+end

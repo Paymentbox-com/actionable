@@ -579,6 +579,9 @@ module Actionable
         return result unless OUTCOME_BASES.value?(result.class) || result.class.respond_to?(:outcome_of)
 
         converted = target.new(**result.attributes)
+        # Building it re-validates a nested output struct, which adds errors the
+        # result already has; the result's own errors are the whole truth.
+        converted.errors.to_h.each_key { |field| converted.errors.clear(field) }
         result.errors.to_h.each { |field, messages| Array(messages).each { |m| converted.errors.add(field, m) } }
         converted
       end
