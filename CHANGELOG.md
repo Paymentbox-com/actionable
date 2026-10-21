@@ -36,6 +36,12 @@ doesn't require it.
   baseline doesn't list and on an entry that is covered, no longer declared,
   or names an action that is gone, and its message lists each entry to add
   or remove. `Report#to_baseline` and `#write_baseline` produce the file.
+- **Sharded suites.** `Coverage.write(path)` dumps a shard's runs as JSON and
+  `Report.new(files:)` merges any number of them (a glob that matches no file
+  raises rather than reporting everything missing). `Coverage.report!` prints
+  the report, writes JSON to `ACTIONABLE_COVERAGE_JSON` when set, rewrites
+  the baseline under `ACTIONABLE_COVERAGE_UPDATE_BASELINE=true`, and otherwise
+  raises `Coverage::BaselineMismatch` when the gaps differ from it.
 
 ## [1.4.0] - 2026-10-21
 

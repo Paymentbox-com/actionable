@@ -200,4 +200,86 @@ RSpec.describe Actionable::Coverage::Report do
       expect { described_class.new.baseline_problems }.to raise_error(Actionable::Error, /missing\.json/)
     end
   end
+
+  describe 'shard files' do
+    it 'writes the observations to a file a later report merges' do
+      charge.run(outcome: :ok)
+      allow_actionable_failure(charge, code: :not_found)
+      charge.run
+      path = File.join(@dir, 'shards', 'one.json')
+      coverage.write(path)
+      coverage.reset!
+
+      expect(coverage.read(path)).to eq(
+        observed: Set[['ReportCharge', :success, :success]],
+        stubbed: Set[['ReportCharge', :failure, :not_found]]
+      )
+    end
+
+    it 'merges several shard files with what this process recorded' do
+      charge.run(outcome: :ok)
+      coverage.write(File.join(@dir, 'a.json'))
+      coverage.reset!
+      charge.run(outcome: :refused)
+      coverage.write(File.join(@dir, 'b.json'))
+      coverage.reset!
+      refund.run
+
+      report = described_class.new(files: Dir[File.join(@dir, '*.json')])
+
+      expect(report.totals).to eq(actions: 2, expected: 4, reached: 3, missing: 1)
+    end
+
+    it 'takes a glob' do
+      charge.run(outcome: :ok)
+      coverage.write(File.join(@dir, 'a.json'))
+      coverage.reset!
+
+      expect(described_class.new(files: File.join(@dir, '*.json')).totals[:reached]).to eq(1)
+    end
+
+    it 'refuses a glob that matches no file, rather than reporting every outcome missing' do
+      expect { described_class.new(files: File.join(@dir, 'none-*.json')) }
+        .to raise_error(Actionable::Error, /no coverage files match/)
+    end
+  end
+
+  describe 'Coverage.report!' do
+    let(:io) { StringIO.new }
+
+    it 'prints the report and returns it' do
+      report = coverage.report!(io: io)
+
+      expect(io.string).to include('Actionable outcome coverage', 'Missing: 4')
+      expect(report).to be_a(described_class)
+    end
+
+    it 'writes the JSON report when ACTIONABLE_COVERAGE_JSON names a path' do
+      path = File.join(@dir, 'report.json')
+      stub_const('ENV', ENV.to_h.merge('ACTIONABLE_COVERAGE_JSON' => path))
+
+      coverage.report!(io: io)
+
+      expect(Oj.load(File.read(path), mode: :compat)['totals']['missing']).to eq(4)
+    end
+
+    it 'raises with what to change when the baseline disagrees' do
+      File.write(baseline_path, '{}')
+      coverage.baseline = baseline_path
+
+      expect { coverage.report!(io: io) }
+        .to raise_error(Actionable::Coverage::BaselineMismatch, /ReportRefund: success/)
+    end
+
+    it 'rewrites the baseline instead of failing when ACTIONABLE_COVERAGE_UPDATE_BASELINE is true' do
+      File.write(baseline_path, '{}')
+      coverage.baseline = baseline_path
+      stub_const('ENV', ENV.to_h.merge('ACTIONABLE_COVERAGE_UPDATE_BASELINE' => 'true'))
+
+      coverage.report!(io: io)
+
+      expect(Oj.load(File.read(baseline_path), mode: :compat)).to include('ReportRefund' => %w[success])
+      expect(io.string).to include("wrote the baseline to #{baseline_path}")
+    end
+  end
 end

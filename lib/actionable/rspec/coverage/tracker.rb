@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'fileutils'
+require 'oj'
 require_relative '../../../actionable'
 
 module Actionable
@@ -198,6 +200,30 @@ module Actionable
       # @return [Set<Array(String, Symbol, Symbol)>] +[class name, outcome, code]+
       def observed
         @mutex.synchronize { @observed.dup }
+      end
+
+      # Write the runs recorded so far to +path+ as JSON, for a sharded suite:
+      # each shard writes its own file and one {Report} merges them. Creates
+      # the directory.
+      #
+      # @param path [String]
+      # @return [String] +path+
+      def write(path)
+        FileUtils.mkdir_p(File.dirname(path))
+        data = {version: 1, observed: observed.to_a.sort, stubbed: stubbed.to_a.sort}
+        File.write(path, Oj.dump(data, mode: :compat))
+        path
+      end
+
+      # Read a file written by {.write}.
+      #
+      # @param path [String]
+      # @return [Hash{Symbol=>Set<Array(String, Symbol, Symbol)>}] +{observed:, stubbed:}+
+      def read(path)
+        data = Oj.load(File.read(path), mode: :compat)
+        %w[observed stubbed].to_h do |set|
+          [set.to_sym, Array(data[set]).to_set { |name, outcome, code| [name, outcome.to_sym, code.to_sym] }]
+        end
       end
 
       # Forget every recorded run, real and stubbed.

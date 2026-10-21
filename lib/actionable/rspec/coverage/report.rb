@@ -10,17 +10,55 @@ module Actionable
     # baseline (decision D22). Its message says exactly what to change.
     class BaselineMismatch < Actionable::Error; end
 
+    class << self
+      # Build the {Report}, print it to +io+, and hold it to the baseline: the
+      # end-of-suite step, and the merge step of a sharded suite.
+      #
+      # With +ACTIONABLE_COVERAGE_JSON+ set, also writes the JSON report to
+      # that path. With +ACTIONABLE_COVERAGE_UPDATE_BASELINE=true+, rewrites
+      # {.baseline} from the current gaps instead of checking it.
+      #
+      # @param files [Array<String>, String] shard files from {.write}, or a glob
+      # @param io [IO] where the text report goes
+      # @raise [BaselineMismatch] when the gaps differ from the baseline
+      # @return [Report]
+      def report!(files: [], io: $stdout)
+        report = Report.new(files: files)
+        io.puts report.to_s
+        json_path = ENV['ACTIONABLE_COVERAGE_JSON'].to_s
+        File.write(json_path, report.to_json) unless json_path.empty?
+
+        if ENV['ACTIONABLE_COVERAGE_UPDATE_BASELINE'].to_s == 'true'
+          io.puts "Actionable outcome coverage: wrote the baseline to #{report.write_baseline}"
+        elsif !report.passed?
+          raise BaselineMismatch, report.baseline_message
+        end
+        report
+      end
+    end
+
     # The outcome-coverage report (decision D22): for each reported action
     # ({Coverage.actions}), the outcomes it can end with
     # ({Coverage.expected_outcomes}) against the outcomes real runs reached.
     # A text table for people, JSON for machines, and a check against the
     # baseline of known gaps in {Coverage.baseline}.
     class Report
+      # @param files [Array<String>, String] shard files written by
+      #   {Coverage.write}, or a glob for them, merged with +observed+ and
+      #   +stubbed+
       # @param observed [Enumerable<Array(String, Symbol, Symbol)>] real runs,
       #   as +[class name, outcome, code]+; defaults to {Coverage.observed}
       # @param stubbed [Enumerable<Array(String, Symbol, Symbol)>] runs answered
       #   by a stub helper; defaults to {Coverage.stubbed}
-      def initialize(observed: Coverage.observed, stubbed: Coverage.stubbed)
+      # @raise [Actionable::Error] when +files+ is a glob that matches nothing
+      def initialize(files: [], observed: Coverage.observed, stubbed: Coverage.stubbed)
+        observed = observed.to_set
+        stubbed = stubbed.to_set
+        shard_files(files).each do |path|
+          shard = Coverage.read(path)
+          observed.merge(shard[:observed])
+          stubbed.merge(shard[:stubbed])
+        end
         @observed = keys_by_action(observed)
         @stubbed = keys_by_action(stubbed)
       end
@@ -152,6 +190,17 @@ module Actionable
       end
 
       private
+
+      # An empty merge would report every outcome missing, so a glob that
+      # matches nothing is an error rather than a report.
+      def shard_files(files)
+        return Array(files) unless files.is_a?(String)
+
+        paths = Dir.glob(files)
+        raise Actionable::Error, "no coverage files match #{files}" if paths.empty?
+
+        paths
+      end
 
       # @return [Hash{String=>Set<String>}] outcome keys reached, by action name
       def keys_by_action(observations)
