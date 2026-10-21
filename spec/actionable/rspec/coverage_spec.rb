@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require 'actionable/rspec'
 require 'actionable/rspec/coverage/tracker'
 
 RSpec.describe Actionable::Coverage do
@@ -118,6 +119,32 @@ RSpec.describe Actionable::Coverage do
       charge.run(outcome: :ok)
 
       expect(described_class.observed).to contain_exactly(['CoverageCharge', :success, :success])
+    end
+  end
+
+  describe 'the gem stub helpers' do
+    it 'record a stubbed run in the stubbed set, never as observed' do
+      allow_actionable_failure(charge, code: :refused)
+      charge.run
+
+      expect(described_class.observed).to be_empty
+      expect(described_class.stubbed).to contain_exactly(['CoverageCharge', :failure, :refused])
+    end
+
+    it 'record each stub helper when it is called, not when it is set up' do
+      stub_actionable_skip(charge, code: :duplicate)
+
+      expect(described_class.stubbed).to be_empty
+
+      charge.run
+
+      expect(described_class.stubbed).to contain_exactly(['CoverageCharge', :skipped, :duplicate])
+    end
+
+    it 'still return the very result they built' do
+      built = allow_actionable_success(charge, output: {id: 7})
+
+      expect(charge.run).to equal(built)
     end
   end
 end

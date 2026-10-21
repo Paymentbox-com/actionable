@@ -31,6 +31,7 @@ module Actionable
 
     @mutex = Mutex.new
     @observed = Set.new
+    @stubbed = Set.new
     @enabled = false
 
     class << self
@@ -67,6 +68,26 @@ module Actionable
         @mutex.synchronize { @observed << observation } if observation
       end
 
+      # Record one run answered by the gem's stub helpers
+      # (+allow_actionable_success+ and the rest). Kept apart from {.observed}:
+      # a stubbed outcome was never produced by the action, so it never counts
+      # as tested, but the report shows it.
+      #
+      # @param action_class [Class<Actionable::Action>]
+      # @param result [Result]
+      # @return [void]
+      def record_stub(action_class, result)
+        observation = observation_for(action_class, result)
+        @mutex.synchronize { @stubbed << observation } if observation
+      end
+
+      # The runs answered by a gem stub helper so far, deduplicated.
+      #
+      # @return [Set<Array(String, Symbol, Symbol)>] +[class name, outcome, code]+
+      def stubbed
+        @mutex.synchronize { @stubbed.dup }
+      end
+
       # The real runs recorded so far, deduplicated.
       #
       # @return [Set<Array(String, Symbol, Symbol)>] +[class name, outcome, code]+
@@ -74,11 +95,14 @@ module Actionable
         @mutex.synchronize { @observed.dup }
       end
 
-      # Forget every recorded run.
+      # Forget every recorded run, real and stubbed.
       #
       # @return [void]
       def reset!
-        @mutex.synchronize { @observed.clear }
+        @mutex.synchronize do
+          @observed.clear
+          @stubbed.clear
+        end
       end
 
       private

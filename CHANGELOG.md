@@ -12,6 +12,9 @@ doesn't require it.
   `[class name, outcome, code]`, nested runs and `run_each` included. It hooks
   `Action.run` by prepending onto its singleton class, so an RSpec stub of
   `.run` replaces it and a stubbed result never counts as the action tested.
+- **The RSpec stub helpers note their runs** in `Coverage.stubbed` when
+  coverage is loaded, so a report can show an outcome that was only ever
+  stubbed. They record when the stub answers a call, not when it is set up.
 
 ## [1.4.0] - 2026-10-21
 
