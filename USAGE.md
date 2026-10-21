@@ -179,8 +179,8 @@ Two cases stay unchecked, so existing actions keep working unchanged:
 ## Declared skips
 
 `skips(code, message = nil, **metadata)` declares one skip code an action can end
-with: the third outcome gets the same contract as failures (decision D21). The
-metadata is neutral, as with `fails`. A `skip` or `skip!` with a declared code
+with, so skips get the same contract as failures (decision D21). The metadata is
+neutral, as with `fails`. A `skip` or `skip!` with a declared code
 carries its metadata as `result.metadata`, and its declared message when the
 call gives none. `declared_skips` reads the declarations back as
 `{code => metadata}`, and `skip_declarations` as `{code => {message:, metadata:}}`:
@@ -229,7 +229,7 @@ end
 ```
 
 An action that declares no skips skips with any code, as before. Declared
-failures and declared skips are independent: declaring one never makes the
+failures and declared skips are independent, so declaring one never makes the
 other strict.
 
 ## Output
@@ -398,6 +398,10 @@ it. The parent's own declaration for that code fills in metadata keys the child
 didn't set. A parent that declares failures must declare the codes its children
 can fail with, since they become its own.
 
+A child skip never becomes the parent's outcome (decision D17), so a parent that
+declares skips does not declare its children's skip codes. The child's skip and
+its metadata stay on the child's result.
+
 ## Case steps
 
 <!-- doctest -->
@@ -562,6 +566,9 @@ cryptic `NoMethodError`:
 - **Undeclared failure codes (at the `fail` call):** once an action declares a
   failure with `fails`, failing with a code it doesn't declare raises. See
   [Declared failures](#declared-failures).
+- **Undeclared skip codes (at the `skip` call):** once an action declares a skip
+  with `skips`, skipping with a code it doesn't declare raises, the default
+  `:skipped` included. See [Declared skips](#declared-skips).
 - **Missing step methods (at run start):** every method a step needs (method
   steps, case value sources and method branch targets, hook steps) must be
   implemented, or the run raises a `DefinitionError` naming the action and the

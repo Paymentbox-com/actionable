@@ -550,6 +550,40 @@ _Deferred: checking at definition time that a declaring parent declares every
 code a declaring child can fail with, and using `failure_code` in a typed
 per-outcome Result (stage 3 of the PBX typed-results work)._
 
+### D21. Declared skips (added 2026-10, follows D20)
+
+D20 declared the failure codes an action can end with, but a skip's code stayed
+free-form, so the third outcome had no contract. Declaring skips too means every
+way an action can end is listed on the class, which lets a test-suite tracker
+report the declared outcomes no spec reached.
+
+- **`skips(code, message = nil, **metadata)`** declares a skip code, the same
+  shape as `fails`: neutral metadata the gem stores and passes through but never
+  interprets, and a default message for a `skip` that gives none. Declarations
+  are inherited and a subclass can add or redeclare codes. `declared_skips`
+  reads them as `{code => metadata}` and `skip_declarations` as
+  `{code => {message:, metadata:}}`.
+- **`Skipped#metadata`** (default `{}`) carries the declared metadata of the
+  skip's code, and `Skipped#to_h` includes it (*amends D17*).
+- **Strict once declared**, with no exemptions. An action that declares any
+  skip raises `DefinitionError` from a `skip` / `skip!` with an undeclared code.
+  The gem emits no skips of its own, so there is no counterpart to
+  `GEM_FAILURE_CODES`, and the implicit default `:skipped` is an undeclared code
+  like any other. `allows_skip_code?` answers the check. Declared failures and
+  declared skips are independent; declaring one never makes the other strict.
+- **Nested skips are unchanged.** D17 has a skipped child continue its parent
+  like a success, so a child's skip never becomes the parent's outcome and a
+  declaring parent does not declare its children's skip codes. Propagating a
+  child skip the way D20 propagates a failure would change what every existing
+  composed action returns, so it is not part of D21.
+- `describe[:skips]` and a `Skips:` section in `describe_text`; the RSpec skip
+  stubs attach the declared metadata and, with `and_skip`, refuse undeclared
+  codes (*amends D12*); `Actionable::RBS` emits a `skip_code` alias (*amends
+  D13*).
+
+_Deferred: an opt-in for propagating a child skip to its parent, should a host
+need it._
+
 ---
 
 ## Slice plan

@@ -78,6 +78,10 @@ When asked to build one:
   raises `DefinitionError` (`:invalid_input` / `:invalid_output` are exempt).
   `fail`'s keywords after the message are only ever errors, so an error on
   `kind` stays an error.
+- **Declare skip codes** with `skips :not_ready, 'message', retry: true`, read
+  back as `result.metadata` on the skip. Once any skip code is declared,
+  skipping with an undeclared one raises `DefinitionError`, the default
+  `:skipped` included (nothing is exempt).
 - Plain verbs don't halt; last write wins. Bang verbs halt.
 - To signal a real bug, `raise` — exceptions propagate, they aren't caught.
 
@@ -86,7 +90,7 @@ When asked to build one:
 - **Nested action:** `step Notify, input: %i[invoice], expose: %i[receipt]`. A
   child failure fails the parent with its code, message, errors and metadata
   intact; a child skip continues it. A parent that declares failures must
-  declare its children's codes too.
+  declare its children's failure codes too, but never their skip codes.
 - **Branch:** `case_step :status do on 'active', :handle; default :other end`
   (matches by `==`, `Regexp`, or Array membership).
 - **Hooks:** `on_success` / `on_failure` / `on_skip` / `always` run after the
