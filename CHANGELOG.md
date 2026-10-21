@@ -2,51 +2,6 @@
 
 ## [Unreleased]
 
-Outcome coverage for test suites (decision D22). Opt-in with
-`require 'actionable/rspec/coverage'`; nothing changes for a suite that
-doesn't require it.
-
-### Added
-
-- **`Actionable::Coverage`** records every real `.run` of a named action as
-  `[class name, outcome, code]`, nested runs and `run_each` included. It hooks
-  `Action.run` by prepending onto its singleton class, so an RSpec stub of
-  `.run` replaces it and a stubbed result never counts as the action tested.
-- **The RSpec stub helpers note their runs** in `Coverage.stubbed` when
-  coverage is loaded, so a report can show an outcome that was only ever
-  stubbed. They record when the stub answers a call, not when it is set up.
-- **`Coverage.expected_outcomes(action)`** lists what an action can end with,
-  read from its declarations at run time: `success`, every `declared_failures`
-  code, every `declared_skips` code on a gem that has them, and any
-  `Coverage.gem_codes` that apply (`:invalid_input` when an input field is
-  required, `:invalid_output` when an output field is). `gem_codes` defaults
-  to `[]`.
-- **`Coverage.actions`** lists the actions to report: named descendants of
-  `Coverage.root` (default `Actionable::Action`) that have steps and whose
-  name still resolves to them, filtered by `include_prefixes` and
-  `exclude_prefixes`. `Coverage.loader` runs first so a host can eager-load.
-- **`Coverage::Report`** compares the two: `rows` and `totals` (actions,
-  expected outcomes, reached, missing), a text table (`to_s`) of each action's
-  never-reached outcomes with a "Stubbed only" column, and `to_json`.
-  `Coverage.only_observed = true` reports only actions with a real run, for a
-  partial or targeted run.
-- **A named baseline of known gaps.** `Coverage.baseline = path` points at a
-  committed JSON or YAML file of `{"Action::Name" => [outcome keys]}`. Missing
-  outcomes alone never fail; with a baseline, the report fails on a gap the
-  baseline doesn't list and on an entry that is covered, no longer declared,
-  or names an action that is gone, and its message lists each entry to add
-  or remove. `Report#to_baseline` and `#write_baseline` produce the file.
-- **Sharded suites.** `Coverage.write(path)` dumps a shard's runs as JSON and
-  `Report.new(files:)` merges any number of them (a glob that matches no file
-  raises rather than reporting everything missing). `Coverage.report!` prints
-  the report, writes JSON to `ACTIONABLE_COVERAGE_JSON` when set, rewrites
-  the baseline under `ACTIONABLE_COVERAGE_UPDATE_BASELINE=true`, and otherwise
-  raises `Coverage::BaselineMismatch` when the gaps differ from it.
-- **`require 'actionable/rspec/coverage'`** turns it all on: it starts
-  recording and adds an RSpec `after(:suite)` hook that writes the shard file
-  named by `ACTIONABLE_COVERAGE_FILE` when that is set, and otherwise prints
-  the report and fails the suite on a baseline mismatch.
-
 ## [1.4.0] - 2026-10-21
 
 Declared skips (decision D21), the skip counterpart of 1.3.0's declared
@@ -54,6 +9,10 @@ failures. Additive: an action that declares no skips runs as before, and a
 child skip still continues its parent. One edge can reach existing code, listed
 under Changed: a skip's `to_h`, `inspect` and `attributes` have a `metadata`
 key.
+
+Outcome coverage for test suites (decision D22). Opt-in with
+`require 'actionable/rspec/coverage'`; nothing changes for a suite that
+doesn't require it.
 
 ### Added
 
@@ -82,6 +41,44 @@ key.
 - **`Actionable::RBS` emits a `skip_code` type alias** for an action that
   declares skips, listing the declared codes, after `failure_code` when both
   are declared.
+- **`Actionable::Coverage`** records every real `.run` of a named action as
+  `[class name, outcome, code]`, nested runs and `run_each` included. It hooks
+  `Action.run` by prepending onto its singleton class, so an RSpec stub of
+  `.run` replaces it and a stubbed result never counts as the action tested.
+- **The RSpec stub helpers note their runs** in `Coverage.stubbed` when
+  coverage is loaded, so a report can show an outcome that was only ever
+  stubbed. They record when the stub answers a call, not when it is set up.
+- **`Coverage.expected_outcomes(action)`** lists what an action can end with,
+  read from its declarations at run time: `success`, every `declared_failures`
+  code, every `declared_skips` code, and any
+  `Coverage.gem_codes` that apply (`:invalid_input` when an input field is
+  required, `:invalid_output` when an output field is). `gem_codes` defaults
+  to `[]`.
+- **`Coverage.actions`** lists the actions to report: named descendants of
+  `Coverage.root` (default `Actionable::Action`) that have steps and whose
+  name still resolves to them, filtered by `include_prefixes` and
+  `exclude_prefixes`. `Coverage.loader` runs first so a host can eager-load.
+- **`Coverage::Report`** compares the two: `rows` and `totals` (actions,
+  expected outcomes, reached, missing), a text table (`to_s`) of each action's
+  never-reached outcomes with a "Stubbed only" column, and `to_json`.
+  `Coverage.only_observed = true` reports only actions with a real run, for a
+  partial or targeted run.
+- **A named baseline of known gaps.** `Coverage.baseline = path` points at a
+  committed JSON or YAML file of `{"Action::Name" => [outcome keys]}`. Missing
+  outcomes alone never fail; with a baseline, the report fails on a gap the
+  baseline doesn't list and on an entry that is covered, no longer declared,
+  or names an action that is gone, and its message lists each entry to add
+  or remove. `Report#to_baseline` and `#write_baseline` produce the file.
+- **Sharded suites.** `Coverage.write(path)` dumps a shard's runs as JSON and
+  `Report.new(files:)` merges any number of them (a glob that matches no file
+  raises rather than reporting everything missing). `Coverage.report!` prints
+  the report, writes JSON to `ACTIONABLE_COVERAGE_JSON` when set, rewrites
+  the baseline under `ACTIONABLE_COVERAGE_UPDATE_BASELINE=true`, and otherwise
+  raises `Coverage::BaselineMismatch` when the gaps differ from it.
+- **`require 'actionable/rspec/coverage'`** turns it all on: it starts
+  recording and adds an RSpec `after(:suite)` hook that writes the shard file
+  named by `ACTIONABLE_COVERAGE_FILE` when that is set, and otherwise prints
+  the report and fails the suite on a baseline mismatch.
 
 ### Changed
 

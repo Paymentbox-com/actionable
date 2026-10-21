@@ -588,10 +588,10 @@ need it._
 
 ### D22. Outcome coverage (added 2026-10, from PBX typed-results review)
 
-With failures (D20) and skips (D21) declared, every way an action can end is known at run
-time, so a suite can tell whether its specs reached each one. The goal is
-that a suite knows, at its end, which declared outcomes no spec produced, and
-says so. The declarations are read as runtime data; nothing parses source.
+With failures (D20) and skips (D21) declared, every way an action can end is
+known at run time, so a suite can tell whether its specs reached each one. The
+goal is that a suite knows, at its end, which declared outcomes no spec
+produced, and says so. The declarations are read as runtime data; nothing parses source.
 
 - **`require 'actionable/rspec/coverage'`** turns it on; neither the core nor
   `actionable/rspec` loads it. It lives under `lib/actionable/rspec/`, outside
