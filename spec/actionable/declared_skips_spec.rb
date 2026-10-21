@@ -197,4 +197,40 @@ RSpec.describe 'declared skips (skips)' do
       expect(child.run.metadata).to eq(retry: true)
     end
   end
+
+  describe 'a nested action that skips with a declared code' do
+    let(:child) do
+      Class.new(Actionable::Action) do
+        skips :not_ready, retry: true
+        output { optional :note, :string }
+        step :go
+        def go = skip!(:not_ready)
+      end
+    end
+
+    it 'continues the parent, which decides its own outcome (D17)' do
+      inner = child
+      parent = Class.new(Actionable::Action) do
+        output { optional :done, :boolean }
+        step inner
+        step :finish
+        define_method(:finish) { @done = true }
+      end
+
+      result = parent.run
+
+      expect(result).to be_success
+      expect(result.output.done).to be(true)
+    end
+
+    it "never makes a declaring parent declare the child's skip code" do
+      inner = child
+      parent = Class.new(Actionable::Action) do
+        skips :paused
+        step inner
+      end
+
+      expect(parent.run).to be_success
+    end
+  end
 end
