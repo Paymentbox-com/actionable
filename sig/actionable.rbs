@@ -596,16 +596,17 @@ module Actionable
     def self.measure_sample_hit?: () -> bool
 
     # A structured, at-a-glance summary of the action — its name, input/output
-    # field metadata, ordered steps (with type), lifecycle hooks, measurement
-    # mode, and transaction config (decision D18). Lets humans and agents
+    # field metadata, ordered steps (with type), declared failures (each code's
+    # message and metadata, decision D20), lifecycle hooks, measurement mode,
+    # and transaction config (decision D18). Lets humans and agents
     # understand an action without reading its source.
     def self.describe: () -> ::Hash[Symbol, Object]
 
     # A human/agent-readable rendering of {.describe} — the same information as
     # a multi-line summary instead of a Hash (decision D18). The input/output
     # field lines reuse FieldStruct's own +Metadata#describe+ (type,
-    # required-ness, and the options each field's type accepts); only hook
-    # sections that have hooks are listed.
+    # required-ness, and the options each field's type accepts); declared
+    # failures and hook sections are listed only when there are any.
     # 
     #   Greet.describe_text
     #   # => "Greet (measure: none)\n  Input: (free-form)\n  ..."
@@ -646,6 +647,10 @@ module Actionable
     # 
     # _@param_ `schema`
     def self.schema_summary: (singleton(FieldStruct::Base)? schema) -> String
+
+    # The +Failures:+ lines for {.describe_text}, one per declared code with its
+    # metadata and default message, or none when nothing is declared.
+    def self.failures_summary: () -> ::Array[String]
 
     # The +input+ value for {.describe}: a fixed schema's field metadata, a
     # discriminated-input descriptor (+discriminated_on+ + +shapes+), or +nil+
