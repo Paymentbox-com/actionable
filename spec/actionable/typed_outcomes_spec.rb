@@ -434,3 +434,33 @@ RSpec.describe 'typed outcome conversion (decision D23)' do
     expect(broken.run.errors[:output]).to eq(['is invalid'])
   end
 end
+
+RSpec.describe 'typed outcome adoption (decision D23)' do
+  let(:broken_child) do
+    Class.new(Actionable::Action) do
+      typed_outcomes
+      output { required :id, :integer }
+      step(:finish)
+      def finish = succeed(nil, id: 'x')
+    end
+  end
+
+  it 'brings no output across with a gem-built failure, as before typed outcomes' do
+    inner = broken_child
+    parent = Class.new(Actionable::Action) do
+      typed_outcomes
+      step inner
+    end
+
+    result = parent.run
+
+    expect([result.code, result.output]).to eq([:invalid_output, {}])
+  end
+
+  it 'gives an untyped parent the gem Failure, not the typed child’s own class' do
+    inner = broken_child
+    parent = Class.new(Actionable::Action) { step inner }
+
+    expect(parent.run).to be_an_instance_of(Actionable::Failure)
+  end
+end

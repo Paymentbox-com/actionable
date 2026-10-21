@@ -978,15 +978,37 @@ module Actionable
     def adopt_failure!(child)
       ensure_failure_declared!(child.code)
       declaration = self.class.failure_declarations.fetch(child.code, {message: nil, metadata: {}})
-      failure_class = child.is_a?(Failure) ? child.class : Failure
+      failure_class = adopted_failure_class(child)
       attributes = child.attributes.except(:output, :history)
       @result = failure_class.new(
         **attributes,
         message: child.message || declaration[:message],
         metadata: declaration[:metadata].merge(attributes.fetch(:metadata, {}))
       ).absorb_errors_from(child)
-      @result.output = crossing_output(child.output) if self.class.typed_outcomes?
+      @result.output = crossing_output(child.output) if crosses_output?(child)
       halt!
+    end
+
+    # The class a nested failure crosses as: a host's own result subclass
+    # stays (D20), but a typed child's own +Failure+ becomes the gem class,
+    # since it names the child; a typed parent then makes it its own (D23).
+    #
+    # @param child [Result]
+    # @return [Class<Failure>]
+    def adopted_failure_class(child)
+      return Failure unless child.is_a?(Failure)
+
+      child.class.respond_to?(:outcome_of) ? Failure : child.class
+    end
+
+    # Whether a nested failure's output crosses into this action: under typed
+    # outcomes, for every code but those the gem builds, which keep the output
+    # they had before typed outcomes (none) (decision D23).
+    #
+    # @param child [Failure]
+    # @return [Boolean]
+    def crosses_output?(child)
+      self.class.typed_outcomes? && !GEM_FAILURE_CODES.include?(child.code)
     end
 
     # @param output [FieldStruct::Base, Hash, Object] a nested failure's output
