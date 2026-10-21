@@ -56,15 +56,7 @@ module Actionable
       def output(&block)
         return @output_schema unless block
 
-        schema = Class.new(FieldStruct::Base, &block)
-        conflicting = schema.attribute_names & RESERVED_OUTPUT_FIELDS
-        unless conflicting.empty?
-          raise DefinitionError,
-            "#{name || "action"}: output field(s) #{conflicting.map(&:inspect).join(", ")} " \
-            'conflict with reserved result attributes / instance variables; rename them'
-        end
-
-        @output_schema = schema
+        @output_schema = build_output_schema(block)
       end
 
       # @return [Class<FieldStruct::Base>, nil] the declared output schema, or
@@ -135,13 +127,27 @@ module Actionable
       # code, failing with an undeclared one raises a {DefinitionError} at the
       # +fail+ call; the {GEM_FAILURE_CODES} are exempt.
       #
+      # A block declares the output a failure with this code carries, in the
+      # FieldStruct DSL of {.output} (decision D23); see {.failure_output_schema}.
+      #
       # @param code [Symbol, String] the failure code
       # @param message [String, nil] the default message for this code
       # @param metadata [Hash{Symbol=>Object}] per-code metadata, passed through
+      # @yield the FieldStruct field declarations of this code's output
+      # @raise [DefinitionError] when an output field name is reserved
       # @return [Hash{Symbol=>Hash{Symbol=>Object}}] {.declared_failures}
-      def fails(code, message = nil, **metadata)
-        failure_declarations[code.to_sym] = {message: message, metadata: metadata.freeze}.freeze
+      def fails(code, message = nil, **metadata, &block)
+        failure_declarations[code.to_sym] = declaration(message, metadata, block)
         declared_failures
+      end
+
+      # The output schema declared for failure +code+ with a {.fails} block, or
+      # +nil+ when the code has none (decision D23).
+      #
+      # @param code [Symbol, String]
+      # @return [Class<FieldStruct::Base>, nil]
+      def failure_output_schema(code)
+        failure_declarations.dig(code.to_sym, :output_schema)
       end
 
       # The failure codes this action declares with {.fails}, each mapped to its
@@ -186,13 +192,46 @@ module Actionable
       # skip, skipping with an undeclared code raises a {DefinitionError} at the
       # +skip+ call, and that includes +skip+'s implicit default +:skipped+.
       #
+      # A block declares the output a skip with this code carries, in the
+      # FieldStruct DSL of {.output} (decision D23); see {.skip_output_schema}.
+      #
+      #   skips :already_active do
+      #     required :id, :integer
+      #   end
+      #
       # @param code [Symbol, String] the skip code
       # @param message [String, nil] the default message for this code
       # @param metadata [Hash{Symbol=>Object}] per-code metadata, passed through
+      # @yield the FieldStruct field declarations of this code's output
+      # @raise [DefinitionError] when an output field name is reserved
       # @return [Hash{Symbol=>Hash{Symbol=>Object}}] {.declared_skips}
-      def skips(code, message = nil, **metadata)
-        skip_declarations[code.to_sym] = {message: message, metadata: metadata.freeze}.freeze
+      def skips(code, message = nil, **metadata, &block)
+        skip_declarations[code.to_sym] = declaration(message, metadata, block)
         declared_skips
+      end
+
+      # The output schema declared for skip +code+ with a {.skips} block, or
+      # +nil+ when the code has none (decision D23).
+      #
+      # @param code [Symbol, String]
+      # @return [Class<FieldStruct::Base>, nil]
+      def skip_output_schema(code)
+        skip_declarations.dig(code.to_sym, :output_schema)
+      end
+
+      # Turn typed outcomes on (or off) for this action and its descendants
+      # (decision D23). With it on, a skip or failure whose code declares no
+      # output schema carries an empty output instead of a best-effort capture.
+      #
+      # @param enabled [Boolean]
+      # @return [Boolean] the new setting
+      def typed_outcomes(enabled: true)
+        @typed_outcomes = enabled ? true : false
+      end
+
+      # @return [Boolean] whether typed outcomes are on (decision D23)
+      def typed_outcomes?
+        @typed_outcomes ? true : false
       end
 
       # The skip codes this action declares with {.skips}, each mapped to its
@@ -367,8 +406,8 @@ module Actionable
           input: input_descriptor,
           output: output_schema&.metadata&.to_h,
           steps: steps.map { |step| {type: step.kind, name: step.name, options: step.options} },
-          failures: failure_declarations.dup,
-          skips: skip_declarations.dup,
+          failures: describe_declarations(failure_declarations),
+          skips: describe_declarations(skip_declarations),
           hooks: {
             on_success: success_hooks.map(&:name),
             on_failure: failure_hooks.map(&:name),
@@ -470,6 +509,50 @@ module Actionable
       end
 
       private
+
+      # Build an output schema from a FieldStruct DSL block, refusing a field
+      # named like a result attribute (decisions D6/D18/D23).
+      #
+      # @param block [Proc] the FieldStruct field declarations
+      # @raise [DefinitionError] when a field name is in {RESERVED_OUTPUT_FIELDS}
+      # @return [Class<FieldStruct::Base>]
+      def build_output_schema(block)
+        schema = Class.new(FieldStruct::Base, &block)
+        conflicting = schema.attribute_names & RESERVED_OUTPUT_FIELDS
+        unless conflicting.empty?
+          raise DefinitionError,
+            "#{name || "action"}: output field(s) #{conflicting.map(&:inspect).join(", ")} " \
+            'conflict with reserved result attributes / instance variables; rename them'
+        end
+
+        schema
+      end
+
+      # One {.fails} / {.skips} declaration: the default message, the frozen
+      # metadata, and the output schema when a block declares one (D20/D21/D23).
+      #
+      # @param message [String, nil]
+      # @param metadata [Hash{Symbol=>Object}]
+      # @param block [Proc, nil]
+      # @return [Hash{Symbol=>Object}]
+      def declaration(message, metadata, block)
+        entry = {message: message, metadata: metadata.freeze}
+        entry[:output_schema] = build_output_schema(block) if block
+        entry.freeze
+      end
+
+      # {.describe}'s view of the declarations: each code's message and
+      # metadata, plus its output fields when it declares an output schema.
+      #
+      # @param declarations [Hash{Symbol=>Hash{Symbol=>Object}}]
+      # @return [Hash{Symbol=>Hash{Symbol=>Object}}]
+      def describe_declarations(declarations)
+        declarations.transform_values do |entry|
+          described = entry.slice(:message, :metadata)
+          described[:output] = entry[:output_schema].metadata.to_h if entry[:output_schema]
+          described
+        end
+      end
 
       # One {.describe_text} block for an input/output schema: +" (free-form)"+
       # when none is declared, otherwise the FieldStruct +Metadata#describe+
@@ -617,6 +700,7 @@ module Actionable
         subclass.instance_variable_set(:@skip_declarations, skip_declarations.dup)
         subclass.instance_variable_set(:@measure, measure)
         subclass.instance_variable_set(:@measure_rate, measure_rate)
+        subclass.instance_variable_set(:@typed_outcomes, typed_outcomes?)
       end
     end
 
