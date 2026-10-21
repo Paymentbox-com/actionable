@@ -15,6 +15,16 @@ doesn't require it.
 - **The RSpec stub helpers note their runs** in `Coverage.stubbed` when
   coverage is loaded, so a report can show an outcome that was only ever
   stubbed. They record when the stub answers a call, not when it is set up.
+- **`Coverage.expected_outcomes(action)`** lists what an action can end with,
+  read from its declarations at run time: `success`, every `declared_failures`
+  code, every `declared_skips` code on a gem that has them, and any
+  `Coverage.gem_codes` that apply (`:invalid_input` when an input field is
+  required, `:invalid_output` when an output field is). `gem_codes` defaults
+  to `[]`.
+- **`Coverage.actions`** lists the actions to report: named descendants of
+  `Coverage.root` (default `Actionable::Action`) that have steps and whose
+  name still resolves to them, filtered by `include_prefixes` and
+  `exclude_prefixes`. `Coverage.loader` runs first so a host can eager-load.
 
 ## [1.4.0] - 2026-10-21
 

@@ -35,6 +35,97 @@ module Actionable
     @enabled = false
 
     class << self
+      # The class whose named descendants are reported. Defaults to
+      # {Actionable::Action}.
+      # @return [Class<Actionable::Action>]
+      attr_accessor :root
+
+      # Name filters for the report. A String matches as a name prefix, a
+      # Regexp by +match?+. With any include filter, only matching names are
+      # reported; an exclude filter drops matching names.
+      # @return [Array<String, Regexp>]
+      attr_accessor :include_prefixes, :exclude_prefixes
+
+      # Called before the actions are listed, so a host can load every action
+      # class first (+-> { Rails.application.eager_load! }+). Unloaded classes
+      # cannot be reported.
+      # @return [#call, nil]
+      attr_accessor :loader
+
+      # @return [Array<Symbol>] the gem failure codes counted as expected
+      #   outcomes; see {.gem_codes=}
+      attr_reader :gem_codes
+
+      # Count some of {Actionable::Action::GEM_FAILURE_CODES} as expected
+      # outcomes. +:invalid_input+ counts for an action whose input has a
+      # required field; +:invalid_output+ for one whose output has a required
+      # field. Defaults to none, so an adopter opts in.
+      #
+      # @param codes [Array<Symbol, String>]
+      # @raise [ArgumentError] for a code the gem never emits
+      # @return [void]
+      def gem_codes=(codes)
+        codes = Array(codes).map(&:to_sym)
+        unknown = codes - Actionable::Action::GEM_FAILURE_CODES
+        unless unknown.empty?
+          raise ArgumentError,
+            "not a gem failure code: #{unknown.map(&:inspect).join(", ")} " \
+            "(the gem emits #{Actionable::Action::GEM_FAILURE_CODES.map(&:inspect).join(", ")})"
+        end
+
+        @gem_codes = codes
+      end
+
+      # Restore every setting to its default.
+      #
+      # @return [void]
+      def reset_config!
+        @root = Actionable::Action
+        @include_prefixes = []
+        @exclude_prefixes = []
+        @loader = nil
+        @gem_codes = []
+      end
+
+      # The outcomes +action_class+ can end with, as outcome keys:
+      # +"success"+, +"failure:<code>"+ for each declared failure and
+      # +"skipped:<code>"+ for each declared skip, plus any configured
+      # {.gem_codes} that apply. Read from the declarations at run time.
+      #
+      # @param action_class [Class<Actionable::Action>]
+      # @return [Array<String>]
+      def expected_outcomes(action_class)
+        keys = ['success']
+        keys.concat(action_class.declared_failures.keys.map { |code| "failure:#{code}" })
+        # +declared_skips+ is newer than +declared_failures+; on a gem without
+        # it, an action declares no skips.
+        if action_class.respond_to?(:declared_skips)
+          keys.concat(action_class.declared_skips.keys.map { |code| "skipped:#{code}" })
+        end
+        gem_codes.each { |code| keys << "failure:#{code}" if gem_code_applies?(action_class, code) }
+        keys.uniq
+      end
+
+      # The action classes to report: named descendants of {.root} that have
+      # steps, whose name still resolves to the class, filtered by
+      # {.include_prefixes} and {.exclude_prefixes}. Calls {.loader} first.
+      #
+      # @return [Array<Class<Actionable::Action>>] sorted by name
+      def actions
+        loader&.call
+        descendants(root).select { |klass| reportable?(klass) }.sort_by(&:name)
+      end
+
+      # The outcome key an observation counts toward: +"success"+, or
+      # +"<outcome>:<code>"+.
+      #
+      # @param outcome [Symbol, String]
+      # @param code [Symbol, String]
+      # @return [String]
+      def outcome_key(outcome, code)
+        outcome.to_s == 'success' ? 'success' : "#{outcome}:#{code}"
+      end
+
       # Start recording runs. Installs {Recorder} the first time; safe to call
       # again.
       #
@@ -107,6 +198,58 @@ module Actionable
 
       private
 
+      # @return [Array<Class>] every subclass below +klass+, recursively
+      def descendants(klass)
+        klass.subclasses.flat_map { |subclass| [subclass, *descendants(subclass)] }
+      end
+
+      # Abstract actions are left out: an anonymous class has no name to
+      # report, and an action with no steps is a base class. A class whose
+      # name no longer resolves to it (a removed +stub_const+, a reloaded
+      # constant) is left out too.
+      def reportable?(klass)
+        name = klass.name
+        return false if name.nil? || klass.steps.empty?
+        return false unless resolves_to?(name, klass)
+        return false if include_prefixes.any? && include_prefixes.none? { |pattern| matches?(pattern, name) }
+
+        exclude_prefixes.none? { |pattern| matches?(pattern, name) }
+      end
+
+      def resolves_to?(name, klass)
+        Object.const_get(name).equal?(klass)
+      rescue NameError
+        false
+      end
+
+      def matches?(pattern, name)
+        pattern.is_a?(Regexp) ? pattern.match?(name) : name.start_with?(pattern.to_s)
+      end
+
+      def gem_code_applies?(action_class, code)
+        case code
+        when :invalid_input then input_can_be_invalid?(action_class)
+        when :invalid_output then requires_field?(action_class.output_schema)
+        end
+      end
+
+      # A fixed input with a required field, or a discriminated input with no
+      # default shape (an unmatched value fails) or a shape with one.
+      def input_can_be_invalid?(action_class)
+        return requires_field?(action_class.input_schema) if action_class.input_schema
+
+        dispatch = action_class.input_dispatch
+        return false unless dispatch
+
+        dispatch.default_schema.nil? || dispatch.schemas.any? { |schema| requires_field?(schema) }
+      end
+
+      def requires_field?(schema)
+        return false unless schema
+
+        schema.metadata.to_h.values.any? { |field| field[:required] }
+      end
+
       # @return [Array(String, Symbol, Symbol), nil]
       def observation_for(action_class, result)
         return unless enabled? && result.is_a?(Actionable::Result)
@@ -126,5 +269,7 @@ module Actionable
         end
       end
     end
+
+    reset_config!
   end
 end

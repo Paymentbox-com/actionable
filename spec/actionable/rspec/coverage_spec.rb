@@ -10,6 +10,7 @@ RSpec.describe Actionable::Coverage do
   ensure
     described_class.disable!
     described_class.reset!
+    described_class.reset_config!
   end
 
   # Named fixture actions: a run is recorded under the class name, so each one
@@ -145,6 +146,113 @@ RSpec.describe Actionable::Coverage do
       built = allow_actionable_success(charge, output: {id: 7})
 
       expect(charge.run).to equal(built)
+    end
+  end
+
+  describe '.expected_outcomes' do
+    it 'expects success and every declared failure' do
+      expect(described_class.expected_outcomes(charge)).to eq(%w[success failure:refused])
+    end
+
+    it 'expects every declared skip on an action that declares skips' do
+      charge.define_singleton_method(:declared_skips) { {duplicate: {}} }
+
+      expect(described_class.expected_outcomes(charge)).to eq(%w[success failure:refused skipped:duplicate])
+    end
+
+    it 'leaves the gem codes out by default' do
+      expect(described_class.gem_codes).to eq([])
+    end
+
+    it 'expects invalid_input when configured and the input has a required field' do
+      described_class.gem_codes = %i[invalid_input]
+
+      expect(described_class.expected_outcomes(charge)).to include('failure:invalid_input')
+    end
+
+    it 'does not expect invalid_input when no input field is required' do
+      described_class.gem_codes = %i[invalid_input]
+      optional_only = Class.new(Actionable::Action) { input { optional :note, :string } }
+
+      expect(described_class.expected_outcomes(optional_only)).to eq(%w[success])
+    end
+
+    it 'expects invalid_output when configured and the output has a required field' do
+      described_class.gem_codes = %i[invalid_output]
+      with_output = Class.new(Actionable::Action) { output { required :id, :integer } }
+
+      expect(described_class.expected_outcomes(with_output)).to eq(%w[success failure:invalid_output])
+    end
+
+    it 'lists a declared gem code once' do
+      described_class.gem_codes = %i[invalid_input]
+      charge.fails :invalid_input, kind: :invalid
+
+      expect(described_class.expected_outcomes(charge).count('failure:invalid_input')).to eq(1)
+    end
+
+    it 'refuses a gem code the gem never emits' do
+      expect { described_class.gem_codes = %i[refused] }.to raise_error(ArgumentError, /refused/)
+    end
+  end
+
+  describe '.actions' do
+    let!(:base) { stub_const('CoverageBase', Class.new(Actionable::Action)) }
+    let!(:billing) do
+      stub_const('CoverageBilling', Class.new(base) do
+        step :go
+        def go = nil
+      end)
+    end
+    let!(:shipping) do
+      stub_const('CoverageShipping', Class.new(billing))
+    end
+    # A named intermediate base with no steps of its own: abstract.
+    let!(:abstract) { stub_const('CoverageAbstract', Class.new(base)) }
+
+    before { described_class.root = base }
+
+    it 'lists the named descendants of the root that have steps' do
+      expect(described_class.actions).to contain_exactly(billing, shipping)
+    end
+
+    it 'leaves out an abstract action, one with no steps' do
+      expect(described_class.actions).not_to include(abstract)
+    end
+
+    it 'leaves out an anonymous action' do
+      anonymous = Class.new(billing)
+
+      expect(described_class.actions).not_to include(anonymous)
+    end
+
+    it 'leaves out a class whose name no longer resolves to it, such as a removed stub_const' do
+      stale = Class.new(billing)
+      Object.const_set(:CoverageStale, stale)
+      Object.send(:remove_const, :CoverageStale)
+
+      expect(described_class.actions).not_to include(stale)
+    end
+
+    it 'keeps only names starting with an include prefix' do
+      described_class.include_prefixes = %w[CoverageShip]
+
+      expect(described_class.actions).to contain_exactly(shipping)
+    end
+
+    it 'drops names starting with an exclude prefix' do
+      described_class.exclude_prefixes = ['CoverageShip', /\ACoverageBill/]
+
+      expect(described_class.actions).to be_empty
+    end
+
+    it 'calls the loader first, so a host can eager-load its actions' do
+      loaded = false
+      described_class.loader = -> { loaded = true }
+
+      described_class.actions
+
+      expect(loaded).to be(true)
     end
   end
 end
