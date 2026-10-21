@@ -203,6 +203,18 @@ module Actionable
         skip_declarations.transform_values { |declaration| declaration[:metadata] }
       end
 
+      # Whether this action may end with a skip of +code+ (decision D21): always
+      # when it declares no skips, otherwise only when it declares +code+. The
+      # gem emits no skip codes of its own, so nothing is exempt, +skip+'s
+      # default +:skipped+ included. The check behind the strictness guard, the
+      # RSpec skip stubs and +and_skip+.
+      #
+      # @param code [Symbol, String]
+      # @return [Boolean]
+      def allows_skip_code?(code)
+        skip_declarations.empty? || skip_declarations.key?(code.to_sym)
+      end
+
       # Every {.skips} declaration, keyed by code, as +{message:, metadata:}+
       # (decision D21).
       #
@@ -715,16 +727,19 @@ module Actionable
     # final result reflects the most recent record (last write wins).
     #
     # A code declared with {Action.skips} attaches its metadata to the skip,
-    # and its declared message when +message+ is +nil+ (decision D21).
+    # and its declared message when +message+ is +nil+ (decision D21). Once the
+    # action declares any skip, an undeclared +code+ raises.
     #
     # @param code [Symbol] the skip reason; defaults to +:skipped+
     # @param message [String, nil] human-readable description
     # @param output [Hash{Symbol=>Object}] the skip output payload — captured
     #   best-effort like a {Success}'s output, but never validated (decision
     #   D17). Lets an idempotent hit return the existing record's data.
+    # @raise [DefinitionError] when the action declares skips but not +code+
     # @return [false] so a step can branch on the call (the run did not succeed here)
     def skip(code = :skipped, message = nil, **output)
       code = code.to_sym
+      ensure_skip_declared!(code)
       declaration = self.class.skip_declarations.fetch(code, {message: nil, metadata: {}})
       @result = Skipped.new(
         code: code, message: message || declaration[:message], output: output, metadata: declaration[:metadata]
@@ -800,6 +815,22 @@ module Actionable
       raise DefinitionError,
         "#{self.class.name || "action"} fails with #{code.inspect}, which it does not declare; " \
         "declare it with `fails #{code.inspect}` (declared: #{declared})"
+    end
+
+    # Strictness (decision D21): once an action declares any skip, every code
+    # it skips with must be declared, the implicit default +:skipped+ included.
+    # An action that declares none is unchecked.
+    #
+    # @param code [Symbol]
+    # @raise [DefinitionError] when +code+ is undeclared
+    # @return [void]
+    def ensure_skip_declared!(code)
+      return if self.class.allows_skip_code?(code)
+
+      declared = self.class.declared_skips.keys.map(&:inspect).join(', ')
+      raise DefinitionError,
+        "#{self.class.name || "action"} skips with #{code.inspect}, which it does not declare; " \
+        "declare it with `skips #{code.inspect}` (declared: #{declared})"
     end
 
     # Halt the run immediately, keeping whatever result was already recorded

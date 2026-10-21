@@ -206,6 +206,32 @@ SyncField.declared_skips # => {not_ready: {retry: true}, already_synced: {retry:
 Declarations are inherited, and a subclass can add more. A skip whose code isn't
 declared has `metadata == {}`, and `Skipped#to_h` includes it.
 
+**Strict once declared.** An action that declares at least one skip code may only
+skip with codes it declares (`allows_skip_code?(code)` answers whether it may).
+Any other `skip` / `skip!` raises `Actionable::DefinitionError` from the call
+itself. The gem emits no skip codes of its own, so nothing is exempt, and that
+includes `skip`'s implicit default `:skipped`: a declaring action that calls a
+bare `skip!` declares `:skipped` too.
+
+<!-- doctest -->
+```ruby
+class Archive < Actionable::Action
+  skips :already_archived
+  step :go
+  def go = skip!
+end
+
+begin
+  Archive.run
+rescue Actionable::DefinitionError => e
+  e.message.include?('skips with :skipped, which it does not declare') # => true
+end
+```
+
+An action that declares no skips skips with any code, as before. Declared
+failures and declared skips are independent: declaring one never makes the
+other strict.
+
 ## Output
 
 `output do … end` declares a typed schema. Matching ivars are captured at the

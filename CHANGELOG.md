@@ -12,6 +12,12 @@
 - **`Skipped#metadata`** (default `{}`): a `skip` or `skip!` with a declared
   code carries its metadata, and its declared message when the call gives none.
   `Skipped#to_h` includes `metadata`.
+- **Strict once declared.** An action that declares at least one skip code may
+  only skip with declared codes; any other `skip` / `skip!` raises
+  `Actionable::DefinitionError` at the call, including the implicit default
+  `:skipped`. An action that declares no skips is unchecked, and declared
+  failures don't make skips strict. **`allows_skip_code?(code)`** answers
+  whether an action may skip with a code.
 
 ## [1.3.0] - 2026-10-21
 

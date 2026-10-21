@@ -550,6 +550,15 @@ module Actionable
     # metadata (decision D21). Empty when the action declares none.
     def self.declared_skips: () -> ::Hash[Symbol, ::Hash[Symbol, Object]]
 
+    # Whether this action may end with a skip of +code+ (decision D21): always
+    # when it declares no skips, otherwise only when it declares +code+. The
+    # gem emits no skip codes of its own, so nothing is exempt, +skip+'s
+    # default +:skipped+ included. The check behind the strictness guard, the
+    # RSpec skip stubs and +and_skip+.
+    # 
+    # _@param_ `code`
+    def self.allows_skip_code?: ((Symbol | String) code) -> bool
+
     # Every {.skips} declaration, keyed by code, as +{message:, metadata:}+
     # (decision D21).
     def self.skip_declarations: () -> ::Hash[Symbol, ::Hash[Symbol, Object]]
@@ -830,7 +839,8 @@ module Actionable
     # final result reflects the most recent record (last write wins).
     # 
     # A code declared with {Action.skips} attaches its metadata to the skip,
-    # and its declared message when +message+ is +nil+ (decision D21).
+    # and its declared message when +message+ is +nil+ (decision D21). Once the
+    # action declares any skip, an undeclared +code+ raises.
     # 
     # _@param_ `code` — the skip reason; defaults to +:skipped+
     # 
@@ -878,6 +888,13 @@ module Actionable
     # 
     # _@param_ `code`
     def ensure_failure_declared!: (Symbol code) -> void
+
+    # Strictness (decision D21): once an action declares any skip, every code
+    # it skips with must be declared, the implicit default +:skipped+ included.
+    # An action that declares none is unchecked.
+    # 
+    # _@param_ `code`
+    def ensure_skip_declared!: (Symbol code) -> void
 
     # Halt the run immediately, keeping whatever result was already recorded
     # (a prior +fail+/+succeed+/+skip+, or auto-{Success} if none). Control flow
