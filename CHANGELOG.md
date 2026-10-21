@@ -42,6 +42,10 @@ doesn't require it.
   the report, writes JSON to `ACTIONABLE_COVERAGE_JSON` when set, rewrites
   the baseline under `ACTIONABLE_COVERAGE_UPDATE_BASELINE=true`, and otherwise
   raises `Coverage::BaselineMismatch` when the gaps differ from it.
+- **`require 'actionable/rspec/coverage'`** turns it all on: it starts
+  recording and adds an RSpec `after(:suite)` hook that writes the shard file
+  named by `ACTIONABLE_COVERAGE_FILE` when that is set, and otherwise prints
+  the report and fails the suite on a baseline mismatch.
 
 ## [1.4.0] - 2026-10-21
 
