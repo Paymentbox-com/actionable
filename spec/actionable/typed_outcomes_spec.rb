@@ -86,3 +86,118 @@ RSpec.describe 'typed outcomes (decision D23)' do
     end
   end
 end
+
+RSpec.describe 'typed outcome output (decision D23)' do
+  def action(typed: true, &body)
+    Class.new(Actionable::Action) do
+      typed_outcomes if typed
+      output { optional :id, :integer }
+      class_eval(&body)
+    end
+  end
+
+  describe 'a skip whose code declares an output schema' do
+    let(:activate) do
+      action do
+        skips(:already_active) { required :id, :integer }
+        input { optional :id, :value }
+        step :check
+
+        def check
+          @id = 99
+          input.id ? skip!(:already_active, nil, id: input.id) : skip!(:already_active)
+        end
+      end
+    end
+
+    it 'carries its kwargs as that schema' do
+      result = activate.run(id: '7')
+
+      expect([result.code, result.output.class, result.id]).to eq([:already_active, activate.skip_output_schema(:already_active), 7])
+    end
+
+    it 'fails as invalid_output when the kwargs break the schema' do
+      result = activate.run(id: 'seven')
+
+      expect([result.code, result.errors.to_h]).to match([:invalid_output, hash_including(:id)])
+    end
+
+    it 'never fills a field from an instance variable' do
+      expect(activate.run.code).to eq(:invalid_output)
+    end
+
+    it 'is validated even when typed outcomes are off' do
+      untyped = action(typed: false) do
+        skips(:idle) { required :id, :integer }
+        step(:idle)
+        def idle = skip!(:idle)
+      end
+
+      expect(untyped.run.code).to eq(:invalid_output)
+    end
+
+    it 'keeps its output through a hook that runs after it' do
+      hooked = action do
+        skips(:idle) { required :id, :integer }
+        step :idle
+        always :note
+        def idle = skip!(:idle, nil, id: 3)
+        def note = nil
+      end
+
+      expect(hooked.run.output.id).to eq(3)
+    end
+  end
+
+  describe 'a skip whose code declares no output schema' do
+    let(:body) do
+      proc do
+        skips :idle
+        step :idle
+
+        def idle
+          @id = 5
+          skip!(:idle, nil, id: 5)
+        end
+      end
+    end
+
+    it 'carries an empty output when typed outcomes are on' do
+      expect(action(&body).run.output).to eq({})
+    end
+
+    it 'still captures into the success schema when they are off' do
+      expect(action(typed: false, &body).run.output.id).to eq(5)
+    end
+  end
+
+  describe 'a failure whose code declares no output schema' do
+    it 'carries an empty output when typed outcomes are on, whatever the steps left behind' do
+      failing = action do
+        fails :refused
+        step :refuse
+
+        def refuse
+          @id = 5
+          fail!(:refused)
+        end
+      end
+
+      expect(failing.run.output).to eq({})
+    end
+  end
+
+  describe 'a failure the gem builds' do
+    it 'keeps the invalid success output on invalid_output through a hook, for debugging' do
+      broken = action do
+        output { required :id, :integer }
+        step(:finish)
+        always :note
+        def finish = succeed(nil, id: 'x')
+        def note = nil
+      end
+
+      expect(broken.run.output).to be_a(broken.output_schema)
+    end
+  end
+end

@@ -133,22 +133,67 @@ module Actionable
     # capture the declared-field ivars overlaid with any +succeed+ kwargs
     # (kwargs win) and coerce them. Only a strict {Success} is validated — its
     # output failing validation means it can't really have succeeded, so
-    # +@result+ becomes a +Failure(:invalid_output)+. A {Failure} or {Skipped}
-    # captures best-effort and is never validated (decisions D6/D17).
+    # +@result+ becomes a +Failure(:invalid_output)+.
+    #
+    # A {Failure} or {Skipped} whose code declares its own output schema
+    # (decision D23) is built from its kwargs alone and validated the same way.
+    # Without one it carries an empty output under typed outcomes, and
+    # otherwise a best-effort, unvalidated capture into the success schema
+    # (decisions D6/D17). The failures the gem builds keep their output.
     #
     # @return [void]
     def refresh_output
+      return refresh_success_output if @result.success?
+
+      if (schema = outcome_schema)
+        attach_validated(schema.new(**outcome_attributes(schema)))
+      elsif @instance.class.typed_outcomes?
+        @result.output = {} unless gem_failure?
+      elsif (schema = @instance.class.output_schema)
+        @result.output = schema.new(**captured_attributes(schema))
+      end
+    end
+
+    # @return [void]
+    def refresh_success_output
       schema = @instance.class.output_schema
       return unless schema
 
-      output = schema.new(**captured_attributes(schema))
+      attach_validated(schema.new(**captured_attributes(schema)))
+    end
 
-      unless @result.success?
-        @result.output = output
-        return
-      end
-
+    # Attach +output+ when it is valid; otherwise the run ends as a
+    # +Failure(:invalid_output)+ carrying it.
+    #
+    # @param output [FieldStruct::Base]
+    # @return [void]
+    def attach_validated(output)
       output.valid? ? (@result.output = output) : (@result = invalid_output_failure(output))
+    end
+
+    # @return [Class<FieldStruct::Base>, nil] the output schema the skip or
+    #   failure's code declares (decision D23), if any
+    def outcome_schema
+      klass = @instance.class
+      @result.skipped? ? klass.skip_output_schema(@result.code) : klass.failure_output_schema(@result.code)
+    end
+
+    # A skip or failure's output fields, from the kwargs it was recorded with,
+    # never from instance variables (decision D23). After a hook refresh the
+    # output is already the struct, so its own attributes are reused.
+    #
+    # @param schema [Class<FieldStruct::Base>]
+    # @return [Hash{Symbol=>Object}]
+    def outcome_attributes(schema)
+      recorded = @result.output
+      recorded = recorded.attributes if recorded.is_a?(FieldStruct::Base)
+      recorded.is_a?(Hash) ? recorded.slice(*schema.attribute_names) : {}
+    end
+
+    # @return [Boolean] whether the result is a failure the gem itself built
+    #   ({Action::GEM_FAILURE_CODES}), whose output is left as it is
+    def gem_failure?
+      @result.failure? && Action::GEM_FAILURE_CODES.include?(@result.code)
     end
 
     # Declared-field ivars from the action instance, overlaid with the recorded
