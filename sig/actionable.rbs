@@ -165,6 +165,13 @@ module Actionable
     # _@param_ `klass`
     def self.outcome_blocks: (singleton(Actionable::Action) klass) -> ::Array[String]
 
+    # The readers a result delegates to its output struct, one per field any
+    # of +schemas+ declares. A field several declare types as the union of
+    # their types, nullable when any declares it optional.
+    # 
+    # _@param_ `schemas`
+    def self.delegator_lines: (::Array[singleton(FieldStruct::Base)] schemas) -> ::Array[String]
+
     # _@param_ `klass`
     # 
     # _@return_ — the +Success+ block's signatures
@@ -1075,6 +1082,20 @@ module Actionable
     # _@param_ `child` — the nested action's failure
     def adopt_failure!: (Failure child) -> void
 
+    # The class a nested failure crosses as: a host's own result subclass
+    # stays (D20), but a typed child's own +Failure+ becomes the gem class,
+    # since it names the child; a typed parent then makes it its own (D23).
+    # 
+    # _@param_ `child`
+    def adopted_failure_class: (Result child) -> singleton(Failure)
+
+    # Whether a nested failure's output crosses into this action: under typed
+    # outcomes, for every code but those the gem builds, which keep the output
+    # they had before typed outcomes (none) (decision D23).
+    # 
+    # _@param_ `child`
+    def crosses_output?: (Failure child) -> bool
+
     # _@param_ `output` — a nested failure's output
     # 
     # _@return_ — its fields, for this action's schema
@@ -1087,6 +1108,19 @@ module Actionable
     # 
     # _@param_ `code`
     def ensure_failure_declared!: (Symbol code) -> void
+
+    # Under typed outcomes, output given for a skip or failure must have a
+    # schema to go into (decision D23): output for a code with none would be
+    # dropped, so it is refused instead. The failures the gem builds keep
+    # their output, so they need none. +output:+ itself must be a Hash or a
+    # struct, which catches an old +output:+ error message.
+    # 
+    # _@param_ `verb` — the declaration that would add the schema
+    # 
+    # _@param_ `code`
+    # 
+    # _@param_ `output` — the output given, if any
+    def ensure_output_declared!: (Symbol verb, Symbol code, (::Hash[untyped, untyped] | FieldStruct::Base)? output) -> void
 
     # Strictness (decision D21): once an action declares any skip, every code
     # it skips with must be declared, the implicit default +:skipped+ included.

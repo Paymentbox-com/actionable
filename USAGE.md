@@ -283,22 +283,47 @@ The rules:
   never from instance variables, and validated like a success: output that
   breaks the schema ends the run as `invalid_output`. This holds whether or not
   `typed_outcomes` is on, since the block itself is the opt-in for that code.
+  So the block also ends instance-variable capture for that code: after
+  `@note = 'x'; skip!(:dup)`, a `skips(:dup) { required :note, :string }`
+  ends the run as `invalid_output`, because `note:` was never passed.
 - **A code without one** carries an empty output under typed outcomes. Without
   them it keeps the old best-effort capture into the success schema. The
   failures the gem builds (`invalid_input`, `invalid_output`) keep their
   output either way, because the invalid struct is what explains them.
+- **Output with nowhere to go is refused.** Under typed outcomes, output keywords
+  on a code without a schema raise `Actionable::DefinitionError`, naming the
+  code and asking for a `fails :code do … end` (or `skips`) schema. `output:`
+  must be a Hash or a FieldStruct; anything else raises `ArgumentError`.
 - **Result classes.** `.run` returns the action's own `Success`, `Failure` or
   `Skipped`, defined inside it. Each is a subclass of the gem class, or of the
   parent action's own for a subclass, so `result.is_a?(Actionable::Failure)`
   still holds. An action that already has its own constant by one of those names
-  is refused. A host's own result subclass is returned as it is.
+  is refused. A host's own result subclass is returned as it is, which the
+  generated RBS does not describe: it still types `.run` as the action's own
+  classes, a known gap.
 - **Nested failures.** A child's failure that crosses becomes the parent's own
   `Failure`. Its output is judged by the schema the *parent* declares for the
-  code, and the parent must still declare the code.
-- **Stubs.** The RSpec stub helpers return the action's own result classes too.
+  code, and the parent must still declare the code. A parent without typed
+  outcomes gets a plain `Actionable::Failure`, never the typed child's class.
+  The gem's own `invalid_input` / `invalid_output` cross with their output and
+  are not judged by a parent schema.
+- **Stubs.** The RSpec stub helpers return the action's own result classes too,
+  with the output shaped as a real run would shape it: built through the code's
+  schema (an `ArgumentError` when it breaks the schema, since a real run would
+  end as `invalid_output` instead), and empty for a code without one (output
+  given for such a code raises `ArgumentError`).
 - **RBS.** `Actionable::RBS.generate` types `.run` as
   `(Success | Skipped | Failure)`, with each `code` and `output` narrowed to
   what that outcome can carry (see [RBS for your actions](#rbs-for-your-actions)).
+  The readers a result delegates to its output are declared on `Skipped` and
+  `Failure` too.
+
+Two things change for a spec when an action turns typed outcomes on. Results
+compare by class, so `ActivateKey.run(id: 2) == Actionable::Success.new(...)` is
+false even with the same output; compare with `ActivateKey::Success`, or use
+`be_success` and the output. And the `allow_actionable_*` / `stub_actionable_*`
+helpers return a new object of the action's own class, not one you built with
+`actionable_failure_result`, so assert on what the helper returns.
 
 ## Output
 
