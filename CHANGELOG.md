@@ -25,6 +25,17 @@ doesn't require it.
   `Coverage.root` (default `Actionable::Action`) that have steps and whose
   name still resolves to them, filtered by `include_prefixes` and
   `exclude_prefixes`. `Coverage.loader` runs first so a host can eager-load.
+- **`Coverage::Report`** compares the two: `rows` and `totals` (actions,
+  expected outcomes, reached, missing), a text table (`to_s`) of each action's
+  never-reached outcomes with a "Stubbed only" column, and `to_json`.
+  `Coverage.only_observed = true` reports only actions with a real run, for a
+  partial or targeted run.
+- **A named baseline of known gaps.** `Coverage.baseline = path` points at a
+  committed JSON or YAML file of `{"Action::Name" => [outcome keys]}`. Missing
+  outcomes alone never fail; with a baseline, the report fails on a gap the
+  baseline doesn't list and on an entry that is covered, no longer declared,
+  or names an action that is gone, and its message lists each entry to add
+  or remove. `Report#to_baseline` and `#write_baseline` produce the file.
 
 ## [1.4.0] - 2026-10-21
 

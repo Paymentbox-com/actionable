@@ -52,6 +52,18 @@ module Actionable
       # @return [#call, nil]
       attr_accessor :loader
 
+      # When true, report only actions with at least one real run, so a
+      # partial or targeted run doesn't flag every action it never touched.
+      # @return [Boolean]
+      attr_accessor :only_observed
+
+      # Path to the committed baseline of known gaps, a JSON or YAML file of
+      # +{"Action::Name" => [outcome keys]}+. With one set, the report fails
+      # on a gap the baseline doesn't list and on a stale entry; see
+      # {Report#baseline_problems}. +nil+ (the default) never fails.
+      # @return [String, nil]
+      attr_accessor :baseline
+
       # @return [Array<Symbol>] the gem failure codes counted as expected
       #   outcomes; see {.gem_codes=}
       attr_reader :gem_codes
@@ -85,6 +97,8 @@ module Actionable
         @exclude_prefixes = []
         @loader = nil
         @gem_codes = []
+        @only_observed = false
+        @baseline = nil
       end
 
       # The outcomes +action_class+ can end with, as outcome keys:
