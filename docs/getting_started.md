@@ -446,6 +446,11 @@ allow_actionable_success(Charge, output: { amount: 10 })
 `and_raise(ErrorClass, message)` asserts a propagated exception, and every matcher
 accepts a block yielding `(result, exception)` for custom assertions.
 
+To learn which outcomes your specs never reach, `require 'actionable/rspec/coverage'`
+in a spec support file. The end of the suite then lists, per action, each
+declared failure or skip (and success) that no spec produced. USAGE's
+"Outcome coverage" section covers the baseline and sharded suites.
+
 ### Agent toolbox
 
 If you're an AI assistant working in this repo, reach for the gem's machine

@@ -586,6 +586,50 @@ need it._
 
 ---
 
+### D22. Outcome coverage (added 2026-10, from PBX typed-results review)
+
+With failures (D20) and skips (D21) declared, every way an action can end is known at run
+time, so a suite can tell whether its specs reached each one. The goal is
+that a suite knows, at its end, which declared outcomes no spec produced, and
+says so. The declarations are read as runtime data; nothing parses source.
+
+- **`require 'actionable/rspec/coverage'`** turns it on; neither the core nor
+  `actionable/rspec` loads it. It lives under `lib/actionable/rspec/`, outside
+  the YARD and RBS sweep, like the other RSpec support.
+- **Recording.** `Actionable::Coverage::Recorder` is prepended onto
+  `Action`'s singleton class and records each real run as
+  `[class name, outcome, code]`. Nested runs and `run_each` items pass through
+  it. An RSpec stub of `.run` is defined on the subclass, ahead of the
+  recorder, so a stubbed result is never counted as tested. The gem's stub
+  helpers note their runs in a separate stubbed set, shown as "Stubbed only".
+- **Expected outcomes** are `success`, each `declared_failures` code, each
+  `declared_skips` code (D21), and the gem codes a host opts into with
+  `gem_codes` (default none). There is no opt-out of `success`.
+- **Which actions.** Named descendants of `root` (default
+  `Actionable::Action`) found by walking `subclasses`, not the registry (D11):
+  the registry keys a class by its name at `inherited` time, so it misses
+  `Foo = Class.new(Action)`. An action with no steps is abstract and left out,
+  as is an anonymous class and a class whose name no longer resolves to it (a
+  removed `stub_const`). Name filters and a `loader` hook for eager loading
+  complete it. The hook is `loader`, not `load`, so it doesn't shadow
+  `Kernel#load` on the module.
+- **The ratchet is a named baseline**, not a count. A committed file lists
+  each known gap by action and outcome key; the report fails on a gap it
+  doesn't list and on an entry that is covered, undeclared or names a gone
+  action, printing each line to change. A count threshold was considered and
+  dropped: a count lets a new gap hide behind a fixed one.
+- **Sharded suites** write one JSON file per rspec process
+  (`ACTIONABLE_COVERAGE_FILE`) and a later step merges them with
+  `Coverage.report!(files: glob)`, a plain Ruby call a CI step reaches through
+  `bin/rails runner`. A rake task was not added: the merge needs the host's
+  coverage settings and its eager-loaded app, which the host's own support
+  file and runner already provide.
+
+_Deferred: letting an action opt out of expecting `success` (one that can only
+fail or skip), and judging a partial run against the baseline._
+
+---
+
 ## Slice plan
 
 16 slices (plus Slice 17, the post-plan `:skip` outcome), ordered so each is

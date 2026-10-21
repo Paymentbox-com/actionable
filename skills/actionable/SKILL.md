@@ -146,3 +146,10 @@ allow_actionable_failure(CreateInvoice, code: :invalid_amount) # stub without ru
 On an action that declares failures, a stubbed failure carries the declared
 metadata for its code, and a stub or `and_fail` with an undeclared code raises
 `ArgumentError`.
+
+**Outcome coverage** (`require 'actionable/rspec/coverage'`) lists, at the end
+of the suite, each action's outcomes no spec reached: success, every declared
+failure and every declared skip. Only a real run counts, so a stub doesn't
+cover anything. When a project sets `Actionable::Coverage.baseline`, a new
+declaration (`fails :x`) needs a spec that reaches it, or an entry in the
+baseline file; the failure message names the exact line to add or remove.
