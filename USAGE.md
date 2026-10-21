@@ -876,5 +876,14 @@ end
 ```
 
 A failure's output also admits every skip schema and `Output`, since output that
-breaks one ends the run as `invalid_output` carrying it. A code with no schema,
-or no declarations at all, types as a Hash and a plain `::Symbol`.
+breaks one ends the run as `invalid_output` carrying it. For the same reason
+every reader declared on `Failure` is nullable (`def key: () -> ::KeySummary?`):
+a broken output can lack a required field. A code with no schema, or no
+declarations at all, types as a Hash and a plain `::Symbol`.
+
+A subclass of a typed action subclasses its parent's result classes
+(`class Success < ::Billing::BaseAction::Success`). So that the output resolves
+when the parent is an abstract base nobody generates, it also declares those
+parent classes, empty, up the chain of typed ancestors. Empty declarations merge
+with the parent's own signature when that is generated too, and repeat
+harmlessly across one base's subclasses.

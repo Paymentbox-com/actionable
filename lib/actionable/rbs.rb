@@ -58,8 +58,33 @@ module Actionable
       end
       raise ArgumentError, 'cannot generate RBS for an anonymous action' unless klass.name
 
-      wrap_namespace(klass.name, class_block(klass))
+      ancestor_blocks(klass) + wrap_namespace(klass.name, class_block(klass))
     end
+
+    # The result classes a typed action's own subclass, declared empty up its
+    # typed ancestors, so the generated RBS resolves on its own. A host often
+    # never generates its abstract base action. Being empty, each merges with
+    # the ancestor's full signature when that is generated too, and repeats
+    # harmlessly across the subclasses of one base.
+    #
+    # @param klass [Class<Actionable::Action>]
+    # @return [String] one namespaced block per typed ancestor, outermost first
+    def self.ancestor_blocks(klass)
+      parent = klass.superclass
+      return '' unless klass.typed_outcomes? && typed_parent?(parent)
+
+      lines = %w[Success Skipped Failure].map { |name| "class #{name} < #{outcome_base(parent.superclass, name)}\nend" }
+      block = "class #{parent.name.split("::").last} < ::Actionable::Action\n#{indent(lines.join("\n"))}\nend"
+      "#{ancestor_blocks(parent)}#{wrap_namespace(parent.name, block)}\n"
+    end
+    private_class_method :ancestor_blocks
+
+    # @param parent [Class]
+    # @return [Boolean] whether a subclass's result classes subclass +parent+'s
+    def self.typed_parent?(parent)
+      parent.respond_to?(:typed_outcomes?) && parent.typed_outcomes? && !parent.name.nil?
+    end
+    private_class_method :typed_parent?
 
     # @param klass [Class<Actionable::Action>]
     # @return [String]
@@ -134,24 +159,27 @@ module Actionable
                                          *delegator_lines(skips.map(&:last))]),
         outcome_block(klass, 'Failure', ["def code: () -> #{code_type(klass.declared_failures, "failure_code")}",
                                          "def output: () -> #{union(failures.map(&:first))}",
-                                         *delegator_lines(failures.map(&:last))])
+                                         *delegator_lines(failures.map(&:last), nullable: true)])
       ]
     end
     private_class_method :outcome_blocks
 
     # The readers a result delegates to its output struct, one per field any
     # of +schemas+ declares. A field several declare types as the union of
-    # their types, nullable when any declares it optional.
+    # their types, nullable when any declares it optional, or when +nullable+.
+    # A failure's readers are all nullable: an +invalid_output+ failure carries
+    # the output that broke its schema, so a required field can be missing.
     #
     # @param schemas [Array<Class<FieldStruct::Base>>]
+    # @param nullable [Boolean] make every reader nullable
     # @return [Array<String>]
-    def self.delegator_lines(schemas)
+    def self.delegator_lines(schemas, nullable: false)
       fields = Hash.new { |hash, name| hash[name] = [] }
       schemas.each { |schema| schema.metadata.each { |field| fields[field.name] << field } }
       fields.map do |name, declared|
         types = declared.map { |field| type_expr(field.type_instance, field.options) }.uniq
         type = types.one? ? types.first : "(#{types.join(" | ")})"
-        "def #{name}: () -> #{type}#{"?" if declared.any? { |field| !field.required? }}"
+        "def #{name}: () -> #{type}#{"?" if nullable || declared.any? { |field| !field.required? }}"
       end
     end
     private_class_method :delegator_lines
@@ -190,11 +218,18 @@ module Actionable
     # @return [String] the class block, subclassing the parent action's own
     #   result class when the parent has typed outcomes, else the gem's
     def self.outcome_block(klass, name, lines)
-      parent = klass.superclass
-      base = parent.typed_outcomes? && parent.name ? "::#{parent.name}::#{name}" : "::Actionable::#{name}"
-      "class #{name} < #{base}\n#{indent(lines.join("\n"))}\nend"
+      "class #{name} < #{outcome_base(klass.superclass, name)}\n#{indent(lines.join("\n"))}\nend"
     end
     private_class_method :outcome_block
+
+    # @param parent [Class] the superclass of the action being generated
+    # @param name [String] +Success+, +Skipped+ or +Failure+
+    # @return [String] the parent's result class when it has typed outcomes,
+    #   else the gem's
+    def self.outcome_base(parent, name)
+      typed_parent?(parent) ? "::#{parent.name}::#{name}" : "::Actionable::#{name}"
+    end
+    private_class_method :outcome_base
 
     # @param code [Symbol]
     # @return [String] +:already_active+ as +AlreadyActive+

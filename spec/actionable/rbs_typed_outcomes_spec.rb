@@ -26,6 +26,11 @@ class RbsTypedClash < Actionable::Action
 end
 
 RSpec.describe Actionable::RBS, 'under typed outcomes (decision D23)' do
+  def add_signature(env, source)
+    buffer, directives, decls = RBS::Parser.parse_signature(source)
+    env.add_signature(buffer: buffer, directives: directives, decls: decls)
+  end
+
   it 'types each outcome as the action’s own result class, its output per code' do
     expect(described_class.generate(RbsTypedAction)).to eq(<<~RBS)
       class RbsTypedAction < ::Actionable::Action
@@ -65,7 +70,7 @@ RSpec.describe Actionable::RBS, 'under typed outcomes (decision D23)' do
           def code: () -> failure_code
           def output: () -> (InvalidFailureOutput | AlreadyActiveSkipOutput | Output | ::Hash[::Symbol, untyped])
           def form_record: () -> untyped?
-          def name: () -> ::String
+          def name: () -> ::String?
         end
       end
     RBS
@@ -77,6 +82,28 @@ RSpec.describe Actionable::RBS, 'under typed outcomes (decision D23)' do
 
   it 'produces syntactically valid RBS' do
     expect { RBS::Parser.parse_signature(described_class.generate(RbsTypedAction)) }.not_to raise_error
+  end
+
+  it 'resolves a subclass’s result classes without the parent being generated too' do
+    loader = RBS::EnvironmentLoader.new
+    loader.add(path: Pathname(File.expand_path('../../sig', __dir__)))
+    loader.add(path: Pathname(Gem.loaded_specs.fetch('field_struct').full_gem_path).join('sig'))
+    env = RBS::Environment.from_loader(loader)
+    add_signature(env, described_class.generate(RbsTypedChild))
+    builder = RBS::DefinitionBuilder.new(env: env.resolve_type_names)
+
+    %w[Success Skipped Failure].each do |name|
+      expect { builder.build_instance(RBS::TypeName.parse("::RbsTypedChild::#{name}")) }.not_to raise_error
+    end
+  end
+
+  it 'declares a parent’s result classes empty, so they merge with the parent’s own signature' do
+    env = RBS::Environment.new
+    [RbsTypedAction, RbsTypedChild].each do |klass|
+      add_signature(env, described_class.generate(klass))
+    end
+
+    expect(env.class_decls[RBS::TypeName.parse('::RbsTypedAction::Success')].decls.size).to eq(2)
   end
 
   it 'makes a subclass’s result classes kinds of its parent’s' do
