@@ -112,13 +112,21 @@ module Actionable
       end
 
       def allow_run(action_class, result)
+        result = as_action_result(action_class, result)
         allow(action_class).to receive(:run) { stubbed_run(action_class, result) }
         result
       end
 
       def expect_run(action_class, result)
+        result = as_action_result(action_class, result)
         expect(action_class).to receive(:run) { stubbed_run(action_class, result) }
         result
+      end
+
+      # The stubbed result as the action's own result class when it has typed
+      # outcomes (decision D23), as a real run would return it.
+      def as_action_result(action_class, result)
+        action_class.__send__(:typed_result, result)
       end
 
       # The stub's response: +result+, noted as a stubbed run when outcome

@@ -157,4 +157,33 @@ RSpec.describe 'actionable rspec stubs' do
       expect(action).to perform_actionable.and_fail(:nope)
     end
   end
+
+  describe 'stubbing an action with typed outcomes (decision D23)' do
+    let(:typed) do
+      Class.new(Actionable::Action) do
+        typed_outcomes
+        fails :refused
+        skips :idle
+        def go = raise('the action should not actually run')
+        step :go
+      end
+    end
+
+    it 'returns the action’s own Success' do
+      expect(allow_actionable_success(typed)).to be_an_instance_of(typed::Success)
+    end
+
+    it 'returns the action’s own Failure, with its errors' do
+      allow_actionable_failure(typed, code: :refused, errors: {card: 'declined'})
+      run = typed.run
+
+      expect([run.class, run.errors[:card]]).to eq([typed::Failure, ['declined']])
+    end
+
+    it 'returns the action’s own Skipped' do
+      stub_actionable_skip(typed, code: :idle)
+
+      expect(typed.run).to be_an_instance_of(typed::Skipped)
+    end
+  end
 end
