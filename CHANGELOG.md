@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`skips(code, message = nil, **metadata)`** declares a skip code the action
+  can end with, plus neutral per-code metadata, the skip counterpart of `fails`
+  (decision D21). Declarations are inherited and a subclass can add to them.
+  **`declared_skips`** reads them back as `{code => metadata}`, and
+  **`skip_declarations`** as `{code => {message:, metadata:}}`.
+- **`Skipped#metadata`** (default `{}`): a `skip` or `skip!` with a declared
+  code carries its metadata, and its declared message when the call gives none.
+  `Skipped#to_h` includes `metadata`.
+
 ## [1.3.0] - 2026-10-21
 
 Declared failures (decision D20). Additive: an action that declares no

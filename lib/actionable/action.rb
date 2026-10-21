@@ -170,6 +170,47 @@ module Actionable
         @failure_declarations ||= {}
       end
 
+      # Declare one skip code this action can end with, and the metadata a skip
+      # with that code carries (decision D21). The skip counterpart of {.fails}.
+      #
+      # The metadata is neutral: arbitrary keywords the gem stores, attaches to
+      # the {Skipped} as +result.metadata+, and shows in {.describe}, but never
+      # interprets. +message+ is the default message for a +skip+ that gives
+      # none.
+      #
+      #   skips :not_ready, 'the field is not created yet', retry: true
+      #   skips :already_synced
+      #
+      # Declarations are inherited and a subclass can add to them; redeclaring a
+      # code replaces its message and metadata. Once an action declares any
+      # skip, skipping with an undeclared code raises a {DefinitionError} at the
+      # +skip+ call, and that includes +skip+'s implicit default +:skipped+.
+      #
+      # @param code [Symbol, String] the skip code
+      # @param message [String, nil] the default message for this code
+      # @param metadata [Hash{Symbol=>Object}] per-code metadata, passed through
+      # @return [Hash{Symbol=>Hash{Symbol=>Object}}] {.declared_skips}
+      def skips(code, message = nil, **metadata)
+        skip_declarations[code.to_sym] = {message: message, metadata: metadata.freeze}.freeze
+        declared_skips
+      end
+
+      # The skip codes this action declares with {.skips}, each mapped to its
+      # metadata (decision D21). Empty when the action declares none.
+      #
+      # @return [Hash{Symbol=>Hash{Symbol=>Object}}]
+      def declared_skips
+        skip_declarations.transform_values { |declaration| declaration[:metadata] }
+      end
+
+      # Every {.skips} declaration, keyed by code, as +{message:, metadata:}+
+      # (decision D21).
+      #
+      # @return [Hash{Symbol=>Hash{Symbol=>Object}}]
+      def skip_declarations
+        @skip_declarations ||= {}
+      end
+
       # Declare a step. The step type is inferred from +target+ (a Symbol or
       # String names an instance method — a {Steps::Method}).
       #
@@ -556,6 +597,7 @@ module Actionable
         subclass.instance_variable_set(:@skip_hooks, skip_hooks.dup)
         subclass.instance_variable_set(:@always_hooks, always_hooks.dup)
         subclass.instance_variable_set(:@failure_declarations, failure_declarations.dup)
+        subclass.instance_variable_set(:@skip_declarations, skip_declarations.dup)
         subclass.instance_variable_set(:@measure, measure)
         subclass.instance_variable_set(:@measure_rate, measure_rate)
       end
@@ -672,6 +714,9 @@ module Actionable
     # nothing to do (decision D17). Not a failure; later steps still run and the
     # final result reflects the most recent record (last write wins).
     #
+    # A code declared with {Action.skips} attaches its metadata to the skip,
+    # and its declared message when +message+ is +nil+ (decision D21).
+    #
     # @param code [Symbol] the skip reason; defaults to +:skipped+
     # @param message [String, nil] human-readable description
     # @param output [Hash{Symbol=>Object}] the skip output payload — captured
@@ -679,7 +724,11 @@ module Actionable
     #   D17). Lets an idempotent hit return the existing record's data.
     # @return [false] so a step can branch on the call (the run did not succeed here)
     def skip(code = :skipped, message = nil, **output)
-      @result = Skipped.new(code: code, message: message, output: output)
+      code = code.to_sym
+      declaration = self.class.skip_declarations.fetch(code, {message: nil, metadata: {}})
+      @result = Skipped.new(
+        code: code, message: message || declaration[:message], output: output, metadata: declaration[:metadata]
+      )
       false
     end
 

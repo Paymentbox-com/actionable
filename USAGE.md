@@ -176,6 +176,36 @@ Two cases stay unchecked, so existing actions keep working unchanged:
 `fail_with`'s default code `:invalid` is not exempt: the action writes that
 `fail_with`, so a declaring action declares `:invalid` or passes its own `code:`.
 
+## Declared skips
+
+`skips(code, message = nil, **metadata)` declares one skip code an action can end
+with: the third outcome gets the same contract as failures (decision D21). The
+metadata is neutral, as with `fails`. A `skip` or `skip!` with a declared code
+carries its metadata as `result.metadata`, and its declared message when the
+call gives none. `declared_skips` reads the declarations back as
+`{code => metadata}`, and `skip_declarations` as `{code => {message:, metadata:}}`:
+
+<!-- doctest -->
+```ruby
+class SyncField < Actionable::Action
+  skips :not_ready, 'the field is not created yet', retry: true
+  skips :already_synced, retry: false
+
+  step :sync
+  def sync = skip!(:not_ready)
+end
+
+result = SyncField.run
+result.skipped?   # => true
+result.code       # => :not_ready
+result.message    # => "the field is not created yet"
+result.metadata   # => {retry: true}
+SyncField.declared_skips # => {not_ready: {retry: true}, already_synced: {retry: false}}
+```
+
+Declarations are inherited, and a subclass can add more. A skip whose code isn't
+declared has `metadata == {}`, and `Skipped#to_h` includes it.
+
 ## Output
 
 `output do … end` declares a typed schema. Matching ivars are captured at the
