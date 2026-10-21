@@ -21,6 +21,11 @@
 - **`describe` shows declared skips** as `skips: {code => {message:,
   metadata:}}`, and `describe_text` lists them under `Skips:`, after
   `Failures:`.
+- **RSpec support follows the skip declarations.** On an action that declares
+  skips, `allow_actionable_skip` / `stub_actionable_skip` build a skip carrying
+  the code's declared metadata (and message, when none is given), and they and
+  `and_skip` raise `ArgumentError` for a code the action doesn't declare,
+  `:skipped` included. `actionable_skip_result` takes `metadata:`.
 
 ## [1.3.0] - 2026-10-21
 

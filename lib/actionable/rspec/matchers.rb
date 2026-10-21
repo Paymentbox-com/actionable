@@ -50,7 +50,8 @@ module Actionable
       end
 
       # Expect a skipped result, optionally matching the reason +code+ and
-      # +message+ (decision D17).
+      # +message+ (decision D17). On an action that declares skips, a Symbol
+      # +code+ it doesn't declare raises +ArgumentError+ (decision D21).
       # @return [self]
       def and_skip(code = nil, message = nil, &block)
         @expected_code = code
@@ -106,14 +107,18 @@ module Actionable
         self
       end
 
-      # An +and_fail+ code the action could never end with is a broken spec,
-      # not a failed expectation, so it raises rather than not matching.
+      # An +and_fail+ or +and_skip+ code the action could never end with is a
+      # broken spec, not a failed expectation, so it raises rather than not
+      # matching.
       def ensure_code_declared!
-        return unless @outcome == :failure && @expected_code.is_a?(Symbol)
-        return unless @action_class.respond_to?(:allows_failure_code?)
-        return if @action_class.allows_failure_code?(@expected_code)
+        return unless @expected_code.is_a?(Symbol)
 
-        raise ArgumentError, Actionable::RSpec.undeclared_code_message(@action_class, @expected_code)
+        check = {failure: :allows_failure_code?, skip: :allows_skip_code?}[@outcome]
+        return unless check && @action_class.respond_to?(check)
+        return if @action_class.public_send(check, @expected_code)
+
+        raise ArgumentError,
+          Actionable::RSpec.undeclared_code_message(@action_class, @expected_code, outcome: @outcome)
       end
 
       def perform

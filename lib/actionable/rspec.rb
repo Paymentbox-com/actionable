@@ -10,13 +10,21 @@ require_relative 'rspec/stubs'
 module Actionable
   # RSpec matchers and stubs for actions (decision D12).
   module RSpec
-    # The refusal for a stub or +and_fail+ naming a code an action that
-    # declares failures doesn't declare (decision D20).
+    # The refusal for a stub, +and_fail+ or +and_skip+ naming a code an action
+    # that declares failures (decision D20) or skips (decision D21) doesn't
+    # declare.
     #
     # @param action_class [Class<Actionable::Action>]
     # @param code [Symbol, String]
+    # @param outcome [:failure, :skip] which declarations the code was checked against
     # @return [String]
-    def self.undeclared_code_message(action_class, code)
+    def self.undeclared_code_message(action_class, code, outcome: :failure)
+      if outcome == :skip
+        declared = action_class.declared_skips.keys.map(&:inspect).join(', ')
+        return "#{action_class.name || "action"} does not declare skip #{code.to_sym.inspect} " \
+               "(declared: #{declared}); a stub or and_skip with it tests a skip the action can never return"
+      end
+
       declared = action_class.declared_failures.keys.map(&:inspect).join(', ')
       "#{action_class.name || "action"} does not declare #{code.to_sym.inspect} (declared: #{declared}); " \
         'a stub or and_fail with it tests a failure the action can never return'

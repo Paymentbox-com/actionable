@@ -588,7 +588,8 @@ cryptic `NoMethodError`:
 - `allow_actionable_success` / `stub_actionable_success` (and `_failure` /
   `_skip` variants) build real result objects so `.run` returns them without
   executing the action. `actionable_failure_result(code:, message:, output:,
-  errors:, metadata:)` builds a failure without stubbing anything.
+  errors:, metadata:)` and `actionable_skip_result(code:, message:, output:,
+  metadata:)` build a failure or a skip without stubbing anything.
 
 On an action that declares failures, the RSpec support holds to the
 declarations. A stubbed failure carries the declared metadata for its code (and
@@ -596,6 +597,13 @@ the declared message when you give none), and a stub or `and_fail` with a code
 the action doesn't declare raises `ArgumentError`, since it would test a
 failure the action can never return. The exemptions match the runtime: actions
 that declare none, and `GEM_FAILURE_CODES`.
+
+Skips work the same way on an action that declares skips. A stubbed skip
+carries the declared metadata and message for its code, and a stub or
+`and_skip` with an undeclared code raises `ArgumentError`. As at runtime, the
+default `:skipped` is not exempt, so `allow_actionable_skip(action)` with no
+`code:` raises unless the action declares `:skipped`. A bare `and_skip` names no
+code and is always accepted.
 
 ## Background jobs
 
