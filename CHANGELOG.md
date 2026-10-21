@@ -2,8 +2,13 @@
 
 ## [Unreleased]
 
-Declared failures (decision D20). All additive and backward-compatible: an
-action that declares no failures behaves exactly as before.
+## [1.3.0] - 2026-10-21
+
+Declared failures (decision D20). Additive: an action that declares no
+failures runs as before. Three edges can reach existing code, listed under
+Changed: `metadata` is now a reserved output name, `Failure#to_h` has a
+`metadata` key, and a nested failure no longer passes through an overridden
+`fail`.
 
 ### Added
 
@@ -50,6 +55,7 @@ action that declares no failures behaves exactly as before.
   propagated failure.
 - `metadata` joins the reserved output field names, since an output field of
   that name would be shadowed on a failure.
+- `Failure#to_h` gains a `metadata` key (`{}` when the code isn't declared).
 
 ## [1.2.2] - 2026-06-03
 
