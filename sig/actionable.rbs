@@ -841,9 +841,7 @@ module Actionable
     # {GEM_FAILURE_CODES} are always allowed.
     # 
     # _@param_ `code`
-    # 
-    # _@param_ `declarations`
-    def ensure_failure_declared!: (Symbol code, ::Hash[Symbol, ::Hash[untyped, untyped]] declarations) -> void
+    def ensure_failure_declared!: (Symbol code) -> void
 
     # Halt the run immediately, keeping whatever result was already recorded
     # (a prior +fail+/+succeed+/+skip+, or auto-{Success} if none). Control flow

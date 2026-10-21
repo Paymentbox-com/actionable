@@ -704,10 +704,9 @@ module Actionable
     # @raise [DefinitionError] when the action declares failures but not +code+
     #   (the {GEM_FAILURE_CODES} are exempt)
     def declared_failure(code, message)
-      declarations = self.class.failure_declarations
       code = code.to_sym
-      ensure_failure_declared!(code, declarations)
-      declaration = declarations.fetch(code, {message: nil, metadata: {}})
+      ensure_failure_declared!(code)
+      declaration = self.class.failure_declarations.fetch(code, {message: nil, metadata: {}})
       Failure.new(code: code, message: message || declaration[:message], metadata: declaration[:metadata])
     end
 
@@ -725,9 +724,8 @@ module Actionable
     #   child's code
     # @return [void]
     def adopt_failure!(child)
-      declarations = self.class.failure_declarations
-      ensure_failure_declared!(child.code, declarations)
-      declaration = declarations.fetch(child.code, {message: nil, metadata: {}})
+      ensure_failure_declared!(child.code)
+      declaration = self.class.failure_declarations.fetch(child.code, {message: nil, metadata: {}})
       failure_class = child.is_a?(Failure) ? child.class : Failure
       attributes = child.attributes.except(:output, :history)
       @result = failure_class.new(
@@ -744,15 +742,15 @@ module Actionable
     # {GEM_FAILURE_CODES} are always allowed.
     #
     # @param code [Symbol]
-    # @param declarations [Hash{Symbol=>Hash}]
     # @raise [DefinitionError] when +code+ is undeclared
     # @return [void]
-    def ensure_failure_declared!(code, declarations)
+    def ensure_failure_declared!(code)
       return if self.class.allows_failure_code?(code)
 
+      declared = self.class.declared_failures.keys.map(&:inspect).join(', ')
       raise DefinitionError,
         "#{self.class.name || "action"} fails with #{code.inspect}, which it does not declare; " \
-        "declare it with `fails #{code.inspect}` (declared: #{declarations.keys.map(&:inspect).join(", ")})"
+        "declare it with `fails #{code.inspect}` (declared: #{declared})"
     end
 
     # Halt the run immediately, keeping whatever result was already recorded
