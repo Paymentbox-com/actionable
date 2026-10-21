@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-21
+
+Declared skips (decision D21), the skip counterpart of 1.3.0's declared
+failures. Additive: an action that declares no skips runs as before, and a
+child skip still continues its parent. One edge can reach existing code, listed
+under Changed: a skip's `to_h`, `inspect` and `attributes` have a `metadata`
+key.
+
 ### Added
 
 - **`skips(code, message = nil, **metadata)`** declares a skip code the action
@@ -29,6 +37,12 @@
 - **`Actionable::RBS` emits a `skip_code` type alias** for an action that
   declares skips, listing the declared codes, after `failure_code` when both
   are declared.
+
+### Changed
+
+- **`Skipped#to_h` includes `metadata`** (`{}` unless the code is declared),
+  so code comparing a skip's `to_h` to an exact Hash sees one more key.
+  `Skipped#inspect` and `#attributes` show it too.
 
 ## [1.3.0] - 2026-10-21
 
