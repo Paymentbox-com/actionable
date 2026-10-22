@@ -18,6 +18,16 @@
 
 ### Changed
 
+- **Redeclaring a step or hook now overrides it.** A second `step :x`,
+  `case_step :x`, nested `step SomeAction`, or `on_success` / `on_failure` /
+  `on_skip` / `always :x` with the same type and name, in the same class or a
+  subclass, replaces the earlier declaration's options (guards, `:input` /
+  `:expose`, case branches) and keeps the earlier position. Before, the
+  redeclaration was silently dropped and the first declaration's options won,
+  so a subclass could not override an inherited step as invariant 5 promises.
+  A subclass's override never changes the parent. **Upgrade note:** an action
+  that redeclares a step with different options now runs the last options.
+
 - **`always` hooks now run even after an outcome hook halts.** A bang verb
   (`fail!` / `skip!` / `succeed!`), `halt!`, or a failing nested action inside
   an `on_success` / `on_failure` / `on_skip` hook still has its result adopted

@@ -37,6 +37,38 @@ Declare steps in order; each names an instance method. Steps are kept in a
 per-class `Set` keyed by `[type, name]`, so a redeclared step collapses to one
 entry, and the set is inherited by subclasses.
 
+Redeclaring a step replaces it: **the last declaration wins and keeps the first
+one's position**. A subclass can override an inherited step's guards or options
+this way without touching the parent's steps.
+
+<!-- doctest -->
+```ruby
+class Checkout < Actionable::Action
+  step :load
+  step :charge
+end
+
+class DryCheckout < Checkout
+  step :charge, if: :live? # replaces Checkout's :charge, still after :load
+end
+
+DryCheckout.steps.map(&:name)       # => [:load, :charge]
+DryCheckout.steps.to_a.last.options # => {if: :live?}
+Checkout.steps.to_a.last.options    # => {}
+```
+
+| Redeclared with | Result |
+|---|---|
+| `step :x` then `step :x, if: :ok?` (same class or a subclass) | one `:x` step, guarded by `:ok?`, at the first `:x`'s position |
+| `step Child` then `step Child, expose: []` | one nested step with the last `:input`/`:expose` |
+| `case_step(:x) { … }` then `case_step(:x) { … }` | one case step with the last block's branches |
+| `on_success :x` then `on_success :x, if: :ok?` (likewise `on_failure` / `on_skip` / `always`) | one hook with the last options, at the first one's position |
+| `step :x` and `case_step :x` | **two** steps — a method step and a case step are different types |
+
+Each hook phase is its own list, so `on_success :x` and `always :x` are two
+hooks. There is no way to remove an inherited step or hook; guard it off with
+`if:` / `unless:` instead.
+
 ```ruby
 class Example < Actionable::Action
   step :first

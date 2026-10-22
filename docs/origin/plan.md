@@ -141,6 +141,8 @@ argument (Symbol/String → Method, Class → Action). **The redundant `action` 
 `case_action` aliases from the old gem are dropped** — one name per concept keeps
 the surface legible. Each declaration list is a `Set` keyed by `[type, name]`,
 deduplicated, inherited by subclasses, and order-preserving.
+Redeclaring a step or hook replaces the earlier declaration's options in place
+— last declaration wins, original position kept (owner ruling P8, act 1.7.0).
 
 ### D3. Step types and options
 
