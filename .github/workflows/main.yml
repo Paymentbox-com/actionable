@@ -12,9 +12,15 @@ jobs:
     runs-on: ubuntu-latest
     name: Ruby ${{ matrix.ruby }}
     strategy:
+      # Test every version independently; one failure must not mask the rest.
+      fail-fast: false
       matrix:
+        # The gemspec floor (>= 3.2) through the newest release.
         ruby:
-          - '3.3.6'
+          - '3.2'
+          - '3.3'
+          - '3.4'
+          - '4.0'
 
     steps:
     - uses: actions/checkout@v4
@@ -29,3 +35,16 @@ jobs:
       run: bundle exec rake
     - name: Type signature guards (staleness + grammar)
       run: bundle exec rake sigs:check sigs:validate
+    - name: Docs guard (public API documented in USAGE)
+      run: bundle exec rake docs:check
+
+  # One stable check name for branch protection: it passes only when every
+  # matrix job passed, so the required check survives matrix changes.
+  ci:
+    runs-on: ubuntu-latest
+    name: ci
+    needs: [build]
+    if: always()
+    steps:
+    - name: Require every job to pass
+      run: test "${{ needs.build.result }}" = "success"
