@@ -618,6 +618,8 @@ module Actionable
     # The ordered, deduplicated set of steps declared on this action.
     # A +Set+ keyed by step identity ([type, name]) so a redeclared step
     # collapses to one entry; insertion order is preserved (decision D2).
+    # The last declaration of a step wins and keeps the first one's position
+    # (see {.step}).
     def self.steps: () -> ::Set[Steps::Base]
 
     # Declare the action's typed output schema, or read it back.
@@ -797,6 +799,11 @@ module Actionable
 
     # Declare a step. The step type is inferred from +target+ (a Symbol or
     # String names an instance method — a {Steps::Method}).
+    # 
+    # Redeclaring a step of the same type and name (here or in a subclass)
+    # replaces the earlier declaration's options in place: the last
+    # declaration wins and keeps the original position. A subclass's
+    # override never changes the parent's steps.
     # 
     # _@param_ `target` — the step target
     # 
@@ -1062,6 +1069,18 @@ module Actionable
     # 
     # _@return_ — code +:invalid_input+, carrying the input's errors
     def self.invalid_input_failure: (FieldStruct::Base input) -> Failure
+
+    # Add +step+ to +list+, or — when an equal step (same type and name) is
+    # already declared — swap it in at that step's position, so the last
+    # declaration wins (owner ruling P8; invariant 5). +list+ is this class's
+    # own copy (see {.inherited}), so a parent's list is never touched.
+    # 
+    # _@param_ `list`
+    # 
+    # _@param_ `step`
+    # 
+    # _@return_ — +list+
+    def self.declare: (::Set[Steps::Base] list, Steps::Base step) -> ::Set[Steps::Base]
 
     # Give each subclass its own copy of the inherited step set, so adding
     # steps to a subclass never mutates the parent's (decision D2).
