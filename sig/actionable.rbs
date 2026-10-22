@@ -939,6 +939,15 @@ module Actionable
     # _@param_ `instance`
     def self.ensure_steps_implemented!: (Action _instance) -> void
 
+    # Whether +instance+ implements +method+ itself (public or private), not
+    # merely inherits it from Ruby's core: steps are called with +__send__+,
+    # so +step :puts+ or +always :exit+ must not reach +Kernel+.
+    # 
+    # _@param_ `instance`
+    # 
+    # _@param_ `method`
+    def self.implements?: (Action _instance, Symbol method) -> bool
+
     # Coerce +.run+ arguments into the input struct: pass an existing input
     # instance through untouched, otherwise build one from the keyword args.
     # With discriminated input ({.input_for}), the schema is chosen from the
@@ -1420,7 +1429,8 @@ module Actionable
 
     # A skip or failure's output fields, from the kwargs it was recorded with,
     # never from instance variables (decision D23). After a hook refresh the
-    # output is already the struct, so its own attributes are reused.
+    # output is already the struct, so its own attributes are reused, limited
+    # to the fields the kwargs set so the set-fields marker stays true.
     # 
     # _@param_ `schema`
     def outcome_attributes: (singleton(FieldStruct::Base) schema) -> ::Hash[Symbol, Object]

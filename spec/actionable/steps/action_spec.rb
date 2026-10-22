@@ -138,6 +138,34 @@ RSpec.describe Actionable::Steps::Action do
       expect(parent.run.output.val).to eq('parent')
     end
 
+    it 'leaves a parent ivar alone when a declared-skip child with a hook never set that field' do
+      child = Class.new(Actionable::Action) do
+        skips(:nope) do
+          optional :a, :string
+          optional :b, :string
+        end
+        define_method(:go) { skip!(:nope, nil, a: 'x') }
+        define_method(:noop) { nil }
+        step :go
+        always :noop
+      end
+      stub_const('SkipChildWithHook', child)
+      parent = Class.new(Actionable::Action) do
+        output do
+          optional :a, :string
+          optional :b, :string
+        end
+        define_method(:prime) { @b = 'parent-b' }
+        step :prime
+        step SkipChildWithHook
+      end
+
+      result = parent.run
+
+      expect(result.output.a).to eq('x')
+      expect(result.output.b).to eq('parent-b')
+    end
+
     it 'leaves a parent ivar alone when a typed-outcomes child never set that field' do
       child = Class.new(Actionable::Action) do
         typed_outcomes

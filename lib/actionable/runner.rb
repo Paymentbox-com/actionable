@@ -228,13 +228,17 @@ module Actionable
 
     # A skip or failure's output fields, from the kwargs it was recorded with,
     # never from instance variables (decision D23). After a hook refresh the
-    # output is already the struct, so its own attributes are reused.
+    # output is already the struct, so its own attributes are reused, limited
+    # to the fields the kwargs set so the set-fields marker stays true.
     #
     # @param schema [Class<FieldStruct::Base>]
     # @return [Hash{Symbol=>Object}]
     def outcome_attributes(schema)
       recorded = @result.output
-      recorded = recorded.attributes if recorded.is_a?(FieldStruct::Base)
+      if recorded.is_a?(FieldStruct::Base)
+        set = @result.output_fields_set
+        recorded = set ? recorded.attributes.slice(*set) : recorded.attributes
+      end
       recorded.is_a?(Hash) ? recorded.slice(*schema.attribute_names) : {}
     end
 

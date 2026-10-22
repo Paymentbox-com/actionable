@@ -141,6 +141,24 @@ RSpec.describe Actionable::Action do
     end
   end
 
+  describe 'a step named like a Kernel method the action does not define' do
+    it 'raises a DefinitionError instead of calling Kernel' do
+      klass = Class.new(Actionable::Action) { step :puts }
+
+      expect { klass.run }.to raise_error(Actionable::DefinitionError, /:puts/)
+    end
+
+    it 'raises a DefinitionError for a hook named like a Kernel method' do
+      klass = Class.new(Actionable::Action) do
+        define_method(:go) { nil }
+        step :go
+        always :exit
+      end
+
+      expect { klass.run }.to raise_error(Actionable::DefinitionError, /:exit/)
+    end
+  end
+
   describe 'a step that assigns @result' do
     it 'raises a DefinitionError naming the reserved ivar' do
       klass = Class.new(Actionable::Action) do

@@ -19,6 +19,10 @@ module Actionable
     # D20); declaring one only attaches metadata to it.
     GEM_FAILURE_CODES = %i[invalid_input invalid_output].freeze
 
+    # Ruby's core classes, whose methods (+puts+, +exit+, +hash+…) never count
+    # as an action implementing a step or hook.
+    CORE_METHOD_OWNERS = [Kernel, Object, BasicObject].freeze
+
     class << self
       # The ordered, deduplicated set of steps declared on this action.
       # A +Set+ keyed by step identity ([type, name]) so a redeclared step
@@ -701,12 +705,23 @@ module Actionable
       # @return [void]
       def ensure_steps_implemented!(instance)
         all = steps.to_a + success_hooks.to_a + failure_hooks.to_a + skip_hooks.to_a + always_hooks.to_a
-        missing = all.flat_map(&:required_methods).uniq.reject { |method| instance.respond_to?(method, true) }
+        missing = all.flat_map(&:required_methods).uniq.reject { |method| implements?(instance, method) }
         return if missing.empty?
 
         raise DefinitionError,
           "#{name || "action"} declares step(s) calling #{missing.map(&:inspect).join(", ")} " \
           'but does not implement them'
+      end
+
+      # Whether +instance+ implements +method+ itself (public or private), not
+      # merely inherits it from Ruby's core: steps are called with +__send__+,
+      # so +step :puts+ or +always :exit+ must not reach +Kernel+.
+      #
+      # @param instance [Action]
+      # @param method [Symbol]
+      # @return [Boolean]
+      def implements?(instance, method)
+        instance.respond_to?(method, true) && !CORE_METHOD_OWNERS.include?(instance.method(method).owner)
       end
 
       # Coerce +.run+ arguments into the input struct: pass an existing input

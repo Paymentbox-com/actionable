@@ -10,7 +10,9 @@
   fields the child actually set are absorbed now; `expose:` still narrows them.
 - **Private step, hook and `case_step` methods work.** The definition check
   already accepted them, but the step then raised `NoMethodError`; they are
-  now called like guards are.
+  now called like guards are. A step or hook named after a method the action
+  only inherits from Ruby's core (`step :puts`, `always :exit`) raises
+  `DefinitionError` up front instead of calling `Kernel`.
 - **`Action.input` without a block reads the schema** instead of replacing it
   with an empty one, matching `output`.
 - **A step that assigns `@result`** gets a clear `DefinitionError` instead of a

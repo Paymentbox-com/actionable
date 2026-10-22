@@ -160,7 +160,10 @@ module Actionable
 
       def build_stubbed_output(action_class, result, schema)
         given = result.output.is_a?(FieldStruct::Base) ? result.output.attributes : result.output.to_h
-        output = schema.new(**given.slice(*schema.attribute_names))
+        given = given.slice(*schema.attribute_names)
+        # A parent absorbs only the fields a run set, so a stub sets the ones it was given.
+        result.output_fields_set = given.keys
+        output = schema.new(**given)
         return output if output.valid?
 
         raise ArgumentError, "#{action_class.name || "action"} output for #{result.code.inspect} breaks its schema " \
