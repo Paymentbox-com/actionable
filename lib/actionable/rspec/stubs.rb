@@ -17,34 +17,46 @@ module Actionable
     # could (decision D20). A stubbed skip follows {Actionable::Action.skips}
     # the same way (decision D21), the default +:skipped+ included.
     module Stubs
+      # @param action_class [Class<Actionable::Action>] the action whose +.run+ is stubbed
+      # @param opts [Object] {#actionable_success_result}'s keywords (+message:+, +output:+, +errors:+)
       # @return [Success] the stubbed result
       def allow_actionable_success(action_class, **opts)
         allow_run(action_class, actionable_success_result(**opts))
       end
 
+      # @param action_class [Class<Actionable::Action>] the action whose +.run+ is stubbed
+      # @param opts [Object] {#actionable_success_result}'s keywords (+message:+, +output:+, +errors:+)
       # @return [Success] the stubbed result
       def stub_actionable_success(action_class, **opts)
         expect_run(action_class, actionable_success_result(**opts))
       end
 
+      # @param action_class [Class<Actionable::Action>] the action whose +.run+ is stubbed
+      # @param opts [Object] {#actionable_failure_result}'s keywords; +code:+ defaults to +:error+
       # @return [Failure] the stubbed result
       # @raise [ArgumentError] when the action declares failures but not the code
       def allow_actionable_failure(action_class, **opts)
         allow_run(action_class, declared_failure_result(action_class, **opts))
       end
 
+      # @param action_class [Class<Actionable::Action>] the action whose +.run+ is stubbed
+      # @param opts [Object] {#actionable_failure_result}'s keywords; +code:+ defaults to +:error+
       # @return [Failure] the stubbed result
       # @raise [ArgumentError] when the action declares failures but not the code
       def stub_actionable_failure(action_class, **opts)
         expect_run(action_class, declared_failure_result(action_class, **opts))
       end
 
+      # @param action_class [Class<Actionable::Action>] the action whose +.run+ is stubbed
+      # @param opts [Object] {#actionable_skip_result}'s keywords; +code:+ defaults to +:skipped+
       # @return [Skipped] the stubbed result
       # @raise [ArgumentError] when the action declares skips but not the code
       def allow_actionable_skip(action_class, **opts)
         allow_run(action_class, declared_skip_result(action_class, **opts))
       end
 
+      # @param action_class [Class<Actionable::Action>] the action whose +.run+ is stubbed
+      # @param opts [Object] {#actionable_skip_result}'s keywords; +code:+ defaults to +:skipped+
       # @return [Skipped] the stubbed result
       # @raise [ArgumentError] when the action declares skips but not the code
       def stub_actionable_skip(action_class, **opts)
@@ -54,7 +66,7 @@ module Actionable
       # Build a real {Success} from a hash (no stubbing).
       #
       # @param message [String, nil]
-      # @param output [Hash]
+      # @param output [Hash{Symbol=>Object}, FieldStruct::Base]
       # @param errors [Hash{Symbol=>String, Array<String>}]
       # @return [Success]
       def actionable_success_result(message: nil, output: {}, errors: {})
@@ -65,7 +77,7 @@ module Actionable
       #
       # @param code [Symbol]
       # @param message [String, nil]
-      # @param output [Hash]
+      # @param output [Hash{Symbol=>Object}, FieldStruct::Base]
       # @param errors [Hash{Symbol=>String, Array<String>}]
       # @param metadata [Hash{Symbol=>Object}] the failure's per-code metadata
       # @return [Failure]
@@ -78,7 +90,7 @@ module Actionable
       #
       # @param code [Symbol]
       # @param message [String, nil]
-      # @param output [Hash]
+      # @param output [Hash{Symbol=>Object}, FieldStruct::Base]
       # @param metadata [Hash{Symbol=>Object}] the skip's per-code metadata
       # @return [Skipped]
       def actionable_skip_result(code: :skipped, message: nil, output: {}, metadata: {})
@@ -89,6 +101,12 @@ module Actionable
 
       # A {Failure} for +action_class+: the declared metadata and message for
       # its code, or a refusal when the action declares failures but not it.
+      #
+      # @param action_class [Class<Actionable::Action>]
+      # @param code [Symbol, String]
+      # @param opts [Object] the rest of {#actionable_failure_result}'s keywords
+      # @raise [ArgumentError] when the action declares failures but not +code+
+      # @return [Failure]
       def declared_failure_result(action_class, code: :error, **opts)
         unless action_class.allows_failure_code?(code)
           raise ArgumentError, Actionable::RSpec.undeclared_code_message(action_class, code)
@@ -101,6 +119,12 @@ module Actionable
 
       # A {Skipped} for +action_class+: the declared metadata and message for
       # its code, or a refusal when the action declares skips but not it.
+      #
+      # @param action_class [Class<Actionable::Action>]
+      # @param code [Symbol, String]
+      # @param opts [Object] the rest of {#actionable_skip_result}'s keywords
+      # @raise [ArgumentError] when the action declares skips but not +code+
+      # @return [Skipped]
       def declared_skip_result(action_class, code: :skipped, **opts)
         unless action_class.allows_skip_code?(code)
           raise ArgumentError, Actionable::RSpec.undeclared_code_message(action_class, code, outcome: :skip)
@@ -111,12 +135,23 @@ module Actionable
         actionable_skip_result(code: code, metadata: declaration[:metadata], **opts)
       end
 
+      # Permit +action_class.run+, answering +result+ as a real run would.
+      #
+      # @param action_class [Class<Actionable::Action>]
+      # @param result [Result]
+      # @return [Result] the result the stub answers
       def allow_run(action_class, result)
         result = as_action_result(action_class, result)
         allow(action_class).to receive(:run) { stubbed_run(action_class, result) }
         result
       end
 
+      # Expect +action_class.run+ (verified on the example), answering +result+
+      # as a real run would.
+      #
+      # @param action_class [Class<Actionable::Action>]
+      # @param result [Result]
+      # @return [Result] the result the stub answers
       def expect_run(action_class, result)
         result = as_action_result(action_class, result)
         expect(action_class).to receive(:run) { stubbed_run(action_class, result) }
@@ -126,6 +161,10 @@ module Actionable
       # The stubbed result as a real run would return it (decision D23): its
       # output shaped by the schema it is held to, then as the action's own
       # result class when it has typed outcomes.
+      #
+      # @param action_class [Class<Actionable::Action>]
+      # @param result [Result]
+      # @return [Result]
       def as_action_result(action_class, result)
         shape_output(action_class, result)
         action_class.__send__(:typed_result, result)
@@ -136,6 +175,11 @@ module Actionable
       # +invalid_output+ instead), and under typed outcomes a code without one
       # carries an empty output (refused when output is given, as a real run
       # refuses it). The gem's own failure codes keep what they are given.
+      #
+      # @param action_class [Class<Actionable::Action>]
+      # @param result [Result] updated in place
+      # @raise [ArgumentError] when the output breaks what a real run allows
+      # @return [void]
       def shape_output(action_class, result)
         schema = stubbed_output_schema(action_class, result)
         return result.output = build_stubbed_output(action_class, result, schema) if schema
@@ -151,6 +195,8 @@ module Actionable
 
       # @return [Class<FieldStruct::Base>, nil] the schema the result's output
       #   is held to: its code's, or the success schema under typed outcomes
+      # @param action_class [Class<Actionable::Action>]
+      # @param result [Result]
       def stubbed_output_schema(action_class, result)
         return action_class.skip_output_schema(result.code) if result.skipped?
         return action_class.failure_output_schema(result.code) if result.failure?
@@ -158,6 +204,14 @@ module Actionable
         action_class.output_schema if action_class.typed_outcomes?
       end
 
+      # The stub's output as an instance of +schema+, built from the fields of
+      # +result+'s output that the schema declares.
+      #
+      # @param action_class [Class<Actionable::Action>]
+      # @param result [Result]
+      # @param schema [Class<FieldStruct::Base>]
+      # @raise [ArgumentError] when the output breaks +schema+
+      # @return [FieldStruct::Base]
       def build_stubbed_output(action_class, result, schema)
         given = result.output.is_a?(FieldStruct::Base) ? result.output.attributes : result.output.to_h
         given = given.slice(*schema.attribute_names)
@@ -173,11 +227,20 @@ module Actionable
       # The stub's response: +result+, noted as a stubbed run when outcome
       # coverage is loaded (decision D22), so a report can tell an outcome
       # only ever stubbed from one never reached at all.
+      #
+      # @param action_class [Class<Actionable::Action>]
+      # @param result [Result]
+      # @return [Result] +result+
       def stubbed_run(action_class, result)
         Actionable::Coverage.record_stub(action_class, result) if defined?(Actionable::Coverage)
         result
       end
 
+      # Add +errors+ to +result+'s errors.
+      #
+      # @param result [Result]
+      # @param errors [Hash{Symbol=>String, Array<String>}]
+      # @return [Result] +result+
       def apply_errors(result, errors)
         errors.each { |field, messages| Array(messages).each { |message| result.errors.add(field, message) } }
         result

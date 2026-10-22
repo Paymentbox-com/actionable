@@ -14,6 +14,7 @@ module Actionable
     # enclosing transaction rolls back.
     module AfterCommit
       # The first ActiveRecord version with +after_all_transactions_commit+.
+      # @return [String]
       MINIMUM_ACTIVE_RECORD = '7.2'
 
       # Declare a hook that runs after the outermost database transaction

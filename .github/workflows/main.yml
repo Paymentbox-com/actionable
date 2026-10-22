@@ -56,7 +56,7 @@ jobs:
         bundler-cache: true
     - name: Install RBS collection
       run: bundle exec rbs collection install
-    - name: Steep check (core only, report-only)
+    - name: Steep check (core + adapters, report-only)
       run: |
         bundle exec steep check | tee steep.log || true
         echo "### Steep (report-only): $(tail -n 1 steep.log)" >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,16 @@
+# Hand-written: the Rails adapter wiring sord cannot see. `actionable/rails`
+# runs +Actionable::Action.singleton_class.prepend(Actionable::Rails::AfterCommit)+
+# (a prepend, so its +inherited+ / run-start guard wrap the core ones), and
+# YARD records no mix-in for a singleton_class prepend. For typing a client's
+# +after_commit+ / +after_commit_hooks+ calls an +extend+ says the same thing.
+# The module's own methods are generated into sig/actionable.rbs from YARD.
+#
+# Like every sig/ file this is unconditional: RBS cannot express "only after
+# require 'actionable/rails'". spec/actionable/adapter_sigs_spec.rb fails when
+# a public class method of Action (adapters loaded) has no declaration here
+# or in the generated file.
+module Actionable
+  class Action
+    extend Rails::AfterCommit
+  end
+end

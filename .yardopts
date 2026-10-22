@@ -1,9 +1,9 @@
 --readme README.md
 --markup markdown
 --output-dir doc
---exclude lib/actionable/rails
+--exclude lib/actionable/rails/proxy_validator
 --exclude lib/actionable/railtie
---exclude lib/actionable/rspec
+--exclude lib/actionable/rspec/coverage
 lib/**/*.rb
 -
 USAGE.md

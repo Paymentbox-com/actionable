@@ -443,6 +443,333 @@ module Actionable
     def self.indent: (String text) -> String
   end
 
+  # RSpec matchers and stubs for actions (decision D12).
+  module RSpec
+    # The refusal for a stub, +and_fail+ or +and_skip+ naming a code an action
+    # that declares failures (decision D20) or skips (decision D21) doesn't
+    # declare.
+    # 
+    # _@param_ `action_class`
+    # 
+    # _@param_ `code`
+    # 
+    # _@param_ `outcome` — which declarations the code was checked against
+    def self.undeclared_code_message: (singleton(Actionable::Action) action_class, (Symbol | String) code, ?outcome: Symbol) -> String
+
+    # Helpers mixed into example groups by +actionable/rspec+ that stub an
+    # action's +.run+ to return a real {Success} / {Failure} built from a hash,
+    # so callers can assert on +result.code+/+output+/+errors+ without executing
+    # the action (decision D12).
+    # 
+    # +allow_*+ permits the call (a stub); +stub_*+ also sets a call expectation
+    # (a mock, verified on the example) — mirroring RSpec's allow/expect split.
+    # 
+    # A stubbed failure of an action that declares failures with
+    # {Actionable::Action.fails} carries the declared metadata (and message,
+    # when none is given) for its code, and a code the action doesn't declare
+    # raises +ArgumentError+, so a stub can't return what the action never
+    # could (decision D20). A stubbed skip follows {Actionable::Action.skips}
+    # the same way (decision D21), the default +:skipped+ included.
+    module Stubs
+      # _@param_ `action_class` — the action whose +.run+ is stubbed
+      # 
+      # _@param_ `opts` — {#actionable_success_result}'s keywords (+message:+, +output:+, +errors:+)
+      # 
+      # _@return_ — the stubbed result
+      def allow_actionable_success: (singleton(Actionable::Action) action_class, **Object opts) -> Success
+
+      # _@param_ `action_class` — the action whose +.run+ is stubbed
+      # 
+      # _@param_ `opts` — {#actionable_success_result}'s keywords (+message:+, +output:+, +errors:+)
+      # 
+      # _@return_ — the stubbed result
+      def stub_actionable_success: (singleton(Actionable::Action) action_class, **Object opts) -> Success
+
+      # _@param_ `action_class` — the action whose +.run+ is stubbed
+      # 
+      # _@param_ `opts` — {#actionable_failure_result}'s keywords; +code:+ defaults to +:error+
+      # 
+      # _@return_ — the stubbed result
+      def allow_actionable_failure: (singleton(Actionable::Action) action_class, **Object opts) -> Failure
+
+      # _@param_ `action_class` — the action whose +.run+ is stubbed
+      # 
+      # _@param_ `opts` — {#actionable_failure_result}'s keywords; +code:+ defaults to +:error+
+      # 
+      # _@return_ — the stubbed result
+      def stub_actionable_failure: (singleton(Actionable::Action) action_class, **Object opts) -> Failure
+
+      # _@param_ `action_class` — the action whose +.run+ is stubbed
+      # 
+      # _@param_ `opts` — {#actionable_skip_result}'s keywords; +code:+ defaults to +:skipped+
+      # 
+      # _@return_ — the stubbed result
+      def allow_actionable_skip: (singleton(Actionable::Action) action_class, **Object opts) -> Skipped
+
+      # _@param_ `action_class` — the action whose +.run+ is stubbed
+      # 
+      # _@param_ `opts` — {#actionable_skip_result}'s keywords; +code:+ defaults to +:skipped+
+      # 
+      # _@return_ — the stubbed result
+      def stub_actionable_skip: (singleton(Actionable::Action) action_class, **Object opts) -> Skipped
+
+      # Build a real {Success} from a hash (no stubbing).
+      # 
+      # _@param_ `message`
+      # 
+      # _@param_ `output`
+      # 
+      # _@param_ `errors`
+      def actionable_success_result: (?message: String?, ?output: (::Hash[Symbol, Object] | FieldStruct::Base), ?errors: ::Hash[Symbol, (String | ::Array[String])]) -> Success
+
+      # Build a real {Failure} from a hash (no stubbing).
+      # 
+      # _@param_ `code`
+      # 
+      # _@param_ `message`
+      # 
+      # _@param_ `output`
+      # 
+      # _@param_ `errors`
+      # 
+      # _@param_ `metadata` — the failure's per-code metadata
+      def actionable_failure_result: (
+                                       ?code: Symbol,
+                                       ?message: String?,
+                                       ?output: (::Hash[Symbol, Object] | FieldStruct::Base),
+                                       ?errors: ::Hash[Symbol, (String | ::Array[String])],
+                                       ?metadata: ::Hash[Symbol, Object]
+                                     ) -> Failure
+
+      # Build a real {Skipped} from a hash (no stubbing).
+      # 
+      # _@param_ `code`
+      # 
+      # _@param_ `message`
+      # 
+      # _@param_ `output`
+      # 
+      # _@param_ `metadata` — the skip's per-code metadata
+      def actionable_skip_result: (
+                                    ?code: Symbol,
+                                    ?message: String?,
+                                    ?output: (::Hash[Symbol, Object] | FieldStruct::Base),
+                                    ?metadata: ::Hash[Symbol, Object]
+                                  ) -> Skipped
+
+      # A {Failure} for +action_class+: the declared metadata and message for
+      # its code, or a refusal when the action declares failures but not it.
+      # 
+      # _@param_ `action_class`
+      # 
+      # _@param_ `code`
+      # 
+      # _@param_ `opts` — the rest of {#actionable_failure_result}'s keywords
+      def declared_failure_result: (singleton(Actionable::Action) action_class, ?code: (Symbol | String), **Object opts) -> Failure
+
+      # A {Skipped} for +action_class+: the declared metadata and message for
+      # its code, or a refusal when the action declares skips but not it.
+      # 
+      # _@param_ `action_class`
+      # 
+      # _@param_ `code`
+      # 
+      # _@param_ `opts` — the rest of {#actionable_skip_result}'s keywords
+      def declared_skip_result: (singleton(Actionable::Action) action_class, ?code: (Symbol | String), **Object opts) -> Skipped
+
+      # Permit +action_class.run+, answering +result+ as a real run would.
+      # 
+      # _@param_ `action_class`
+      # 
+      # _@param_ `result`
+      # 
+      # _@return_ — the result the stub answers
+      def allow_run: (singleton(Actionable::Action) action_class, Result result) -> Result
+
+      # Expect +action_class.run+ (verified on the example), answering +result+
+      # as a real run would.
+      # 
+      # _@param_ `action_class`
+      # 
+      # _@param_ `result`
+      # 
+      # _@return_ — the result the stub answers
+      def expect_run: (singleton(Actionable::Action) action_class, Result result) -> Result
+
+      # The stubbed result as a real run would return it (decision D23): its
+      # output shaped by the schema it is held to, then as the action's own
+      # result class when it has typed outcomes.
+      # 
+      # _@param_ `action_class`
+      # 
+      # _@param_ `result`
+      def as_action_result: (singleton(Actionable::Action) action_class, Result result) -> Result
+
+      # Mirror the runner: output for a code with a schema becomes that schema
+      # (refused when it breaks it, since a real run would end as
+      # +invalid_output+ instead), and under typed outcomes a code without one
+      # carries an empty output (refused when output is given, as a real run
+      # refuses it). The gem's own failure codes keep what they are given.
+      # 
+      # _@param_ `action_class`
+      # 
+      # _@param_ `result` — updated in place
+      def shape_output: (singleton(Actionable::Action) action_class, Result result) -> void
+
+      # _@param_ `action_class`
+      # 
+      # _@param_ `result`
+      # 
+      # _@return_ — the schema the result's output
+      # is held to: its code's, or the success schema under typed outcomes
+      def stubbed_output_schema: (singleton(Actionable::Action) action_class, Result result) -> singleton(FieldStruct::Base)?
+
+      # The stub's output as an instance of +schema+, built from the fields of
+      # +result+'s output that the schema declares.
+      # 
+      # _@param_ `action_class`
+      # 
+      # _@param_ `result`
+      # 
+      # _@param_ `schema`
+      def build_stubbed_output: (singleton(Actionable::Action) action_class, Result result, singleton(FieldStruct::Base) schema) -> FieldStruct::Base
+
+      # The stub's response: +result+, noted as a stubbed run when outcome
+      # coverage is loaded (decision D22), so a report can tell an outcome
+      # only ever stubbed from one never reached at all.
+      # 
+      # _@param_ `action_class`
+      # 
+      # _@param_ `result`
+      # 
+      # _@return_ — +result+
+      def stubbed_run: (singleton(Actionable::Action) action_class, Result result) -> Result
+
+      # Add +errors+ to +result+'s errors.
+      # 
+      # _@param_ `result`
+      # 
+      # _@param_ `errors`
+      # 
+      # _@return_ — +result+
+      def apply_errors: (Result result, ::Hash[Symbol, (String | ::Array[String])] errors) -> Result
+    end
+
+    # RSpec matcher methods mixed into example groups by +actionable/rspec+.
+    module Matchers
+      # Run an action and assert on its outcome.
+      # 
+      #   expect(CreateInvoice).to perform_actionable(amount: 5).and_succeed
+      #   expect(CreateInvoice).to perform_actionable(bad).and_fail(:invalid_input)
+      #   expect(Boom).to          perform_actionable.and_raise(RuntimeError)
+      # 
+      # _@param_ `args` — positional args forwarded to +.run+
+      # 
+      # _@param_ `kwargs` — keyword args forwarded to +.run+
+      def perform_actionable: (*Object args, **Object kwargs) ?{ (Result? result, StandardError? exception) -> Object } -> PerformActionable
+    end
+
+    # The matcher object returned by {Matchers#perform_actionable}. Runs the
+    # action under test and checks the configured outcome (decision D12). Bare
+    # +perform_actionable+ expects a success; chain +and_succeed+ / +and_fail+ /
+    # +and_raise+ to be explicit. Code and message expectations match with +===+,
+    # so exact values, Regexps, and classes all work.
+    class PerformActionable
+      DEFAULT_BACKTRACE_QTY: Integer
+
+      # _@param_ `args` — positional args forwarded to +.run+
+      # 
+      # _@param_ `kwargs` — keyword args forwarded to +.run+
+      # 
+      # _@param_ `block` — extra assertions, called with the result and exception
+      def initialize: (::Array[Object] args, ::Hash[Symbol, Object] kwargs, Proc? block) -> void
+
+      # Expect a successful result, optionally matching +message+.
+      # 
+      # _@param_ `message` — matched against the result's message with +===+
+      def and_succeed: (?Object? message) ?{ (Result? result, StandardError? exception) -> Object } -> self
+
+      # Expect a failed result, optionally matching +code+ and +message+. On an
+      # action that declares failures, a Symbol +code+ it doesn't declare raises
+      # +ArgumentError+ (decision D20).
+      # 
+      # _@param_ `code` — matched against the result's code with +==+
+      # 
+      # _@param_ `message` — matched against the result's message with +===+
+      def and_fail: (?Object? code, ?Object? message) ?{ (Result? result, StandardError? exception) -> Object } -> self
+
+      # Expect a skipped result, optionally matching the reason +code+ and
+      # +message+ (decision D17). On an action that declares skips, a Symbol
+      # +code+ it doesn't declare raises +ArgumentError+ (decision D21).
+      # 
+      # _@param_ `code` — matched against the result's code with +==+
+      # 
+      # _@param_ `message` — matched against the result's message with +===+
+      def and_skip: (?Object? code, ?Object? message) ?{ (Result? result, StandardError? exception) -> Object } -> self
+
+      # Expect the run to raise +error_class+, optionally matching +message+.
+      # 
+      # _@param_ `error_class`
+      # 
+      # _@param_ `message` — matched against the exception's message with +===+
+      def and_raise: (?singleton(Exception) error_class, ?Object? message) ?{ (Result? result, StandardError? exception) -> Object } -> self
+
+      # _@param_ `action_class`
+      def matches?: (singleton(Actionable::Action) action_class) -> bool
+
+      # _@param_ `action_class`
+      def does_not_match?: (singleton(Actionable::Action) action_class) -> bool
+
+      def failure_message: () -> String
+
+      def failure_message_when_negated: () -> String
+
+      def description: () -> String
+
+      # _@param_ `outcome` — +:success+, +:failure+, +:skip+ or +:raise+
+      # 
+      # _@param_ `message`
+      def configure: (Symbol outcome, Object? message) ?{ (Result? result, StandardError? exception) -> Object } -> self
+
+      # An +and_fail+ or +and_skip+ code the action could never end with is a
+      # broken spec, not a failed expectation, so it raises rather than not
+      # matching.
+      def ensure_code_declared!: () -> void
+
+      # Run the action, keeping its result or the error it raised.
+      def perform: () -> void
+
+      def primary_match?: () -> bool?
+
+      def succeeded?: () -> bool?
+
+      def failed?: () -> bool?
+
+      def skipped?: () -> bool?
+
+      def raised?: () -> bool
+
+      # _@param_ `actual`
+      def message_matches?: (String? actual) -> bool
+
+      def block_match?: () -> bool
+
+      def expectation_phrase: () -> String?
+
+      def code_suffix: () -> String
+
+      def message_suffix: () -> String
+
+      def actual_phrase: () -> String
+
+      def formatted_backtrace: () -> String
+
+      def short_backtrace?: () -> bool
+
+      def backtrace_qty: () -> Integer
+    end
+  end
+
   # Namespace for the concrete step types an action's pipeline is built from
   # (decision D3): {Steps::Method} now, {Steps::Action} and {Steps::Case} later.
   module Steps
@@ -668,6 +995,7 @@ module Actionable
   # 
   #   Greet.run # => #<Actionable::Success ...>
   class Action
+    extend Actionable::Rails::Transactions
     extend Actionable::Job::RetryMetadata
     GEM_FAILURE_CODES: ::Array[Symbol]
     CORE_METHOD_OWNERS: ::Array[Module]
@@ -1350,6 +1678,28 @@ module Actionable
     # only — not an exception (decision D4).
     def halt!: () -> void
 
+    # Wrap this action's run in +model.transaction(**options)+.
+    # 
+    #   transactional model: :invoice
+    #   transactional model: Invoice, requires_new: false # join an outer one
+    # 
+    # Run inside a transaction that is already open, the action gets its own
+    # savepoint (+requires_new: true+) unless +requires_new:+ is given, so a
+    # recorded +Failure+ rolls back its own writes rather than leaving them for
+    # the outer transaction to commit.
+    # 
+    # _@param_ `model` — the model whose +transaction+ is used; a Symbol is resolved to a constant (+:invoice+ → +Invoice+)
+    # 
+    # _@param_ `options` — options forwarded to +transaction+
+    def self.transactional: (model: (Symbol | Class), **Object options) -> void
+
+    # The transaction config for this action, inherited from ancestors when
+    # not set locally (decision D9: inherited, overridable).
+    # 
+    # _@return_ — +{model:, options:}+, or +nil+ when
+    # neither this action nor an ancestor is +transactional+
+    def self.transaction_config: () -> ::Hash[Symbol, Object]?
+
     # Opt this action in (or, with +enabled: false+, back out) to {Job}
     # honoring the +retry:+ metadata of its declared failures and skips:
     # +retry: true+ retries the job, +retry: false+ does not. A code with no
@@ -1536,6 +1886,9 @@ module Actionable
   # runner records a {History} of every step — section, name, timing, result
   # code, and nested child history (decision D10).
   class Runner
+    include Actionable::Rails::RunnerAfterCommit
+    include Actionable::Rails::RunnerTransaction
+
     # _@param_ `instance` — the action instance to run
     def initialize: (Action _instance) -> void
 
@@ -1664,6 +2017,32 @@ module Actionable
     # _@return_ — code +:invalid_output+, with the output's validation
     # errors copied onto the failure and the (invalid) output attached
     def invalid_output_failure: (FieldStruct::Base output) -> Failure
+
+    # _@return_ — the running action's transaction config
+    def transaction_config: () -> ::Hash[Symbol, Object]?
+
+    # The configured options, plus +requires_new: true+ when a transaction is
+    # already open and the action did not say otherwise. Joining the outer
+    # transaction would swallow this run's rollback, so a recorded failure's
+    # writes would commit with it (decision D9).
+    # 
+    # _@param_ `model`
+    # 
+    # _@param_ `options`
+    def transaction_options: (Class model, ::Hash[Symbol, Object] options) -> ::Hash[Symbol, Object]
+
+    # _@param_ `model`
+    # 
+    # _@return_ — the resolved model class
+    def resolve_model: ((Symbol | Class) model) -> Class
+
+    def schedule_after_commit: () -> void
+
+    # Run the hooks in order. A halt stops the remaining ones; nothing they
+    # record reaches the already-returned result.
+    # 
+    # _@param_ `hooks`
+    def run_after_commit_hooks: (::Array[Steps::Base] hooks) -> void
   end
 
   # An ordered record of the steps a run executed, when measurement is enabled
@@ -2000,5 +2379,132 @@ module Actionable
     def code: () -> Symbol
 
     def success?: () -> bool
+  end
+
+  module Rails
+    # The +after_commit+ hook kind. Prepended onto {Actionable::Action}'s
+    # singleton class by +actionable/rails+, so the core never knows about it
+    # (decision D8).
+    # 
+    # An +after_commit+ hook runs once, after the database work of a
+    # successful run has really committed: it is registered with
+    # +ActiveRecord.after_all_transactions_commit+ when the run ends, so it
+    # waits for the outermost open transaction (not the action's own
+    # savepoint), runs immediately when none is open, and never runs if any
+    # enclosing transaction rolls back.
+    module AfterCommit
+      MINIMUM_ACTIVE_RECORD: String
+
+      # Declare a hook that runs after the outermost database transaction
+      # commits, iff the run's final result is a {Success}.
+      # 
+      #   after_commit :send_receipt
+      #   after_commit NotifyWarehouse, input: %i[order]
+      # 
+      # The run is over by then: the result has been returned (or is about to
+      # be, when no transaction is open), so the hook cannot change it, a
+      # halting verb only stops the remaining +after_commit+ hooks, and the
+      # hook is not recorded in the history. An exception it raises propagates
+      # from wherever the commit happens: the outer +transaction+ call, or
+      # +.run+ itself when no transaction was open.
+      # 
+      # _@param_ `target` — the instance method or nested action to run
+      # 
+      # _@param_ `options` — step options (+:if+, +:unless+, and for a nested action +:input+)
+      def after_commit: ((Symbol | String | singleton(Actionable::Action)) target, **Object options) -> ::Set[Steps::Base]
+
+      # Hooks that run after the outermost transaction commits a successful run.
+      def after_commit_hooks: () -> ::Set[Steps::Base]
+
+      # {Actionable::Action.describe}, with the +after_commit+ hooks listed as
+      # one more +:hooks+ section, so {Actionable::Action.describe_text} shows
+      # them too (only when there are any, like the core sections).
+      def describe: () -> ::Hash[Symbol, Object]
+
+      # Give each subclass its own copy of the inherited +after_commit+ hooks.
+      # 
+      # _@param_ `subclass`
+      def inherited: (Class subclass) -> void
+
+      # Extend the run-start guard (decision D18) to the +after_commit+ hooks.
+      # 
+      # _@param_ `instance`
+      def ensure_steps_implemented!: (Action _instance) -> void
+
+      def ensure_after_commit_supported!: () -> void
+    end
+
+    # Prepended onto {Actionable::Runner} (outside {RunnerTransaction}) to
+    # register a successful run's +after_commit+ hooks once the run, and its
+    # own transaction, are over.
+    module RunnerAfterCommit
+      def run: () -> Result
+
+      def schedule_after_commit: () -> void
+
+      # Run the hooks in order. A halt stops the remaining ones; nothing they
+      # record reaches the already-returned result.
+      # 
+      # _@param_ `hooks`
+      def run_after_commit_hooks: (::Array[Steps::Base] hooks) -> void
+    end
+
+    # Internal signal raised inside a transaction block to trigger a rollback
+    # without surfacing as a genuine error. The runner wrapper swallows it; a
+    # real ActiveRecord transaction rolls back and re-raises it (as it does for
+    # any exception), and the wrapper catches it outside the block.
+    class Rollback < StandardError
+    end
+
+    # The +transactional+ class macro (decision D9). Extended onto
+    # {Actionable::Action} by +actionable/rails+.
+    module Transactions
+      # Wrap this action's run in +model.transaction(**options)+.
+      # 
+      #   transactional model: :invoice
+      #   transactional model: Invoice, requires_new: false # join an outer one
+      # 
+      # Run inside a transaction that is already open, the action gets its own
+      # savepoint (+requires_new: true+) unless +requires_new:+ is given, so a
+      # recorded +Failure+ rolls back its own writes rather than leaving them for
+      # the outer transaction to commit.
+      # 
+      # _@param_ `model` — the model whose +transaction+ is used; a Symbol is resolved to a constant (+:invoice+ → +Invoice+)
+      # 
+      # _@param_ `options` — options forwarded to +transaction+
+      def transactional: (model: (Symbol | Class), **Object options) -> void
+
+      # The transaction config for this action, inherited from ancestors when
+      # not set locally (decision D9: inherited, overridable).
+      # 
+      # _@return_ — +{model:, options:}+, or +nil+ when
+      # neither this action nor an ancestor is +transactional+
+      def transaction_config: () -> ::Hash[Symbol, Object]?
+    end
+
+    # Prepended onto {Actionable::Runner} so a +transactional+ action runs its
+    # whole pipeline inside a transaction. A raised exception or a recorded
+    # +Failure+ rolls everything back; a +Success+ commits (decision D9).
+    module RunnerTransaction
+      def run: () -> Result
+
+      # _@return_ — the running action's transaction config
+      def transaction_config: () -> ::Hash[Symbol, Object]?
+
+      # The configured options, plus +requires_new: true+ when a transaction is
+      # already open and the action did not say otherwise. Joining the outer
+      # transaction would swallow this run's rollback, so a recorded failure's
+      # writes would commit with it (decision D9).
+      # 
+      # _@param_ `model`
+      # 
+      # _@param_ `options`
+      def transaction_options: (Class model, ::Hash[Symbol, Object] options) -> ::Hash[Symbol, Object]
+
+      # _@param_ `model`
+      # 
+      # _@return_ — the resolved model class
+      def resolve_model: ((Symbol | Class) model) -> Class
+    end
   end
 end

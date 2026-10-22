@@ -1,10 +1,17 @@
 # frozen_string_literal: true
 
-# Type-checks the core library against the committed signatures. Report-only:
-# run it through gemfiles/types.gemfile (Steep 2.x); CI never fails on it.
+# Type-checks the library against the committed signatures at Steep's default
+# diagnostic level. Report-only: run it through gemfiles/types.gemfile
+# (Steep 2.x); CI never fails on it (owner ruling P11: a strict gate is
+# revisited after Tier 1).
 #
-# The optional adapters are out of scope: they carry no YARD sigs by design
-# (.yardopts excludes them) and gem_rbs_collection has no RSpec sigs.
+# The adapters a client calls (actionable/rails' transactional and
+# after_commit, actionable/rspec's matchers and stubs, actionable/job) are in
+# scope: sord generates their sigs from YARD like the core's. Their bodies call
+# ActiveRecord and rspec-mocks, which have no sigs in this lane, so they add
+# report-only problems. Still out of scope, as they have no sigs (.yardopts
+# excludes them): ProxyValidator (ActiveModel-typed), the Railtie, and
+# actionable/rspec/coverage.
 #
 # The stdlib libraries match rbs_collection.yaml so ::Date / ::Time /
 # ::DateTime / ::BigDecimal references in sig/actionable.rbs resolve.
@@ -12,9 +19,8 @@ target :lib do
   signature 'sig'
 
   check 'lib'
-  ignore 'lib/actionable/rspec', 'lib/actionable/rspec.rb',
-    'lib/actionable/rails', 'lib/actionable/rails.rb',
-    'lib/actionable/railtie.rb'
+  ignore 'lib/actionable/rails/proxy_validator.rb', 'lib/actionable/railtie.rb',
+    'lib/actionable/rspec/coverage', 'lib/actionable/rspec/coverage.rb'
 
   library 'date', 'time', 'bigdecimal'
 end
