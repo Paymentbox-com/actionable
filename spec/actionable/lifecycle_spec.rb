@@ -215,6 +215,27 @@ RSpec.describe 'Actionable lifecycle hooks' do
       expect(result.code).to eq(:audit_failed)
     end
 
+    it 'fails the run and stops the remaining hooks when a nested-action hook fails' do
+      calls = []
+      child = Class.new(Actionable::Action) do
+        define_method(:go) { fail!(:child_bad) }
+        step :go
+      end
+      stub_const('FailingChild', child)
+      klass = Class.new(Actionable::Action) do
+        define_method(:main) { nil }
+        define_method(:log) { calls << :log }
+        step :main
+        on_success FailingChild
+        always :log
+      end
+
+      result = klass.run
+
+      expect(result.code).to eq(:child_bad)
+      expect(calls).to be_empty
+    end
+
     it 'records the adopted code in the history when measuring' do
       klass = Class.new(Actionable::Action) do
         measure :all

@@ -175,6 +175,30 @@ RSpec.describe 'Actionable typed output' do
     end
   end
 
+  describe 'the invalid output of a Failure(:invalid_output) across hooks' do
+    it 'keeps the output that failed validation, kwargs included' do
+      klass = Class.new(Actionable::Action) do
+        output do
+          required :id, :integer
+          required :name, :string
+        end
+        define_method(:go) do
+          @id = 3
+          succeed(id: 7)
+        end
+        define_method(:log) { nil }
+        step :go
+        always :log
+      end
+
+      result = klass.run
+
+      expect(result.code).to eq(:invalid_output)
+      expect(result.output.id).to eq(7)
+      expect(result.errors.to_h).to eq(name: ['is required'], output: ['is invalid'])
+    end
+  end
+
   describe 'best-effort output on a non-typed failure or skip' do
     it 'adds no output error to a failure' do
       klass = Class.new(Actionable::Action) do

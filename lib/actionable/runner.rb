@@ -157,7 +157,7 @@ module Actionable
         attach_validated(schema.new(**outcome_attributes(schema)))
       elsif @instance.class.typed_outcomes?
         @result.output = {} unless gem_failure?
-      elsif (schema = @instance.class.output_schema)
+      elsif (schema = @instance.class.output_schema) && !gem_failure?
         attach_unvalidated(schema.new(**captured_attributes(schema)))
       end
     end

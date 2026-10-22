@@ -8,11 +8,15 @@
   `skip!` or `succeed!` in a hook used to be dropped: `fail!` in `on_success`
   returned `Success`, committed a `transactional` action and acked the job.
   The hook's result is now adopted before the halt stops the remaining hooks,
-  as the docs always said.
+  as the docs always said. This includes a nested action used as a hook
+  (`on_success ChildAction`): a failing child now fails the run and stops the
+  remaining hooks.
 - **`succeed`/`skip` kwargs survive lifecycle hooks.** After any hook
   refreshed the output, the kwargs were lost: a required field set only by
   kwarg turned the run into `Failure(:invalid_output)`, and a kwarg that
   overrode an ivar silently reverted to the ivar's value. Present since 1.0.0.
+  A `Failure(:invalid_output)` also keeps the output that failed validation
+  across hooks instead of having it rebuilt from ivars.
 - **No spurious `errors[:output]` on a failure or skip.** The best-effort,
   unvalidated output of a non-typed failure or skip added
   `output: ["is invalid"]` to the result's errors. It no longer does; errors
