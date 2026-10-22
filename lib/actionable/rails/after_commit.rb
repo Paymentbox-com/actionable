@@ -47,6 +47,17 @@ module Actionable
         @after_commit_hooks ||= Set.new
       end
 
+      # {Actionable::Action.describe}, with the +after_commit+ hooks listed as
+      # one more +:hooks+ section, so {Actionable::Action.describe_text} shows
+      # them too (only when there are any, like the core sections).
+      #
+      # @return [Hash{Symbol=>Object}]
+      def describe
+        summary = super
+        summary[:hooks] = summary[:hooks].merge(after_commit: after_commit_hooks.map(&:name))
+        summary
+      end
+
       # Give each subclass its own copy of the inherited +after_commit+ hooks.
       #
       # @param subclass [Class]

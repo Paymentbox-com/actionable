@@ -743,7 +743,9 @@ cryptic `NoMethodError`:
   database work really committed. Needs ActiveRecord >= 7.2 (it is built on
   `ActiveRecord.after_all_transactions_commit`); declaring it on an older
   ActiveRecord, or with ActiveRecord not loaded, raises a `DefinitionError`.
-  Existing hooks are unchanged. Inherited like the other hooks.
+  Existing hooks are unchanged. Inherited like the other hooks. `describe`
+  lists them under `hooks[:after_commit]`, and `describe_text` adds an
+  `after_commit:` line when there are any.
 
   | Scenario | Runs? | When |
   |---|---|---|

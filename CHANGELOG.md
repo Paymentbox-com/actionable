@@ -4,6 +4,10 @@
 
 ### Added
 
+- **`describe` / `describe_text` list `after_commit` hooks.** With the Rails
+  adapter loaded, `describe[:hooks][:after_commit]` names them, and
+  `describe_text` adds an `after_commit:` hooks line when there are any.
+
 - **`after_commit` hook kind (Rails adapter).** After `require 'actionable/rails'`,
   `after_commit :method` (or a nested action, with `:if` / `:unless` /
   `:input` like any hook) runs a side effect only after the database work

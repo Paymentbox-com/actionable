@@ -242,4 +242,36 @@ RSpec.describe 'Actionable::Rails after_commit hooks on ActiveRecord' do
     expect { Class.new(Actionable::Action) { after_commit :notify } }
       .to raise_error(Actionable::DefinitionError, /ActiveRecord >= 7\.2/)
   end
+
+  describe 'in describe / describe_text' do
+    let(:nested) { Class.new(Actionable::Action) { def self.name = 'NotifyWarehouse' } }
+    let(:klass) do
+      hook_action = nested
+      Class.new(Actionable::Action) do
+        def self.name = 'PlaceOrder'
+        define_method(:notify) { nil }
+        step :notify
+        after_commit :notify
+        after_commit hook_action
+      end
+    end
+
+    it 'lists the after_commit hooks alongside the core hook sections' do
+      hooks = klass.describe[:hooks]
+
+      expect(hooks[:after_commit]).to eq(klass.after_commit_hooks.map(&:name))
+      expect(hooks[:after_commit].first).to eq(:notify)
+      expect(hooks[:after_commit].size).to eq(2)
+      expect(hooks.keys).to eq(%i[on_success on_failure on_skip always after_commit])
+    end
+
+    it 'reports an empty after_commit section for an action without any' do
+      expect(Class.new(Actionable::Action).describe[:hooks][:after_commit]).to eq([])
+    end
+
+    it 'renders an after_commit line in describe_text only when there are hooks' do
+      expect(klass.describe_text).to include("after_commit: #{klass.after_commit_hooks.map(&:name).join(", ")}")
+      expect(Class.new(Actionable::Action).describe_text).not_to include('after_commit')
+    end
+  end
 end
