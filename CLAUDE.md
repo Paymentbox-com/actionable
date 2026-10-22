@@ -9,7 +9,7 @@ Before starting any work, read these in order:
 
 | Document | Purpose |
 |----------|---------|
-| `docs/origin/plan.md` | **Source of truth.** Phase 1 design decisions (D1–D18), the 16-slice plan, Phase 2+ backlog, glossary. |
+| `docs/origin/plan.md` | **Source of truth.** Phase 1 design decisions (D1–D23), the 16-slice plan, Phase 2+ backlog, glossary. |
 | `.claude/project_intent.md` | What Actionable is/isn't, terminology, design invariants. |
 | `.claude/tdd_guidelines.md` | Test-driven development patterns (non-negotiable). |
 | `.claude/planning_guide.md` | How to plan and build a feature/slice. |
@@ -32,7 +32,7 @@ pure-Ruby core with Rails as an optional adapter, and an explicit typed `output`
 instead of the old "capture every instance variable" magic. See `docs/origin/plan.md`
 for the locked decisions.
 
-The library targets **v1.0.0**. The slice plan and decisions D1–D18 are authoritative.
+The library targets **v1.0.0**. The slice plan and decisions D1–D23 are authoritative.
 
 ---
 
@@ -143,12 +143,11 @@ One logical change per commit; tests ship with their code; tests pass at every
 commit; each commit independently revertable; the message explains *why*.
 
 ### Branches
-- `main` is the released branch; tagged releases come from here.
-- `develop` is the integration branch.
-- Per-feature branches off `develop`, merged back into `develop`.
-- Release flow: `develop` → `main` via PR when cutting a version.
+- `main` is the integration and released branch; tagged releases come from here.
+- Per-feature branches off `main`, merged back into `main` by PR (the practice
+  since PR #3). `develop` is no longer used.
 
-Use descriptive branch names off `develop`.
+Use descriptive branch names off `main` (e.g. `aem/runner-hook-fixes`).
 
 ### Cutting a release
 A version isn't released until there's a **GitHub Release** — a git tag alone is
@@ -156,8 +155,8 @@ invisible on the Releases page. The full sequence:
 1. Bump `lib/actionable/version.rb`; move `CHANGELOG.md` `[Unreleased]` → a dated
    `## [x.y.z]` section (leave `[Unreleased]` empty).
 2. `bundle exec rake release:check`.
-3. Commit `chore: release vX.Y.Z`; merge `develop` → `main`.
-4. `git tag -a vX.Y.Z`; push `main`, `develop`, and the tag.
+3. Commit `chore: release vX.Y.Z` on a release branch; merge its PR into `main`.
+4. `git tag -a vX.Y.Z` on the merged `main` head; push the tag.
 5. `gh release create vX.Y.Z --title "Actionable vX.Y.Z" --notes-file <changelog section>`
    — **don't skip this**; tag ≠ Release.
 
@@ -169,5 +168,5 @@ End AI-assisted commits with a `Co-Authored-By:` trailer.
 ## When in doubt
 
 The slice plan in `docs/origin/plan.md` is the authoritative roadmap. Decisions
-D1–D18 are locked unless explicitly revisited. If a question isn't answered there,
+D1–D23 are locked unless explicitly revisited. If a question isn't answered there,
 ask before guessing.
