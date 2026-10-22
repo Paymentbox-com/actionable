@@ -679,7 +679,10 @@ cryptic `NoMethodError`:
 
 - `transactional model: :invoice` (or a class) wraps the run in
   `model.transaction`. A success commits; a recorded failure or a raised
-  exception rolls back; a skip commits. Lifecycle hooks run inside the
+  exception rolls back; a skip commits. Inside a transaction that is already
+  open, the action takes its own savepoint (`requires_new: true`), so its failed
+  writes roll back without the outer transaction committing them; pass
+  `requires_new: false` to join the outer one instead. Lifecycle hooks run inside the
   transaction, so a hook's writes share its fate and its external side effects
   fire before the commit.
 - `Actionable::ProxyValidator` runs ActiveModel rules against a delegate object;

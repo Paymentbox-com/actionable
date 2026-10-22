@@ -4,6 +4,13 @@
 
 ### Fixed
 
+- **A failed `transactional` action inside an outer transaction no longer
+  commits its writes.** It joined the outer transaction, whose commit ignored
+  the action's rollback, so a recorded `Failure` still committed its rows
+  (measured on ActiveRecord 8.1 + SQLite). Inside an open transaction the action
+  now takes its own savepoint (`requires_new: true`) unless `requires_new:` is
+  given; `requires_new: false` keeps the old joining behaviour.
+
 - **A bang verb inside a lifecycle hook now sets the result.** `fail!`,
   `skip!` or `succeed!` in a hook used to be dropped: `fail!` in `on_success`
   returned `Success`, committed a `transactional` action and acked the job.
