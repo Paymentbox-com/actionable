@@ -104,7 +104,8 @@ RSpec.describe 'Actionable result value objects' do
       result = Actionable::Failure.new(code: :invalid)
       result.errors.add(:name, 'is required')
 
-      expect(result.inspect).to include('errors={:name=>["is required"]}')
+      # Built from Hash#inspect so it holds across Ruby's 3.4 inspect change.
+      expect(result.inspect).to include("errors=#{{name: ["is required"]}.inspect}")
     end
 
     it 'renders identically for equal results' do
