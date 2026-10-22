@@ -505,7 +505,10 @@ The path mirrors the constant (`app/actions/billing/settle_invoice.rb` ↔
 
 `transactional` wraps the whole run in `model.transaction`. A success commits; a
 **recorded failure or a raised exception rolls back**; a skip commits (there's
-nothing to undo). The lifecycle hooks run **inside** the transaction too: a
+nothing to undo). Called inside a transaction your app already opened, the
+action takes its own savepoint (`requires_new: true`), so a recorded failure
+rolls back the action's writes and leaves the rest of your transaction alone;
+pass `requires_new: false` to join it instead. The lifecycle hooks run **inside** the transaction too: a
 write in `on_failure` rolls back with the rest, and an email or webhook sent
 from `on_success` fires before the commit. Keep external side effects out of
 hooks, or enqueue them so they run after the commit.
