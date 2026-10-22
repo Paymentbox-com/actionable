@@ -32,8 +32,8 @@ Gem::Specification.new do |spec|
     ls.readlines("\x0", chomp: true).reject do |f|
       (f == gemspec) ||
         f.start_with?(*%w[bin/ test/ spec/ features/ .git .github appveyor Gemfile gemfiles/]) ||
-        # Contributor-only: agent config, the design record, build/lint config.
-        f.start_with?(*%w[.claude/ CLAUDE.md docs/origin/ Rakefile Steepfile .rubocop .yardopts rbs_collection])
+        # Contributor-only: agent config, the design record, build/lint config, benchmarks.
+        f.start_with?(*%w[.claude/ CLAUDE.md docs/origin/ Rakefile Steepfile .rubocop .yardopts rbs_collection benchmarks/])
     end
   end
   spec.bindir = 'exe'

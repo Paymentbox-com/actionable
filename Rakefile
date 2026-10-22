@@ -11,6 +11,11 @@ RuboCop::RakeTask.new
 
 task default: %i[spec rubocop sigs:untyped]
 
+desc 'Run the indicative micro-benchmarks in benchmarks/ (BENCH_ITERATIONS=n; not in the default task)'
+task :bench do
+  ruby 'benchmarks/run.rb'
+end
+
 # --- Type signatures (sord + rbs) -------------------------------------
 
 SIG_FILE = 'sig/actionable.rbs'
