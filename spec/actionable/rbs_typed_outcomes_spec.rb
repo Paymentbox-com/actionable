@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require 'rbs'
+require_relative '../support/rbs_environment'
 
 class RbsTypedAction < Actionable::Action
   typed_outcomes
@@ -38,19 +38,29 @@ RSpec.describe Actionable::RBS, 'under typed outcomes (decision D23)' do
         type skip_code = :already_active | :not_ready
 
         def self.run: (id: ::Integer) -> (Success | Skipped | Failure)
+                    | (InputSchema input) -> (Success | Skipped | Failure)
+
+        def input: () -> InputSchema
+
+        @name: ::String?
+
+        class InputSchema < ::FieldStruct::Base
+          attr_reader id: ::Integer
+          def id=: (::Integer? value) -> ::Integer?
+        end
 
         class Output < ::FieldStruct::Base
           attr_reader name: ::String
-          def name=: (untyped value) -> untyped
+          def name=: (::String? value) -> ::String?
         end
 
         class AlreadyActiveSkipOutput < ::FieldStruct::Base
           attr_reader name: ::String
-          def name=: (untyped value) -> untyped
+          def name=: (::String? value) -> ::String?
         end
 
         class InvalidFailureOutput < ::FieldStruct::Base
-          attr_reader form_record: untyped?
+          attr_reader form_record: untyped
           def form_record=: (untyped value) -> untyped
         end
 
@@ -69,7 +79,7 @@ RSpec.describe Actionable::RBS, 'under typed outcomes (decision D23)' do
         class Failure < ::Actionable::Failure
           def code: () -> failure_code
           def output: () -> (InvalidFailureOutput | AlreadyActiveSkipOutput | Output | ::Hash[::Symbol, untyped])
-          def form_record: () -> untyped?
+          def form_record: () -> untyped
           def name: () -> ::String?
         end
       end
@@ -85,10 +95,7 @@ RSpec.describe Actionable::RBS, 'under typed outcomes (decision D23)' do
   end
 
   it 'resolves a subclass’s result classes without the parent being generated too' do
-    loader = RBS::EnvironmentLoader.new
-    loader.add(path: Pathname(File.expand_path('../../sig', __dir__)))
-    loader.add(path: Pathname(Gem.loaded_specs.fetch('field_struct').full_gem_path).join('sig'))
-    env = RBS::Environment.from_loader(loader)
+    env = RbsEnvironment.base
     add_signature(env, described_class.generate(RbsTypedChild))
     builder = RBS::DefinitionBuilder.new(env: env.resolve_type_names)
 

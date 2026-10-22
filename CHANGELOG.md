@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`Actionable::RBS.generate` types an action's input and output instance
+  variables** (generated RBS only; no runtime change). For an action with a
+  fixed `input` schema it emits a nested `class InputSchema < ::FieldStruct::Base`
+  with a typed reader and writer per input field, `def input: () -> InputSchema`,
+  and a `.run` overload `| (InputSchema input) -> ...` beside the keyword form.
+  `InputSchema` exists only in RBS (the runtime schema is anonymous), so
+  generation raises `ArgumentError` when Ruby already resolves
+  `YourAction::InputSchema` (a constant on the action, an ancestor or an
+  included module). It also declares each output field as a nullable
+  instance variable (`@total: ::Integer?`), so a step that assigns
+  `@total = ...` type-checks. **Upgrade note:** the generated RBS now owns
+  those instance variables; delete any declaration of them from your own sig
+  files, since RBS rejects an instance variable declared twice.
+
 ### Fixed
 
 - **`Actionable::RBS.generate` declares the real superclass chain.** An action
@@ -22,6 +38,18 @@
 
 ### Changed
 
+- **Optional `.run` keywords are nullable in generated RBS** (`?note: ::String?`): an optional field may be passed `nil` explicitly, and the run succeeds.
+- **A required input field with a default is an optional `.run` keyword** (`?amount: ::Integer`), since `run` succeeds without it. An action whose input is chosen by an `input_for` dispatch (including one inherited under a fixed `input`) gets `.run: (*untyped)`, since the dispatch decides the keywords at run time.
+- **Requires field_struct >= 0.12.** The generator now takes every field type
+  from `FieldStruct::RBS.type_for` instead of its own copy of the mapping, so
+  generated action RBS matches `FieldStruct::RBS.generate`. Consumer-visible
+  changes to generated RBS: writers on `Output` and the per-code output
+  classes are typed `(T? value) -> T?` instead of `(untyped value) ->
+  untyped`; scalar array elements are nullable (`::Array[::String?]`); a
+  `:value` field is `untyped`, never `untyped?`; a bare generic `ruby_type`
+  gets type arguments (`::Hash[untyped, untyped]`); and a field's `rbs_type:`
+  override is honoured. A field typed by an anonymous nested struct class now
+  raises `ArgumentError` (it previously emitted an invalid `::` name).
 - **The committed signatures can only get more typed.** Contributor tooling
   only; the shipped `sig/actionable.rbs` is unchanged. `rake sigs:untyped`
   (part of the default task) fails when sig/ holds more or fewer than the

@@ -850,6 +850,70 @@ Actionable::RBS.generate(CreateInvoice)
 #    result delegation (from the output schema), wrapped in module nesting.
 ```
 
+For an action with `input` and `output` schemas:
+
+```ruby
+class CreateInvoice < Actionable::Action
+  input do
+    required :amount, :integer
+    optional :tags, :array, of: :string
+  end
+  output { required :total, :integer }
+  step :compute
+
+  def compute
+    @total = input.amount * 2
+  end
+end
+```
+
+```
+class CreateInvoice < ::Actionable::Action
+  def self.run: (amount: ::Integer, ?tags: ::Array[::String?]?) -> Result
+              | (InputSchema input) -> Result
+
+  def input: () -> InputSchema
+
+  @total: ::Integer?
+
+  class InputSchema < ::FieldStruct::Base
+    attr_reader amount: ::Integer
+    def amount=: (::Integer? value) -> ::Integer?
+    attr_reader tags: ::Array[::String?]?
+    def tags=: (::Array[::String?]? value) -> ::Array[::String?]?
+  end
+
+  class Output < ::FieldStruct::Base
+    attr_reader total: ::Integer
+    def total=: (::Integer? value) -> ::Integer?
+  end
+
+  class Result < ::Actionable::Result
+    def output: () -> Output
+    def total: () -> ::Integer
+  end
+end
+```
+
+Field types come from `FieldStruct::RBS.type_for`, so they match what
+`FieldStruct::RBS.generate` emits for a named struct: writers take and return
+`T?`, scalar array elements are nullable, a field's `rbs_type:` override wins,
+and a `:value` field is `untyped`. Types describe a valid instance: check
+`valid?` before trusting them on a struct that may not be.
+
+- **`InputSchema`, like `Output` and `Result`, exists only in RBS.** At runtime
+  the input schema is an anonymous class (`CreateInvoice.input`), and a step's
+  `input` is an instance of it. Generation raises `ArgumentError` when the
+  action declares a fixed `input` schema and Ruby already resolves
+  `CreateInvoice::InputSchema` (a constant by that name on the action, an
+  ancestor or an included module), since the RBS name would then describe
+  something else. An `input_for` (discriminated) action gets no `InputSchema`.
+- **Output instance variables** (`@total: ::Integer?`) are declared so steps
+  that assign them type-check; each is nullable because it is unset until a
+  step assigns it. The generated RBS owns these declarations: **don't declare
+  them again in your own sig files**, since RBS rejects an instance variable
+  declared in two places.
+
 An action that declares failures also gets a `failure_code` type alias listing
 every code it can fail with, the declared ones first, then `GEM_FAILURE_CODES`:
 

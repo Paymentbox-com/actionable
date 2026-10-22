@@ -12,7 +12,7 @@ source 'https://rubygems.org'
 gemspec path: '..'
 
 # Same pin as the main Gemfile.
-gem 'field_struct', git: 'https://github.com/Paymentbox-com/field_struct', tag: 'v0.11.0'
+gem 'field_struct', git: 'https://github.com/Paymentbox-com/field_struct', tag: 'v0.12.0'
 
 gem 'rbs', '~> 4.2', require: false
 gem 'steep', '~> 2.1', require: false
