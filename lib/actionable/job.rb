@@ -27,10 +27,46 @@ module Actionable
       # @return [Result] the failed result that triggered the retry
       attr_reader :result
 
-      # @param result [Result]
+      # @param result [Result] a {Failure}, or a {Skipped} retried because its
+      #   metadata says +retry: true+ (see {RetryMetadata#honor_retry_metadata})
       def initialize(result)
         @result = result
-        super("actionable run failed with retryable code #{result.code.inspect}")
+        verb = result.skipped? ? 'skipped' : 'failed'
+        super("actionable run #{verb} with retryable code #{result.code.inspect}")
+      end
+    end
+
+    # The +honor_retry_metadata+ class macro (owner ruling P10). Extended onto
+    # {Actionable::Action} by +actionable/job+, so an action can opt in to having
+    # {Mixin#run_actionable} act on the +retry:+ metadata of its declared codes.
+    # Metadata stays neutral by default (decisions D20/D21).
+    module RetryMetadata
+      # Opt this action in (or, with +enabled: false+, back out) to {Job}
+      # honoring the +retry:+ metadata of its declared failures and skips:
+      # +retry: true+ retries the job, +retry: false+ does not. A code with no
+      # +retry:+ key keeps the default mapping. Inherited; a subclass can turn
+      # it off.
+      #
+      #   class Reindex < Actionable::Action
+      #     honor_retry_metadata
+      #     skips :not_ready, retry: true # the job retries until the index is ready
+      #   end
+      #
+      # @param enabled [Boolean]
+      # @return [void]
+      def honor_retry_metadata(enabled: true)
+        @honor_retry_metadata = enabled
+      end
+
+      # Whether {Job} honors this action's +retry:+ metadata, inherited from
+      # ancestors when not set locally. +false+ unless an ancestor opted in.
+      #
+      # @return [Boolean]
+      def honor_retry_metadata?
+        return @honor_retry_metadata if defined?(@honor_retry_metadata)
+        return superclass.honor_retry_metadata? if superclass.respond_to?(:honor_retry_metadata?)
+
+        false
       end
     end
 
@@ -38,15 +74,38 @@ module Actionable
 
     # Map a result to a queue disposition.
     #
+    # With +honor_retry: true+, a failure or skip whose metadata has a +retry:+
+    # key is decided by it instead: truthy is +:retry+, falsy is +:discard+ for
+    # a failure and +:ack+ for a skip. Results without the key, and successes,
+    # map as usual.
+    #
     # @param result [Result] the action's result
     # @param permanent [Array<Symbol>] failure codes treated as non-retryable
+    # @param honor_retry [Boolean] act on the result's +retry:+ metadata
     # @return [:ack, :retry, :discard] +:ack+ for a success or skip; +:discard+
     #   for a failure whose code is +permanent+; +:retry+ for any other failure
-    def disposition(result, permanent: DEFAULT_PERMANENT_CODES)
+    def disposition(result, permanent: DEFAULT_PERMANENT_CODES, honor_retry: false)
+      return metadata_disposition(result) if honor_retry && retry_declared?(result)
       return :ack if result.ok?
 
       permanent.include?(result.code) ? :discard : :retry
     end
+
+    # @param result [Result]
+    # @return [Boolean] whether the result carries +retry:+ metadata
+    def retry_declared?(result)
+      !result.success? && result.metadata.key?(:retry)
+    end
+    private_class_method :retry_declared?
+
+    # @param result [Failure, Skipped] a result whose metadata has +retry:+
+    # @return [:ack, :retry, :discard]
+    def metadata_disposition(result)
+      return :retry if result.metadata[:retry]
+
+      result.failure? ? :discard : :ack
+    end
+    private_class_method :metadata_disposition
 
     # Mix into a Sidekiq worker or ActiveJob job. Call {#run_actionable} from
     # +perform+; it runs the action, records the result on {#actionable_result},
@@ -65,6 +124,8 @@ module Actionable
       # Run +action_class+ with the given arguments, map the outcome, and either
       # return the result (+:ack+ / +:discard+) or raise {RetryableFailure}
       # (+:retry+). A genuine exception inside the action propagates unchanged.
+      # When the action opted in with +honor_retry_metadata+, its declared
+      # +retry:+ metadata decides (see {Job.disposition}).
       #
       # @param action_class [Class<Actionable::Action>]
       # @param args [Object] positional arguments, forwarded to +.run+
@@ -73,9 +134,12 @@ module Actionable
       # @raise [RetryableFailure] when the failure should be retried
       def run_actionable(action_class, *args, **kwargs)
         @actionable_result = action_class.run(*args, **kwargs)
-        if Actionable::Job.disposition(@actionable_result, permanent: actionable_permanent_codes) == :retry
-          raise RetryableFailure, @actionable_result
-        end
+        disposition = Actionable::Job.disposition(
+          @actionable_result,
+          permanent: actionable_permanent_codes,
+          honor_retry: action_class.respond_to?(:honor_retry_metadata?) && action_class.honor_retry_metadata?
+        )
+        raise RetryableFailure, @actionable_result if disposition == :retry
 
         @actionable_result
       end
@@ -88,3 +152,6 @@ module Actionable
     end
   end
 end
+
+# Wire the adapter into the core: the honor_retry_metadata macro onto Action.
+Actionable::Action.extend(Actionable::Job::RetryMetadata)

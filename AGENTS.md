@@ -82,7 +82,9 @@ result.invoice        # => same, via convenience delegation
 - Validate a side struct and fail with its errors: `fail_with(EventShape.new(payload), code: :invalid_event)`.
 - Render a result for an HTTP response: `result.to_h` / `result.to_api_h(index:)`.
 - Run an action from a background job: `include Actionable::Job::Mixin` and call
-  `run_actionable(...)` in `perform` (requires `actionable/job`).
+  `run_actionable(...)` in `perform` (requires `actionable/job`). Add
+  `honor_retry_metadata` to the action to make declared `retry: true` /
+  `retry: false` metadata decide whether the job retries (off by default).
 - Type your actions for Steep/Solargraph: `Actionable::RBS.generate(CreateInvoice)`.
 - Test a caller without running the action: `stub_actionable_success CreateInvoice, invoice: an_invoice`
   (requires `actionable/rspec`).

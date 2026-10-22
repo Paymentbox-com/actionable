@@ -103,6 +103,106 @@ RSpec.describe Actionable::Job do
     end
   end
 
+  describe '.disposition with honor_retry: true (owner ruling P10)' do
+    def failure(code, **metadata) = Actionable::Failure.new(code: code, metadata: metadata)
+    def skipped(code, **metadata) = Actionable::Skipped.new(code: code, metadata: metadata)
+
+    it 'retries a skip whose metadata says retry: true' do
+      expect(described_class.disposition(skipped(:not_ready, retry: true), honor_retry: true)).to eq(:retry)
+    end
+
+    it 'retries a permanent-code failure whose metadata says retry: true' do
+      expect(described_class.disposition(failure(:not_found, retry: true), honor_retry: true)).to eq(:retry)
+    end
+
+    it 'discards a transient failure whose metadata says retry: false' do
+      expect(described_class.disposition(failure(:timeout, retry: false), honor_retry: true)).to eq(:discard)
+    end
+
+    it 'acks a skip whose metadata says retry: false' do
+      expect(described_class.disposition(skipped(:not_ready, retry: false), honor_retry: true)).to eq(:ack)
+    end
+
+    it 'falls back to the default mapping when the metadata has no retry: key' do
+      expect(described_class.disposition(failure(:timeout, kind: :x), honor_retry: true)).to eq(:retry)
+      expect(described_class.disposition(failure(:not_found), honor_retry: true)).to eq(:discard)
+      expect(described_class.disposition(skipped(:not_ready), honor_retry: true)).to eq(:ack)
+      expect(described_class.disposition(Actionable::Success.new, honor_retry: true)).to eq(:ack)
+    end
+
+    it 'ignores retry: metadata by default (D20/D21 neutrality)' do
+      expect(described_class.disposition(skipped(:not_ready, retry: true))).to eq(:ack)
+      expect(described_class.disposition(failure(:not_found, retry: true))).to eq(:discard)
+      expect(described_class.disposition(failure(:timeout, retry: false))).to eq(:retry)
+    end
+  end
+
+  describe 'the honor_retry_metadata action macro' do
+    let(:job_class) do
+      Class.new do
+        include Actionable::Job::Mixin
+
+        def perform(action_class) = run_actionable(action_class)
+      end
+    end
+
+    let(:not_ready) do
+      Class.new(Actionable::Action) do
+        skips :not_ready, retry: true
+        step :go
+        def go = skip!(:not_ready)
+      end
+    end
+
+    it 'is off by default' do
+      expect(not_ready.honor_retry_metadata?).to be(false)
+    end
+
+    it 'leaves the job neutral when the action does not opt in' do
+      result = job_class.new.perform(not_ready)
+
+      expect(result).to be_skipped
+    end
+
+    it 'makes the job raise RetryableFailure for a skip declared retry: true' do
+      opted_in = Class.new(not_ready) { honor_retry_metadata }
+
+      expect { job_class.new.perform(opted_in) }
+        .to raise_error(Actionable::Job::RetryableFailure, /skipped with retryable code :not_ready/) { |e|
+          expect(e.result).to be_skipped
+        }
+    end
+
+    it 'makes the job discard a failure declared retry: false' do
+      opted_in = Class.new(Actionable::Action) do
+        honor_retry_metadata
+        fails :timeout, retry: false
+        step :go
+        def go = fail!(:timeout)
+      end
+
+      expect(job_class.new.perform(opted_in).code).to eq(:timeout)
+    end
+
+    it 'stays neutral for a duck-typed runner that lacks the macro' do
+      runner = Object.new
+      def runner.run = Actionable::Skipped.new(code: :not_ready, metadata: {retry: true})
+
+      expect(job_class.new.perform(runner)).to be_skipped
+    end
+
+    it 'is inherited, and a subclass can turn it off without touching the parent' do
+      parent = Class.new(not_ready) { honor_retry_metadata }
+      child = Class.new(parent)
+      opted_out = Class.new(parent) { honor_retry_metadata(enabled: false) }
+
+      expect(child.honor_retry_metadata?).to be(true)
+      expect(opted_out.honor_retry_metadata?).to be(false)
+      expect(parent.honor_retry_metadata?).to be(true)
+      expect(job_class.new.perform(opted_out)).to be_skipped
+    end
+  end
+
   describe 'a run whose hook calls fail!' do
     it 'is not acked' do
       klass = Class.new(Actionable::Action) do

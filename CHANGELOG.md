@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`honor_retry_metadata`: let `Actionable::Job` act on declared `retry:`
+  metadata.** An action that calls it (the macro comes with
+  `require 'actionable/job'`) has the `retry:` key of its declared failures and
+  skips decide the job's disposition: `retry: true` retries (a skip or a
+  permanent-code failure included) and `retry: false` does not (a failure is
+  discarded, a skip acks). Codes without the key map as before. Retried skips
+  raise the same `RetryableFailure`, carrying the `Skipped`. Inherited; a
+  subclass backs out with `honor_retry_metadata(enabled: false)`.
+  `Actionable::Job.disposition` takes the matching `honor_retry:` keyword.
+  Off by default, so metadata stays neutral (D20/D21) and existing jobs behave
+  exactly as before.
+
 ### Changed
 
 - **Redeclaring a step or hook now overrides it.** A second `step :x`,

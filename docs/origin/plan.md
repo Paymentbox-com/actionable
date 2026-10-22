@@ -582,6 +582,10 @@ report the declared outcomes no spec reached.
   stubs attach the declared metadata and, with `and_skip`, refuse undeclared
   codes (*amends D12*); `Actionable::RBS` emits a `skip_code` alias (*amends
   D13*).
+- **Opt-in job retry** (owner ruling P10, act 1.7.0). Metadata stays neutral by
+  default. An action that calls `honor_retry_metadata` (from `actionable/job`)
+  lets `Actionable::Job` read the `retry:` key of its declared failures and
+  skips: `true` retries, `false` does not, no key keeps the D19 mapping.
 
 _Deferred: an opt-in for propagating a child skip to its parent, should a host
 need it._
