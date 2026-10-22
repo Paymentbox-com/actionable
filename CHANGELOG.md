@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-10-22
+
+Lifecycle and adapter hardening. `always` hooks now run even after an outcome
+hook halts; redeclaring a step or hook overrides it in place; the Rails adapter
+gains an opt-in `after_commit` hook (ActiveRecord >= 7.2) that runs only after
+the outermost transaction commits; `Job` can opt in to honouring a failure's or
+skip's declared `retry:`; the Rails, Job and RSpec surfaces now ship RBS. Two
+behaviour changes have upgrade notes under Changed. Still requires
+field_struct >= 0.12.
+
 ### Added
 
 - **`benchmarks/` and `rake bench`.** A dependency-free script (monotonic
