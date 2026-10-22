@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **The packaged gem leaves out contributor-only files** (`.claude/`,
+  `CLAUDE.md`, `docs/origin/`, Rakefile/Steepfile/lint config). It still ships
+  `lib/`, `sig/`, the user docs, `AGENTS.md` and the Claude skill.
+
 ### Fixed
 
 - **A failed `transactional` action inside an outer transaction no longer
