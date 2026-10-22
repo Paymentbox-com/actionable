@@ -152,4 +152,82 @@ RSpec.describe 'Actionable lifecycle hooks' do
       expect(result.code).to eq(:invalid_output)
     end
   end
+
+  describe 'bang verbs inside hooks' do
+    it 'adopts a fail! from an on_success hook and stops the remaining hooks' do
+      calls = []
+      klass = Class.new(Actionable::Action) do
+        define_method(:main) { nil }
+        define_method(:verify) { fail!(:verification_failed) }
+        define_method(:later) { calls << :later }
+        step :main
+        on_success :verify
+        on_success :later
+        always :later
+      end
+
+      result = klass.run
+
+      expect(result).to be_failure
+      expect(result.code).to eq(:verification_failed)
+      expect(calls).to be_empty
+    end
+
+    it 'adopts a skip! from an on_success hook' do
+      klass = Class.new(Actionable::Action) do
+        define_method(:main) { nil }
+        define_method(:check) { skip!(:not_ready) }
+        step :main
+        on_success :check
+      end
+
+      result = klass.run
+
+      expect(result).to be_skipped
+      expect(result.code).to eq(:not_ready)
+    end
+
+    it 'adopts a succeed! from an on_failure hook' do
+      klass = Class.new(Actionable::Action) do
+        define_method(:main) { fail(:nope) }
+        define_method(:recover) { succeed!('recovered') }
+        step :main
+        on_failure :recover
+      end
+
+      result = klass.run
+
+      expect(result).to be_success
+      expect(result.message).to eq('recovered')
+    end
+
+    it 'adopts a fail! from an always hook' do
+      klass = Class.new(Actionable::Action) do
+        define_method(:main) { nil }
+        define_method(:audit) { fail!(:audit_failed) }
+        step :main
+        always :audit
+      end
+
+      result = klass.run
+
+      expect(result).to be_failure
+      expect(result.code).to eq(:audit_failed)
+    end
+
+    it 'records the adopted code in the history when measuring' do
+      klass = Class.new(Actionable::Action) do
+        measure :all
+        define_method(:main) { nil }
+        define_method(:verify) { fail!(:verification_failed) }
+        step :main
+        on_success :verify
+      end
+
+      result = klass.run
+
+      expect(result.code).to eq(:verification_failed)
+      expect(result.history.steps.map(&:code)).to include(:verification_failed)
+    end
+  end
 end

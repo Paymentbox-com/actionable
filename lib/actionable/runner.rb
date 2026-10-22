@@ -11,9 +11,10 @@ module Actionable
   # After the main steps the runner picks the lifecycle hook category from the
   # outcome (+on_success+ vs +on_failure+) and runs it, then the +always+ hooks
   # (decision D2). Hooks are ordinary methods: they may record via the
-  # control-flow verbs and +halt!+ stops the remaining hooks. The output is
-  # refreshed (re-captured and re-validated) after the main steps and after each
-  # hook (decision D6).
+  # control-flow verbs, and a halting verb (+fail!+ / +skip!+ / +succeed!+ /
+  # +halt!+) has its result adopted, then stops the remaining hooks. The output
+  # is refreshed (re-captured and re-validated) after the main steps and after
+  # each hook (decision D6).
   #
   # When the action (or an enclosing measuring run) enables measurement, the
   # runner records a {History} of every step — section, name, timing, result
@@ -82,6 +83,8 @@ module Actionable
     end
 
     # Run one hook, then adopt any result it recorded and refresh the output.
+    # A hook that halts is caught here first so its result is adopted too, then
+    # the halt is re-thrown to stop the remaining hooks.
     #
     # @param section [Symbol]
     # @param hook [Steps::Base]
@@ -90,9 +93,14 @@ module Actionable
       return if hook.skip?(@instance)
 
       before = @instance.result
-      record(section, hook) { hook.call(@instance) }
+      completed = false
+      Actionable.catch_halt do
+        record(section, hook) { hook.call(@instance) }
+        completed = true
+      end
       @result = @instance.result unless @instance.result.equal?(before)
       refresh_output
+      throw HALT unless completed
     end
 
     # Run one main step, skipping it when its guard opts out.
@@ -150,7 +158,7 @@ module Actionable
       elsif @instance.class.typed_outcomes?
         @result.output = {} unless gem_failure?
       elsif (schema = @instance.class.output_schema)
-        @result.output = schema.new(**captured_attributes(schema))
+        attach_unvalidated(schema.new(**captured_attributes(schema)))
       end
     end
 
@@ -169,6 +177,20 @@ module Actionable
     # @return [void]
     def attach_validated(output)
       output.valid? ? (@result.output = output) : (@result = invalid_output_failure(output))
+    end
+
+    # Attach a best-effort output to a failure or skip without validating it
+    # (decisions D6/D17). Assigning a struct makes the result validate it, which
+    # would add an +output+ error, so only the errors the result already had
+    # are kept.
+    #
+    # @param output [FieldStruct::Base]
+    # @return [void]
+    def attach_unvalidated(output)
+      kept = Array(@result.errors.to_h[:output]).dup
+      @result.output = output
+      @result.errors.clear(:output)
+      kept.each { |message| @result.errors.add(:output, message) }
     end
 
     # @return [Class<FieldStruct::Base>, nil] the output schema the skip or
@@ -197,8 +219,7 @@ module Actionable
     end
 
     # Declared-field ivars from the action instance, overlaid with the recorded
-    # +succeed+ kwargs (kept on +@result.output+ as a Hash until captured),
-    # kwargs winning on conflict.
+    # +succeed+ / +skip+ kwargs, kwargs winning on conflict.
     #
     # @param schema [Class<FieldStruct::Base>]
     # @return [Hash{Symbol=>Object}]
@@ -208,8 +229,21 @@ module Actionable
         ivar = :"@#{name}"
         attrs[name] = @instance.instance_variable_get(ivar) if @instance.instance_variable_defined?(ivar)
       end
-      overrides = @result.output.is_a?(Hash) ? @result.output : {}
-      attrs.merge(overrides.slice(*schema.attribute_names))
+      attrs.merge(recorded_overrides.slice(*schema.attribute_names))
+    end
+
+    # The +succeed+ / +skip+ kwargs recorded with the current result. They sit
+    # on +@result.output+ as a Hash only until the first refresh replaces it
+    # with the struct, so they are kept here to overlay every later refresh
+    # (after each hook) as well.
+    #
+    # @return [Hash{Symbol=>Object}]
+    def recorded_overrides
+      if @result.output.is_a?(Hash)
+        @overrides_owner = @result
+        @overrides = @result.output
+      end
+      @overrides_owner.equal?(@result) ? @overrides : {}
     end
 
     # @param output [FieldStruct::Base] the invalid output struct
