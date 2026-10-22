@@ -474,11 +474,23 @@ end
 
 Dispatch is by the post-main outcome and does not re-dispatch. Hooks may use the
 control-flow verbs. A bang verb in a hook (`fail!`, `skip!`, `succeed!`) records
-its result *and* stops the remaining hooks, so `fail!(:verification_failed)` in
-`on_success` makes the run a `Failure` (and rolls back a `transactional` action);
-`halt!` stops the remaining hooks and keeps the current result. Output is
-re-captured and re-validated after each hook, and `succeed`/`skip` kwargs keep
-winning over ivars on every refresh.
+its result *and* stops the remaining hooks of its phase, so
+`fail!(:verification_failed)` in `on_success` makes the run a `Failure` (and
+rolls back a `transactional` action); `halt!` stops them and keeps the current
+result. A nested action used as a hook that fails counts as a `fail!`.
+
+The outcome hooks and the `always` hooks are separate phases, so `always` runs
+even after an outcome hook halts, and sees the adopted result:
+
+| A halt in… | Still runs | Final result |
+|---|---|---|
+| an outcome hook (`on_success` / `on_failure` / `on_skip`) | every `always` hook (not the rest of that outcome category) | the halting hook's |
+| an `always` hook | nothing (the rest of the `always` hooks are skipped) | the halting hook's |
+
+`always` hooks run inside the `transactional` transaction like the other hooks,
+and appear in the history when measuring. Output is re-captured and
+re-validated after each hook, and `succeed`/`skip` kwargs keep winning over
+ivars on every refresh.
 
 ## Nested actions
 

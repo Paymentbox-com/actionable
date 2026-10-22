@@ -12,9 +12,12 @@ module Actionable
   # outcome (+on_success+ vs +on_failure+) and runs it, then the +always+ hooks
   # (decision D2). Hooks are ordinary methods: they may record via the
   # control-flow verbs, and a halting verb (+fail!+ / +skip!+ / +succeed!+ /
-  # +halt!+) has its result adopted, then stops the remaining hooks. The output
-  # is refreshed (re-captured and re-validated) after the main steps and after
-  # each hook (decision D6).
+  # +halt!+) has its result adopted, then stops the remaining hooks of its own
+  # phase: a halt in an outcome hook skips the rest of that category but the
+  # +always+ hooks still run (seeing the adopted result), and a halt in an
+  # +always+ hook skips the remaining +always+ hooks. The output is refreshed
+  # (re-captured and re-validated) after the main steps and after each hook
+  # (decision D6).
   #
   # When the action (or an enclosing measuring run) enables measurement, the
   # runner records a {History} of every step — section, name, timing, result
@@ -67,8 +70,9 @@ module Actionable
       @instance.class.steps.each { |step| call_step(:main, step) }
     end
 
-    # Run the outcome-appropriate hooks then the +always+ hooks, all inside a
-    # single halt catch so a hook's +halt!+ stops every remaining hook. The
+    # Run the outcome-appropriate hooks then the +always+ hooks, each phase in
+    # its own halt catch: a hook's halt stops the remaining hooks of its phase
+    # only, so +always+ hooks run even after an outcome hook halts. The
     # category is fixed by the post-main-steps outcome — it does not re-dispatch
     # if a hook later flips the result.
     #
@@ -82,15 +86,13 @@ module Actionable
         else
           [:failure, @instance.class.failure_hooks]
         end
-      Actionable.catch_halt do
-        hooks.each { |hook| run_hook(section, hook) }
-        @instance.class.always_hooks.each { |hook| run_hook(:always, hook) }
-      end
+      Actionable.catch_halt { hooks.each { |hook| run_hook(section, hook) } }
+      Actionable.catch_halt { @instance.class.always_hooks.each { |hook| run_hook(:always, hook) } }
     end
 
     # Run one hook, then adopt any result it recorded and refresh the output.
     # A hook that halts is caught here first so its result is adopted too, then
-    # the halt is re-thrown to stop the remaining hooks.
+    # the halt is re-thrown to stop the remaining hooks of the phase.
     #
     # @param section [Symbol]
     # @param hook [Steps::Base]
