@@ -4,6 +4,20 @@
 
 ### Fixed
 
+- **A nested action no longer wipes parent ivars it never set.** Absorbing a
+  successful or skipped child copied every declared output field, so a field
+  the child left nil (or at its default) overwrote the parent's value. Only
+  fields the child actually set are absorbed now; `expose:` still narrows them.
+- **Private step, hook and `case_step` methods work.** The definition check
+  already accepted them, but the step then raised `NoMethodError`; they are
+  now called like guards are.
+- **`Action.input` without a block reads the schema** instead of replacing it
+  with an empty one, matching `output`.
+- **A step that assigns `@result`** gets a clear `DefinitionError` instead of a
+  `NoMethodError` deep in the runner.
+- **`History#to_json` requires Oj itself** rather than relying on another file
+  having loaded it.
+
 - **A bang verb inside a lifecycle hook now sets the result.** `fail!`,
   `skip!` or `succeed!` in a hook used to be dropped: `fail!` in `on_success`
   returned `Success`, committed a `transactional` action and acked the job.

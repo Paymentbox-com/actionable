@@ -76,7 +76,7 @@ module Actionable
       # @param instance [Actionable::Action]
       # @return [void]
       def call(instance)
-        value = instance.public_send(name)
+        value = instance.__send__(name) # private, like step methods
         step = match(value) || @default_step
         step&.call(instance)
       end

@@ -46,7 +46,9 @@ end
 ```
 
 Guards take a Symbol naming a (possibly private) predicate, or a callable
-`->(instance) { … }`.
+`->(instance) { … }`. Step, hook and `case_step` methods may be private too.
+`@result` is reserved for the run's result: a step that assigns it anything
+else raises `Actionable::DefinitionError`.
 
 ## Control flow
 
@@ -397,7 +399,7 @@ Double.run.code                    # => :invalid_input
 ```
 
 A missing or uncoercible required input yields `Failure(:invalid_input)` without
-running any steps. An already-built input instance can be passed instead of
+running any steps. `input` with no block reads the declared schema, like `output`. An already-built input instance can be passed instead of
 keyword arguments. With no `input` block, `.run`'s arguments go to the
 constructor (the free-form path).
 
@@ -485,7 +487,10 @@ step Notify, input: %i[invoice], expose: %i[receipt]
 ```
 
 `:input` names parent ivars to pass to the child's `.run`; `:expose` limits which
-child outputs are absorbed back as parent ivars (default: all). A child failure
+child outputs are absorbed back as parent ivars (default: all). Only fields the
+child actually set (an ivar it assigned or a `succeed`/`skip` kwarg) are
+absorbed, so a field it left nil or at its default never overwrites the
+parent's value. A child failure
 fails the parent and halts; a child skip continues the parent like a success.
 
 The child's failure crosses intact: its code, message, every error (whatever the

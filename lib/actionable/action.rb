@@ -75,9 +75,14 @@ module Actionable
       #     optional :name,   :string
       #   end
       #
+      # Called without a block it reads the declared schema, as {.output} does.
+      #
       # @yield the FieldStruct field declarations
-      # @return [Class<FieldStruct::Base>] the input schema
+      # @return [Class<FieldStruct::Base>, nil] the input schema, or +nil+ when
+      #   none has been declared
       def input(&block)
+        return @input_schema unless block
+
         @input_schema = Class.new(FieldStruct::Base, &block)
       end
 
@@ -579,6 +584,7 @@ module Actionable
         return result unless OUTCOME_BASES.value?(result.class) || result.class.respond_to?(:outcome_of)
 
         converted = target.new(**result.attributes)
+        converted.output_fields_set = result.output_fields_set
         # Building it re-validates a nested output struct, which adds errors the
         # result already has; the result's own errors are the whole truth.
         converted.errors.to_h.each_key { |field| converted.errors.clear(field) }
