@@ -22,3 +22,4 @@
 .idea
 
 Gemfile.lock
+/gemfiles/*.lock

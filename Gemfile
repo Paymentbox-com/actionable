@@ -23,8 +23,7 @@ gem 'activemodel', '~> 8.0', require: false
 gem 'activerecord', '~> 8.0', require: false
 gem 'sqlite3', '~> 2.0', require: false
 
-# Type signatures + docs (decision D13)
+# Type signatures + docs (decision D13). Steep lives in gemfiles/types.gemfile.
 gem 'rbs', '~> 3.0', require: false
 gem 'sord', '~> 7.0', require: false
-gem 'steep', '~> 1.0', require: false
 gem 'yard', '~> 0.9', require: false

@@ -9,7 +9,7 @@ require 'rubocop/rake_task'
 
 RuboCop::RakeTask.new
 
-task default: %i[spec rubocop]
+task default: %i[spec rubocop sigs:untyped]
 
 # --- Type signatures (sord + rbs) -------------------------------------
 
@@ -24,6 +24,44 @@ SORD_FIXUPS = [
   # Sord emits a bare `include Enumerable`, but RBS's Enumerable is generic and
   # requires its element type. BatchResult enumerates Results (decision D19).
   [/^(\s*)include Enumerable$/, '\1include ::Enumerable[Result]']
+].freeze
+
+# The committed sigs may only get MORE typed. `sigs:untyped` counts the
+# non-comment `untyped` tokens in sig/ and fails when the count is above this
+# ceiling — or below it, so a typing PR lowers the ceiling in the same commit
+# and it can never creep back up. Ratchet down only.
+SIG_UNTYPED_CEILING = 46
+
+# Every place sord falls back to `untyped` because the YARD is missing
+# ([OMIT]) or names a duck type ([DUCK]), keyed without file:line so edits
+# above a method don't churn the list. `sigs:generate` / `sigs:check` fail on
+# a warning not listed here (type it in YARD instead) and on a listed entry
+# sord no longer emits (delete it). Shrink-only, like the ceiling.
+SORD_WARNING_ALLOWLIST = [
+  'DUCK Actionable::Action#fail_with: #errors looks like a duck type',
+  'DUCK Actionable::Action#fail_with!: #errors looks like a duck type',
+  'DUCK Actionable::Failure#absorb_errors_from: #errors looks like a duck type',
+  'DUCK Actionable::Steps::Base#evaluate_guard: #call looks like a duck type',
+  'OMIT Actionable::Action#initialize: no YARD type given for "**_kwargs"',
+  'OMIT Actionable::Action#initialize: no YARD type given for "*_args"',
+  'OMIT Actionable::Action.build_dispatched_input: no YARD type given for "args"',
+  'OMIT Actionable::Action.build_dispatched_input: no YARD type given for "kwargs"',
+  'OMIT Actionable::Action.build_input: no YARD type given for "args"',
+  'OMIT Actionable::Action.build_input: no YARD type given for "kwargs"',
+  'OMIT Actionable::Action.run: no YARD type given for "**kwargs"',
+  'OMIT Actionable::Action.run: no YARD type given for "*args"',
+  'OMIT Actionable::Job::Mixin#run_actionable: no YARD type given for "**kwargs"',
+  'OMIT Actionable::Job::Mixin#run_actionable: no YARD type given for "*args"',
+  'OMIT Actionable::Measurement.store: no YARD return type given',
+  'OMIT Actionable::Measurement.with: no YARD return type given',
+  'OMIT Actionable::Measurement.with: no YARD type given for "changes"',
+  'OMIT Actionable::Result#method_missing: no YARD return type given',
+  'OMIT Actionable::Result#method_missing: no YARD type given for "*args"',
+  'OMIT Actionable::Result#method_missing: no YARD type given for "name"',
+  'OMIT Actionable::Result#respond_to_missing?: no YARD type given for "include_private"',
+  'OMIT Actionable::Result#respond_to_missing?: no YARD type given for "name"',
+  'OMIT Actionable::Runner#measured: no YARD return type given',
+  'OMIT Actionable::Runner#perform: no YARD return type given'
 ].freeze
 
 # --- Docs guard (`docs:check`, decision D19) --------------------------
@@ -52,6 +90,36 @@ DOC_COVERAGE_ALLOWLIST = %w[
   output_fields_set output_fields_set=
 ].freeze
 
+# Non-comment `untyped` tokens across every sig/ file.
+def sig_untyped_count
+  Dir['sig/**/*.rbs'].sum do |path|
+    File.foreach(path).sum { |line| line.lstrip.start_with?('#') ? 0 : line.scan(/\buntyped\b/).size }
+  end
+end
+
+# Sord's [OMIT]/[DUCK] lines as allowlist keys: "KIND Path: message", with
+# the file:line, the ", using/replacing with untyped" tail and ANSI colours
+# dropped.
+def sord_untyped_warnings(output)
+  output.gsub(/\e\[[\d;]*m/, '').each_line.filter_map do |line|
+    next unless (m = line.match(/^\[(OMIT|DUCK)\s*\] \((\S+)\) \S+:\d+: (.*?)(?:, (?:using|replacing with) untyped)?$/))
+
+    "#{m[1]} #{m[2]}: #{m[3]}"
+  end
+end
+
+def check_sord_warnings!(output)
+  found = sord_untyped_warnings(output)
+  unlisted = found - SORD_WARNING_ALLOWLIST
+  stale = SORD_WARNING_ALLOWLIST - found
+  return if unlisted.empty? && stale.empty?
+
+  msg = +'::: sord untyped-fallback allowlist (SORD_WARNING_ALLOWLIST in the Rakefile) is out of date.'
+  msg << "\nNew [OMIT]/[DUCK] — give these a YARD type:\n  #{unlisted.join("\n  ")}" unless unlisted.empty?
+  msg << "\nStale — sord no longer emits these; delete them:\n  #{stale.join("\n  ")}" unless stale.empty?
+  abort msg
+end
+
 def sord_run(target)
   # Temporarily hide the committed sig file — YARD picks up sig/*.rbs as
   # input, and the prior file's entries confuse Sord's parameter-matching
@@ -60,8 +128,17 @@ def sord_run(target)
   stash = "#{SIG_FILE}.stashed-by-sord-rake"
   stashed = File.exist?(SIG_FILE) && File.rename(SIG_FILE, stash) && true
   ok = false
-  sh "bundle exec sord #{target} --rbs --no-sord-comments --skip-constants --replace-errors-with-untyped"
+  require 'open3'
+  cmd = "bundle exec sord #{target} --rbs --no-sord-comments --skip-constants"
+  puts cmd
+  output, status = Open3.capture2e(cmd)
+  puts output
+  abort "::: sord failed (#{status})" unless status.success?
   contents = File.read(target)
+  # Without --replace-errors-with-untyped, a YARD type sord cannot parse
+  # lands as a SORD_ERROR_ constant; fail rather than commit it.
+  abort "::: sord emitted SORD_ERROR_ types in #{target}; fix the YARD types it warned about." if contents.include?('SORD_ERROR')
+  check_sord_warnings!(output)
   SORD_FIXUPS.each { |pattern, replacement| contents.gsub!(pattern, replacement) }
   File.write(target, contents)
   ok = true
@@ -98,7 +175,7 @@ namespace :sigs do
     end
   end
 
-  desc 'Validate sig/actionable.rbs against the RBS grammar'
+  desc 'Validate every sig/ file against the RBS grammar and the stdlib/collection types'
   task :validate do
     # The rbs collection (stdlib date/time/bigdecimal sigs) must be present
     # for the fully-qualified ::Date / ::Time / ::DateTime / ::BigDecimal
@@ -106,7 +183,20 @@ namespace :sigs do
     # fresh checkout's `rake release:check` is self-contained; the lock and
     # installed sigs float with the (uncommitted) Gemfile.lock.
     sh 'bundle exec rbs collection install' unless File.exist?('rbs_collection.lock.yaml')
-    sh "bundle exec rbs -I #{SIG_FILE} validate"
+    sh 'bundle exec rbs -I sig validate'
+  end
+
+  desc 'Fail unless the non-comment `untyped` count in sig/ equals SIG_UNTYPED_CEILING (ratchet down only)'
+  task :untyped do
+    count = sig_untyped_count
+    if count > SIG_UNTYPED_CEILING
+      abort "::: sig/ has #{count} untyped (ceiling #{SIG_UNTYPED_CEILING}). Type the new ones in YARD; " \
+            'the ceiling only goes down.'
+    elsif count < SIG_UNTYPED_CEILING
+      abort "::: sig/ has #{count} untyped, below the ceiling of #{SIG_UNTYPED_CEILING}. " \
+            "Lower SIG_UNTYPED_CEILING in the Rakefile to #{count} so it can't creep back up."
+    end
+    puts "sigs:untyped: #{count} untyped in sig/ (ceiling #{SIG_UNTYPED_CEILING})."
   end
 end
 
@@ -168,5 +258,5 @@ end
 
 namespace :release do
   desc 'Run the full pre-release battery: specs, rubocop, sig check, docs build'
-  task check: %w[spec rubocop sigs:check sigs:validate docs:generate]
+  task check: %w[spec rubocop sigs:untyped sigs:check sigs:validate docs:generate]
 end

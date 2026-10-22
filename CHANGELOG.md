@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **The committed signatures can only get more typed.** Contributor tooling
+  only; the shipped `sig/actionable.rbs` is unchanged. `rake sigs:untyped`
+  (part of the default task) fails when sig/ holds more or fewer than the
+  committed ceiling of 46 non-comment `untyped`, so a typing change lowers
+  the ceiling with it. `sigs:generate` / `sigs:check` fail on a sord
+  `[OMIT]`/`[DUCK]` fallback that isn't in the committed allowlist (24
+  today) and on allowlist entries sord no longer emits. sord runs without
+  `--replace-errors-with-untyped` (the output is identical) and fails on any
+  `SORD_ERROR_` type. `sigs:validate` validates the whole sig/ directory.
+- **Optional, report-only Steep 2.x** via `gemfiles/types.gemfile` and a
+  `types` CI job on Ruby 3.4 that never fails the build. The Steepfile now
+  checks the core only (the RSpec and Rails adapters are ignored); Steep is
+  no longer in the main Gemfile.
+
 ## [1.5.2] - 2026-10-22
 
 Runner and nested-action fixes: hooks that halt, kwargs that survive hooks,
