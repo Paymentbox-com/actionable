@@ -104,6 +104,6 @@ These hold across the codebase. Don't break them without surfacing the change.
 
 ## When in doubt
 
-- Re-read `docs/origin/plan.md` (the locked decisions D1–D18 are authoritative).
+- Re-read `docs/origin/plan.md` (the locked decisions D1–D23 are authoritative).
 - Re-read `docs/origin/first_discussion.md` for the original intent.
 - If the answer isn't in either, ask Adrian before guessing.

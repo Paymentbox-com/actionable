@@ -545,6 +545,8 @@ records a fraction of runs (rate between 0 and 1) for low-overhead production
 observability — when a run is sampled in, it measures fully and cascades into its
 nested actions. A measuring run cascades into the nested actions it invokes.
 `History#took` sums step durations; `History#to_json` serializes via Oj.
+Measurement state is fiber-local: a nested action run inside another Fiber
+(including `Enumerator#next`) is not recorded in the parent's history.
 
 <!-- doctest -->
 ```ruby
@@ -673,7 +675,9 @@ cryptic `NoMethodError`:
 
 - `transactional model: :invoice` (or a class) wraps the run in
   `model.transaction`. A success commits; a recorded failure or a raised
-  exception rolls back; a skip commits.
+  exception rolls back; a skip commits. Lifecycle hooks run inside the
+  transaction, so a hook's writes share its fate and its external side effects
+  fire before the commit.
 - `Actionable::ProxyValidator` runs ActiveModel rules against a delegate object;
   `#formatted_errors` returns a hash ready to splat into `fail`.
 
