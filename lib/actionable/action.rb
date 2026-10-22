@@ -29,6 +29,8 @@ module Actionable
       # The ordered, deduplicated set of steps declared on this action.
       # A +Set+ keyed by step identity ([type, name]) so a redeclared step
       # collapses to one entry; insertion order is preserved (decision D2).
+      # The last declaration of a step wins and keeps the first one's position
+      # (see {.step}).
       #
       # @return [Set<Steps::Base>]
       def steps
@@ -289,11 +291,16 @@ module Actionable
       # Declare a step. The step type is inferred from +target+ (a Symbol or
       # String names an instance method — a {Steps::Method}).
       #
+      # Redeclaring a step of the same type and name (here or in a subclass)
+      # replaces the earlier declaration's options in place: the last
+      # declaration wins and keeps the original position. A subclass's
+      # override never changes the parent's steps.
+      #
       # @param target [Symbol, String] the step target
       # @param options [Object] step options (e.g. +:if+, +:unless+)
       # @return [Set<Steps::Base>] the updated step set
       def step(target, **options)
-        steps << Steps.build(target, **options)
+        declare(steps, Steps.build(target, **options))
       end
 
       # Lifecycle hooks that run after the main steps when the run succeeds.
@@ -325,7 +332,7 @@ module Actionable
       # @param options [Object] step options (e.g. +:if+)
       # @return [Set<Steps::Base>]
       def on_success(target, **options)
-        success_hooks << Steps.build(target, **options)
+        declare(success_hooks, Steps.build(target, **options))
       end
 
       # Declare a hook that runs at the end of a run iff it failed (D2).
@@ -333,7 +340,7 @@ module Actionable
       # @param options [Object] step options (e.g. +:if+)
       # @return [Set<Steps::Base>]
       def on_failure(target, **options)
-        failure_hooks << Steps.build(target, **options)
+        declare(failure_hooks, Steps.build(target, **options))
       end
 
       # Declare a hook that runs at the end of a run iff it was skipped (D17).
@@ -341,7 +348,7 @@ module Actionable
       # @param options [Object] step options (e.g. +:if+)
       # @return [Set<Steps::Base>]
       def on_skip(target, **options)
-        skip_hooks << Steps.build(target, **options)
+        declare(skip_hooks, Steps.build(target, **options))
       end
 
       # Declare a hook that runs at the end of a run regardless of outcome (D2).
@@ -349,7 +356,7 @@ module Actionable
       # @param options [Object] step options (e.g. +:if+)
       # @return [Set<Steps::Base>]
       def always(target, **options)
-        always_hooks << Steps.build(target, **options)
+        declare(always_hooks, Steps.build(target, **options))
       end
 
       # Declare a branching step (decision D3). The switch value is read from
@@ -366,7 +373,7 @@ module Actionable
       # @yield the branch declarations
       # @return [Set<Steps::Base>] the updated step set
       def case_step(value_source, **options, &block)
-        steps << Steps::Case.define(value_source, **options, &block)
+        declare(steps, Steps::Case.define(value_source, **options, &block))
       end
 
       # Enable or read the action's measurement mode (decisions D10/D19). +:all+
@@ -785,6 +792,20 @@ module Actionable
           message: 'input failed validation',
           metadata: declared_failures.fetch(:invalid_input, {})
         ).absorb_errors_from(input)
+      end
+
+      # Add +step+ to +list+, or — when an equal step (same type and name) is
+      # already declared — swap it in at that step's position, so the last
+      # declaration wins (owner ruling P8; invariant 5). +list+ is this class's
+      # own copy (see {.inherited}), so a parent's list is never touched.
+      #
+      # @param list [Set<Steps::Base>]
+      # @param step [Steps::Base]
+      # @return [Set<Steps::Base>] +list+
+      def declare(list, step)
+        return list << step unless list.include?(step)
+
+        list.replace(list.map { |existing| existing.eql?(step) ? step : existing })
       end
 
       public
