@@ -4,6 +4,27 @@
 
 ### Added
 
+- **`benchmarks/` and `rake bench`.** A dependency-free script (monotonic
+  clock, no `benchmark` / benchmark-ips) times a trivial run, a 5-step run with
+  `measure :none` and `:all`, 5-field input coercion, a nested action with and
+  without measurement, and `history.to_json`. `BENCH_ITERATIONS` sets the loop
+  count. Not in the default task and not packaged in the gem; a smoke spec
+  runs it with 5 iterations so it can't rot. README has a "Performance"
+  section with indicative numbers.
+
+### Documentation
+
+- **`fail` is not `raise` inside an action.** USAGE (Control flow), README,
+  getting_started, AGENTS.md and the skill now warn that the gem's `fail` verb
+  replaces `Kernel#fail` in an action's instance methods: `fail 'boom'`
+  records a `Failure` with code `:"boom"` and the run continues, and
+  `fail SomeError, 'msg'` raises `NoMethodError`. Use `raise` for exceptions
+  and `fail!(:code)` to stop with a failure. Behaviour is unchanged.
+- README, getting_started, AGENTS.md and the skill now mention the 1.7.0
+  topics where they list their neighbours: step/hook redeclaration (last
+  wins), `always` hooks running after a hook halt, `after_commit`, and
+  `honor_retry_metadata`, each linking to USAGE.
+
 - **RBS for the adapters' public surface (owner ruling P11).** `sig/` now
   declares what clients call from the adapters: `transactional` /
   `transaction_config` and `after_commit` / `after_commit_hooks` on

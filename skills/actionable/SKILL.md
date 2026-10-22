@@ -84,6 +84,17 @@ When asked to build one:
   `:skipped` included (nothing is exempt).
 - Plain verbs don't halt; last write wins. Bang verbs halt.
 - To signal a real bug, `raise` — exceptions propagate, they aren't caught.
+  **Never `fail 'message'` for that:** inside an action `fail` is the gem's
+  verb, not `Kernel#fail`, so it records a `Failure` with code `:"message"`
+  and the run keeps going (a later `succeed` erases it).
+
+```ruby
+def charge
+  fail 'gateway down'          # WRONG: no exception; records code :"gateway down", continues
+  raise GatewayError, 'down'   # a bug / unexpected condition: propagates
+  fail!(:gateway_down, 'down') # an expected failure outcome: records and halts
+end
+```
 
 ## Composition
 
@@ -98,6 +109,12 @@ When asked to build one:
   adapter, `after_commit :method` (ActiveRecord >= 7.2) runs only after the
   outermost transaction commits a successful run — the place for emails,
   webhooks and enqueues. It can't change the result and isn't in the history.
+  A bang verb in an outcome hook stops the rest of that category, but `always`
+  hooks still run and see the adopted result — keep cleanup/audit in `always`.
+- **Override by redeclaring:** a second `step :x` / `case_step :x` / `step
+  Child` / hook with the same name (same class or a subclass) replaces the
+  earlier one's options and keeps its position — last declaration wins. There
+  is no removal; guard an inherited step off with `if:` / `unless:`.
 - **Discriminated input:** `input_for(:event_type) { on 'sale', SaleShape;
   default UnknownShape }` picks the input schema at run time from a discriminator
   (typed polymorphic input). An unmatched value with no `default` →
@@ -116,6 +133,9 @@ When asked to build one:
 - **A successful run must satisfy its declared output**, or it becomes
   `Failure(:invalid_output)`. Failures/skips capture output best-effort and are
   not validated — so don't rely on output fields being present after a skip.
+- **`fail` shadows `Kernel#fail`** in every instance method of an action (see
+  the verb section). Use `raise` for exceptions, `fail!(:code)` to stop with a
+  failure.
 - **Don't `require 'actionable/rails'` in the core path.** Transactions and
   `ProxyValidator` are opt-in; the core never loads `active_*`.
 

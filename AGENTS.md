@@ -42,6 +42,9 @@ result.invoice        # => same, via convenience delegation
 1. **`fail`/`succeed` vs `fail!`/`succeed!`.** The plain versions *record* an outcome
    and keep running; the bang versions *also stop* the pipeline (`halt!` stops without
    recording). Last write wins; with no call, the action auto-succeeds.
+   **`fail` is not `raise` here:** inside an action it is the gem's verb, so
+   `fail 'boom'` records a `Failure` with code `:"boom"` and keeps running. Use
+   `raise` for a bug, `fail!(:code, 'msg')` to stop with a failure.
 2. **Output is declared, not magic.** Only fields in `output do … end` appear on the
    result. Setting an undeclared `@foo` does nothing for the caller — declare it.
 3. **Genuine exceptions propagate.** A `raise` inside a step is *not* turned into a
@@ -70,6 +73,14 @@ result.invoice        # => same, via convenience delegation
    raises `DefinitionError`. Nothing is exempt, so a bare `skip!` (code
    `:skipped`) on a declaring action needs `skips :skipped`. A child's skip
    continues the parent, so a parent never declares its children's skip codes.
+9. **Redeclaring overrides, last wins.** A second `step :x` (or `case_step`,
+   nested `step Child`, or hook) with the same name, in the class or a
+   subclass, replaces the earlier options and keeps the earlier position. You
+   can't remove an inherited step; guard it with `if:` / `unless:`.
+10. **`always` hooks run even after a hook halts.** A `fail!` in `on_success`
+    stops the rest of the outcome hooks and becomes the result, but the
+    `always` hooks still run and see it. Put cleanup and audit in `always`;
+    check `result` there if the outcome matters.
 
 ## Fast paths
 
