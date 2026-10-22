@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **`always` hooks now run even after an outcome hook halts.** A bang verb
+  (`fail!` / `skip!` / `succeed!`), `halt!`, or a failing nested action inside
+  an `on_success` / `on_failure` / `on_skip` hook still has its result adopted
+  and still stops the remaining hooks of that category, but it no longer skips
+  the `always` hooks: they run next and see the adopted result. Before, one
+  halt stopped every remaining hook, so cleanup and audit hooks could be
+  silently skipped. A halt inside an `always` hook is adopted the same way and
+  stops only the remaining `always` hooks. Under `transactional`, `always`
+  hooks still run inside the transaction and the adopted result still decides
+  commit or rollback, so an `always` hook's writes roll back with a failed run.
+  When measuring, those `always` hooks appear in the history as usual.
+  **Upgrade note:** an `always` hook that assumed it would not run after a hook
+  failure must now check `result` itself.
+
 ## [1.6.0] - 2026-10-22
 
 Valid, guarded RBS. The gem's own signatures can only get more typed (CI

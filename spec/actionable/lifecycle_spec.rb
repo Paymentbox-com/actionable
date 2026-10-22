@@ -96,7 +96,7 @@ RSpec.describe 'Actionable lifecycle hooks' do
       expect(calls).to eq(%i[recover]) # category fixed by the post-main outcome
     end
 
-    it 'stops the remaining hooks (including always) when a hook calls halt!' do
+    it 'stops the remaining outcome hooks but still runs always when a hook calls halt!' do
       calls = []
       klass = Class.new(Actionable::Action) do
         define_method(:main) { nil }
@@ -114,7 +114,7 @@ RSpec.describe 'Actionable lifecycle hooks' do
 
       klass.run
 
-      expect(calls).to eq(%i[a])
+      expect(calls).to eq(%i[a log])
     end
   end
 
@@ -154,23 +154,64 @@ RSpec.describe 'Actionable lifecycle hooks' do
   end
 
   describe 'bang verbs inside hooks' do
-    it 'adopts a fail! from an on_success hook and stops the remaining hooks' do
+    it 'adopts a fail! from an on_success hook, stops the remaining outcome hooks, then runs always' do
       calls = []
       klass = Class.new(Actionable::Action) do
         define_method(:main) { nil }
         define_method(:verify) { fail!(:verification_failed) }
         define_method(:later) { calls << :later }
+        define_method(:audit) { calls << [:audit, result.code] }
         step :main
         on_success :verify
         on_success :later
-        always :later
+        always :audit
       end
 
       result = klass.run
 
       expect(result).to be_failure
       expect(result.code).to eq(:verification_failed)
-      expect(calls).to be_empty
+      expect(calls).to eq([%i[audit verification_failed]]) # always sees the adopted result
+    end
+
+    it 'runs always after a skip! in an on_failure hook, keeping the adopted skip' do
+      calls = []
+      klass = Class.new(Actionable::Action) do
+        define_method(:main) { fail(:nope) }
+        define_method(:giveup) { skip!(:moot) }
+        define_method(:audit) { calls << :audit }
+        step :main
+        on_failure :giveup
+        always :audit
+      end
+
+      result = klass.run
+
+      expect(result).to be_skipped
+      expect(result.code).to eq(:moot)
+      expect(calls).to eq(%i[audit])
+    end
+
+    it 'adopts a halt inside an always hook and stops only the remaining always hooks' do
+      calls = []
+      klass = Class.new(Actionable::Action) do
+        define_method(:main) { nil }
+        define_method(:notify) { calls << :notify }
+        define_method(:audit) do
+          calls << :audit
+          fail!(:audit_failed)
+        end
+        define_method(:later) { calls << :later }
+        step :main
+        on_success :notify
+        always :audit
+        always :later
+      end
+
+      result = klass.run
+
+      expect(result.code).to eq(:audit_failed)
+      expect(calls).to eq(%i[notify audit])
     end
 
     it 'adopts a skip! from an on_success hook' do
@@ -215,7 +256,7 @@ RSpec.describe 'Actionable lifecycle hooks' do
       expect(result.code).to eq(:audit_failed)
     end
 
-    it 'fails the run and stops the remaining hooks when a nested-action hook fails' do
+    it 'fails the run, stops the remaining outcome hooks, and still runs always when a nested-action hook fails' do
       calls = []
       child = Class.new(Actionable::Action) do
         define_method(:go) { fail!(:child_bad) }
@@ -226,14 +267,16 @@ RSpec.describe 'Actionable lifecycle hooks' do
         define_method(:main) { nil }
         define_method(:log) { calls << :log }
         step :main
+        define_method(:later) { calls << :later }
         on_success FailingChild
+        on_success :later
         always :log
       end
 
       result = klass.run
 
       expect(result.code).to eq(:child_bad)
-      expect(calls).to be_empty
+      expect(calls).to eq(%i[log])
     end
 
     it 'records the adopted code in the history when measuring' do
@@ -249,6 +292,23 @@ RSpec.describe 'Actionable lifecycle hooks' do
 
       expect(result.code).to eq(:verification_failed)
       expect(result.history.steps.map(&:code)).to include(:verification_failed)
+    end
+
+    it 'records an always hook that runs after a halt in the history' do
+      klass = Class.new(Actionable::Action) do
+        measure :all
+        define_method(:main) { nil }
+        define_method(:verify) { fail!(:verification_failed) }
+        define_method(:audit) { nil }
+        step :main
+        on_success :verify
+        always :audit
+      end
+
+      steps = klass.run.history.steps
+
+      expect(steps.map { |s| [s.section, s.name, s.code] })
+        .to eq([[:main, :main, nil], [:success, :verify, :verification_failed], [:always, :audit, nil]])
     end
   end
 end

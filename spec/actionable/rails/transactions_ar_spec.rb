@@ -64,6 +64,42 @@ RSpec.describe 'Actionable::Rails transactional macro on ActiveRecord' do
     expect(names).to eq(%w[outer child])
   end
 
+  it 'rolls back, always-hook writes included, when an on_success hook fails! and always runs after' do
+    klass = Class.new(Actionable::Action) do
+      transactional model: ArWidget
+      define_method(:write) { ArWidget.create!(name: 'main') }
+      define_method(:verify) { fail!(:verification_failed) }
+      define_method(:audit) { ArWidget.create!(name: 'audit') }
+      step :write
+      on_success :verify
+      always :audit
+    end
+
+    result = klass.run
+
+    expect(result.code).to eq(:verification_failed)
+    expect(names).to eq([])
+  end
+
+  it 'commits, always-hook writes included, when an on_failure hook succeed!s and always runs after' do
+    klass = Class.new(Actionable::Action) do
+      transactional model: ArWidget
+      define_method(:write) { ArWidget.create!(name: 'main') }
+      define_method(:boom) { fail(:nope) }
+      define_method(:recover) { succeed!('recovered') }
+      define_method(:audit) { ArWidget.create!(name: 'audit') }
+      step :write
+      step :boom
+      on_failure :recover
+      always :audit
+    end
+
+    result = klass.run
+
+    expect(result).to be_success
+    expect(names).to eq(%w[main audit])
+  end
+
   it 'joins the outer transaction when requires_new: false is explicit' do
     ArWidget.transaction do
       ArWidget.create!(name: 'outer')

@@ -314,7 +314,8 @@ batch.map { |r| r.output.doubled }      # => [2, 4, 6]
 
 `on_success`, `on_failure`, `on_skip`, and `always` run after the main steps,
 dispatched by the outcome (then `always`, regardless). Hooks are ordinary methods
-and may use the control-flow verbs. `measure :all` records a `History` of every
+and may use the control-flow verbs; a `fail!` in an outcome hook stops the rest
+of that category, but `always` hooks still run. `measure :all` records a `History` of every
 step (the default `measure :none` records nothing for zero overhead):
 
 <!-- doctest -->
