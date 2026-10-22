@@ -112,6 +112,42 @@ LastWins.run.success? # => true
 its `output`. A raised `StandardError` is never caught — it propagates to the
 caller (assert on it with the RSpec matcher's `and_raise`).
 
+**`fail` is not `raise` inside an action.** `Actionable::Action#fail` replaces
+Ruby's `Kernel#fail` (the alias of `raise`) in steps, hooks and any instance
+method of the action. A habitual `fail 'something broke'` therefore raises
+nothing: it records a `Failure` whose *code* is the message, as a Symbol, and
+the run keeps going, so a later `succeed` (or the auto-success) can erase it.
+`fail SomeError, 'msg'` raises a confusing `NoMethodError` (`to_sym` for the
+class), not `SomeError`. To signal a bug, use `raise`; to stop with a failure,
+use `fail!(:code, 'message')`:
+
+<!-- doctest -->
+```ruby
+class Habit < Actionable::Action
+  step :check
+  step :finish
+  def check = fail('card expired') # meant: raise. Records a failure and continues
+  def finish = succeed
+end
+
+# The "error" was overwritten by the later succeed:
+Habit.run.success? # => true
+
+class Fixed < Actionable::Action
+  step :check
+  step :finish
+  def check = fail!(:card_expired, 'card expired') # records and halts
+  def finish = succeed
+end
+
+Fixed.run.code # => :card_expired
+```
+
+An action that declares its failure codes (`fails`, below) catches the
+string-code case: `fail 'card expired'` raises `DefinitionError` for the
+undeclared code. Code outside the action (a plain helper object, a model) still
+gets `Kernel#fail`.
+
 `fail_with` absorbs an arbitrary FieldStruct's validation errors into the failure
 — the same machinery `:invalid_input` / `:invalid_output` use internally, exposed
 as a verb for validating a side struct:

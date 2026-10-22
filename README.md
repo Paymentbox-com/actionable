@@ -70,6 +70,10 @@ exceptions are never swallowed — they propagate to the caller.
 — handy for validating a side struct in a step. `skip` takes output kwargs too,
 so an idempotent hit can return the existing record's data.
 
+Inside an action, `fail` is this verb, not Ruby's `Kernel#fail`: `fail 'boom'`
+records a failure with code `:"boom"` and keeps running instead of raising. Use
+`raise` for exceptions (see [USAGE](USAGE.md#control-flow)).
+
 <!-- doctest -->
 ```ruby
 class Charge < Actionable::Action
@@ -304,7 +308,11 @@ Triage.run(status: 200).output.level # => :ok
 
 `on_success`, `on_failure`, `on_skip`, and `always` run after the main steps,
 dispatched by the outcome (then `always`, regardless). Hooks are ordinary
-methods and may use the control-flow verbs.
+methods and may use the control-flow verbs. A bang verb in an outcome hook
+stops the rest of that category and becomes the result, but the `always` hooks
+still run, so cleanup and audit can't be skipped. Redeclaring a step or hook
+(in the same class or a subclass) overrides it in place: the last declaration
+wins. See [USAGE](USAGE.md#lifecycle-hooks) and [Steps](USAGE.md#steps).
 
 ```ruby
 class Publish < Actionable::Action
@@ -489,12 +497,35 @@ Either way it triggers when you ask Claude to define, edit, or debug an
 `Actionable::Action`. The skill points at [`USAGE.md`](USAGE.md) (also shipped)
 for the exhaustive reference.
 
+## Performance
+
+Indicative numbers from `bundle exec rake bench` (dependency-free script in
+`benchmarks/`, 20,000 iterations after a warm-up; Ruby 4.0.7, YJIT off, Apple
+M4, actionable 1.6.0 + the unreleased 1.7.0 changes). Use them to compare
+changes on one machine, not as a promise for yours.
+
+| Scenario | µs per run |
+|---|---|
+| Trivial action (one empty step) | 5.6 |
+| 5-step action, `measure :none` (default) | 7.4 |
+| 5-step action, `measure :all` | 11.5 |
+| Input coercion, 5-field schema from strings | 20.4 |
+| Nested action (parent + child, typed outputs) | 23.4 |
+| Nested action, `measure :all` | 26.8 |
+| `history.to_json` of a 5-step history | 3.6 to 4.4 |
+
+The fixed cost of a run dominates; each extra step is a fraction of a
+microsecond. Measuring adds about 4 µs to a 5-step run, so `measure :sampled`
+keeps it off most production runs. Input coercion and typed output validation
+cost more than the steps themselves.
+
 ## Development
 
 ```bash
 bin/rspec                       # run the specs
 bundle exec rake                # specs + rubocop
 bundle exec rake release:check  # full pre-flight (specs, rubocop, sigs, docs)
+bundle exec rake bench          # indicative micro-benchmarks (not in the default task)
 ```
 
 See [`USAGE.md`](USAGE.md) for the dense, example-first reference.

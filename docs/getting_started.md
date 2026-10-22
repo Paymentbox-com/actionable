@@ -28,11 +28,14 @@ options, and macros see [`USAGE.md`](../USAGE.md); for the feature tour see
 | Branch on a value | `case_step :status do … end` |
 | Compose actions | `step Other, input: %i[sku], expose: %i[line]` |
 | Run code after the outcome | `on_success` / `on_failure` / `on_skip` / `always` |
+| Override an inherited step or hook | redeclare it: `step :charge, if: :live?` (last wins, same position) |
 | Record timings & history | `measure :all` (or `:sampled, rate:`), then `result.history` |
 | Inspect an action | `Settle.describe` / `Settle.describe_text` |
 | Read errors as sentences | `result.errors.full_messages` |
 | Test an action | `expect(Settle).to perform_actionable(…).and_succeed` |
 | Wrap a run in a DB transaction | `transactional model: :invoice` (Rails adapter) |
+| Send email/webhooks only after commit | `after_commit :send_receipt` (Rails adapter, AR >= 7.2) |
+| Run it from a background job | `include Actionable::Job::Mixin`; add `honor_retry_metadata` to honour `retry:` |
 | Generate RBS for an action | `Actionable::RBS.generate(Settle)` |
 
 ## Install
@@ -417,6 +420,13 @@ failed.errors.full_messages # => ["First name is required"]
 6. **Exceptions aren't failures.** A raised `StandardError` propagates to the
    caller; it does not become a `Failure`. Use `fail`/`fail!` for expected error
    outcomes.
+7. **`fail` is not `raise` inside an action.** The gem's `fail` verb replaces
+   `Kernel#fail` there, so `fail 'boom'` records a `Failure` with code
+   `:"boom"` and the run continues. Use `raise` to signal a bug; see
+   [USAGE, Control flow](../USAGE.md#control-flow).
+8. **Redeclaring a step overrides it.** A second `step :x` (in the class or a
+   subclass) replaces the first's options and keeps its position, so the last
+   declaration wins. See [USAGE, Steps](../USAGE.md#steps).
 
 ### Testing your actions
 
