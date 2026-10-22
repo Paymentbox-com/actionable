@@ -854,6 +854,43 @@ class ProjectEventJob
 end
 ```
 
+**Retry from declared metadata (opt-in).** Declared metadata is neutral by
+default (D20/D21): `skips :not_ready, retry: true` alone still acks. An action
+that calls `honor_retry_metadata` (added to `Actionable::Action` by
+`require 'actionable/job'`, so load the adapter before the action) lets the
+`retry:` key of its declared codes decide the disposition:
+
+| Result | `retry: true` | `retry: false` | no `retry:` key |
+|---|---|---|---|
+| `Failure` | `:retry` (even a permanent code) | `:discard` (even a transient code) | default mapping |
+| `Skipped` | `:retry` | `:ack` | `:ack` |
+
+`run_actionable` raises `RetryableFailure` for every `:retry`, a retried skip
+included (`e.result` is the `Skipped`), so the same queue configuration covers
+both: Sidekiq retries any raised job by default; under ActiveJob declare
+`retry_on Actionable::Job::RetryableFailure` (otherwise the error goes to the
+queue backend's own handling, as for any transient failure). The macro is inherited, and a
+subclass backs out with `honor_retry_metadata(enabled: false)`;
+`honor_retry_metadata?` reads it. Without a job, ask
+`Actionable::Job.disposition(result, honor_retry: true)`.
+
+<!-- doctest -->
+```ruby
+require 'actionable/job'
+
+class Reindex < Actionable::Action
+  honor_retry_metadata
+  skips :not_ready, retry: true
+
+  step :reindex
+  def reindex = skip!(:not_ready)
+end
+
+Reindex.honor_retry_metadata?                                   # => true
+Actionable::Job.disposition(Reindex.run, honor_retry: true)     # => :retry
+Actionable::Job.disposition(Reindex.run)                        # => :ack
+```
+
 ## RBS for your actions
 
 ```ruby

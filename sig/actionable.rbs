@@ -41,33 +41,87 @@ module Actionable
 
     # Map a result to a queue disposition.
     # 
+    # With +honor_retry: true+, a failure or skip whose metadata has a +retry:+
+    # key is decided by it instead: truthy is +:retry+, falsy is +:discard+ for
+    # a failure and +:ack+ for a skip. Results without the key, and successes,
+    # map as usual.
+    # 
     # _@param_ `result` — the action's result
     # 
     # _@param_ `permanent` — failure codes treated as non-retryable
     # 
+    # _@param_ `honor_retry` — act on the result's +retry:+ metadata
+    # 
     # _@return_ — +:ack+ for a success or skip; +:discard+
     # for a failure whose code is +permanent+; +:retry+ for any other failure
-    def disposition: (Result result, ?permanent: ::Array[Symbol]) -> Symbol
+    def disposition: (Result result, ?permanent: ::Array[Symbol], ?honor_retry: bool) -> Symbol
 
     # Map a result to a queue disposition.
     # 
+    # With +honor_retry: true+, a failure or skip whose metadata has a +retry:+
+    # key is decided by it instead: truthy is +:retry+, falsy is +:discard+ for
+    # a failure and +:ack+ for a skip. Results without the key, and successes,
+    # map as usual.
+    # 
     # _@param_ `result` — the action's result
     # 
     # _@param_ `permanent` — failure codes treated as non-retryable
     # 
+    # _@param_ `honor_retry` — act on the result's +retry:+ metadata
+    # 
     # _@return_ — +:ack+ for a success or skip; +:discard+
     # for a failure whose code is +permanent+; +:retry+ for any other failure
-    def self.disposition: (Result result, ?permanent: ::Array[Symbol]) -> Symbol
+    def self.disposition: (Result result, ?permanent: ::Array[Symbol], ?honor_retry: bool) -> Symbol
+
+    # _@param_ `result`
+    # 
+    # _@return_ — whether the result carries +retry:+ metadata
+    def retry_declared?: (Result result) -> bool
+
+    # _@param_ `result`
+    # 
+    # _@return_ — whether the result carries +retry:+ metadata
+    def self.retry_declared?: (Result result) -> bool
+
+    # _@param_ `result` — a result whose metadata has +retry:+
+    def metadata_disposition: ((Failure | Skipped) result) -> Symbol
+
+    # _@param_ `result` — a result whose metadata has +retry:+
+    def self.metadata_disposition: ((Failure | Skipped) result) -> Symbol
 
     # Raised by {Mixin#run_actionable} for a retryable failure, so the host
     # queue (Sidekiq / ActiveJob) sees a raised error and applies its retry
     # policy. Carries the offending result.
     class RetryableFailure < StandardError
-      # _@param_ `result`
+      # _@param_ `result` — a {Failure}, or a {Skipped} retried because its metadata says +retry: true+ (see {RetryMetadata#honor_retry_metadata})
       def initialize: (Result result) -> void
 
       # _@return_ — the failed result that triggered the retry
       attr_reader result: Result
+    end
+
+    # The +honor_retry_metadata+ class macro (owner ruling P10). Extended onto
+    # {Actionable::Action} by +actionable/job+, so an action can opt in to having
+    # {Mixin#run_actionable} act on the +retry:+ metadata of its declared codes.
+    # Metadata stays neutral by default (decisions D20/D21).
+    module RetryMetadata
+      # Opt this action in (or, with +enabled: false+, back out) to {Job}
+      # honoring the +retry:+ metadata of its declared failures and skips:
+      # +retry: true+ retries the job, +retry: false+ does not. A code with no
+      # +retry:+ key keeps the default mapping. Inherited; a subclass can turn
+      # it off.
+      # 
+      #   class Reindex < Actionable::Action
+      #     honor_retry_metadata
+      #     skips :not_ready, retry: true # the job retries until the index is ready
+      #   end
+      # 
+      # _@param_ `enabled`
+      def honor_retry_metadata: (?enabled: bool) -> void
+
+      # Whether {Job} honors this action's +retry:+ metadata, inherited from
+      # ancestors when not set locally. +false+ unless an ancestor opted in.
+      def honor_retry_metadata?: () -> bool
     end
 
     # Mix into a Sidekiq worker or ActiveJob job. Call {#run_actionable} from
@@ -84,6 +138,8 @@ module Actionable
       # Run +action_class+ with the given arguments, map the outcome, and either
       # return the result (+:ack+ / +:discard+) or raise {RetryableFailure}
       # (+:retry+). A genuine exception inside the action propagates unchanged.
+      # When the action opted in with +honor_retry_metadata+, its declared
+      # +retry:+ metadata decides (see {Job.disposition}).
       # 
       # _@param_ `action_class`
       # 
@@ -612,6 +668,7 @@ module Actionable
   # 
   #   Greet.run # => #<Actionable::Success ...>
   class Action
+    extend Actionable::Job::RetryMetadata
     GEM_FAILURE_CODES: ::Array[Symbol]
     CORE_METHOD_OWNERS: ::Array[Module]
 
@@ -1273,6 +1330,24 @@ module Actionable
     # (a prior +fail+/+succeed+/+skip+, or auto-{Success} if none). Control flow
     # only — not an exception (decision D4).
     def halt!: () -> void
+
+    # Opt this action in (or, with +enabled: false+, back out) to {Job}
+    # honoring the +retry:+ metadata of its declared failures and skips:
+    # +retry: true+ retries the job, +retry: false+ does not. A code with no
+    # +retry:+ key keeps the default mapping. Inherited; a subclass can turn
+    # it off.
+    # 
+    #   class Reindex < Actionable::Action
+    #     honor_retry_metadata
+    #     skips :not_ready, retry: true # the job retries until the index is ready
+    #   end
+    # 
+    # _@param_ `enabled`
+    def self.honor_retry_metadata: (?enabled: bool) -> void
+
+    # Whether {Job} honors this action's +retry:+ metadata, inherited from
+    # ancestors when not set locally. +false+ unless an ancestor opted in.
+    def self.honor_retry_metadata?: () -> bool
 
     # _@return_ — the declared output schema, or
     # +nil+ for a free-form action

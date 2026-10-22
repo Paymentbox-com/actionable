@@ -182,8 +182,10 @@ Reindex.declared_skips # => {not_ready: {retry: true}}
 
 Metadata is yours to interpret: the gem stores and returns it but never acts
 on it (decisions D20/D21). In particular `Actionable::Job` acks every skip;
-`retry: true` above does not make a job retry. Read `result.metadata` in your
-job, or list permanent failure codes with `actionable_permanent_codes`.
+`retry: true` above does not make a job retry unless the action opts in with
+`honor_retry_metadata` (see [Background jobs](#background-jobs-optional)).
+Otherwise read `result.metadata` in your job, or list permanent failure codes
+with `actionable_permanent_codes`.
 
 Once an action declares any skip code, a `skip` with an undeclared one raises
 `Actionable::DefinitionError`, and that includes the default `:skipped`. See
@@ -445,7 +447,10 @@ end
 
 A success or skip acks; a transient failure raises `RetryableFailure` so the
 queue retries; a permanent-code failure is discarded. Genuine exceptions
-propagate unchanged.
+propagate unchanged. An action that declares `honor_retry_metadata` lets the
+`retry:` metadata of its declared failures and skips decide instead
+(`skips :not_ready, retry: true` then retries the job). See
+[USAGE](USAGE.md#background-jobs).
 
 ## Types (RBS)
 

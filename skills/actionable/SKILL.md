@@ -129,7 +129,9 @@ failures, hooks, measure, and transaction config (or `describe_text` for a reada
   Actionable::Job::Mixin` into a Sidekiq/ActiveJob job and call
   `run_actionable(SomeAction, **kwargs)` in `perform`. A success/skip acks; a
   transient failure raises `RetryableFailure` (queue retries); a permanent-code
-  failure is discarded; a genuine exception propagates.
+  failure is discarded; a genuine exception propagates. Declared `retry:`
+  metadata is ignored unless the action calls `honor_retry_metadata`; then
+  `retry: true` retries (failures and skips) and `retry: false` doesn't.
 - **Prod observability:** `measure :sampled, rate: 0.1` records history on a
   fraction of runs (between `:all` and `:none`).
 
