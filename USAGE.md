@@ -869,7 +869,7 @@ end
 
 ```
 class CreateInvoice < ::Actionable::Action
-  def self.run: (amount: ::Integer, ?tags: ::Array[::String?]) -> Result
+  def self.run: (amount: ::Integer, ?tags: ::Array[::String?]?) -> Result
               | (InputSchema input) -> Result
 
   def input: () -> InputSchema

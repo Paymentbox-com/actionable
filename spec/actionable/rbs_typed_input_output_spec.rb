@@ -121,7 +121,7 @@ RSpec.describe Actionable::RBS, 'typed input and output ivars' do
   it 'emits InputSchema, the typed .run overloads, #input and the output ivars' do
     expect(described_class.generate(RbsIoAction)).to eq(<<~RBS)
       class RbsIoAction < ::Actionable::Action
-        def self.run: (amount: ::Integer, ?note: ::String, tags: ::Array[::String?], ?address: ::RbsIoAddress, stops: ::Array[::RbsIoAddress], ?meta: untyped) -> Result
+        def self.run: (amount: ::Integer, ?note: ::String?, tags: ::Array[::String?], ?address: ::RbsIoAddress?, stops: ::Array[::RbsIoAddress], ?meta: untyped) -> Result
                     | (InputSchema input) -> Result
 
         def input: () -> InputSchema

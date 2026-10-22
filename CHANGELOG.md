@@ -38,6 +38,7 @@
 
 ### Changed
 
+- **Optional `.run` keywords are nullable in generated RBS** (`?note: ::String?`): an optional field may be passed `nil` explicitly, and the run succeeds.
 - **Requires field_struct >= 0.12.** The generator now takes every field type
   from `FieldStruct::RBS.type_for` instead of its own copy of the mapping, so
   generated action RBS matches `FieldStruct::RBS.generate`. Consumer-visible

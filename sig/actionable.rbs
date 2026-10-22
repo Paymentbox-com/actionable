@@ -336,8 +336,8 @@ module Actionable
 
     # _@param_ `field`
     # 
-    # _@return_ — +name: Type+ (required) or +?name: Type+ (optional). The
-    # +?+ prefix carries optionality, so the type itself is not made nullable.
+    # _@return_ — +name: Type+ (required) or +?name: Type?+ (optional): an
+    # optional field may be omitted or passed +nil+ (+run(note: nil)+ succeeds).
     def self.run_param: (FieldStruct::Field field) -> String
 
     # A nested struct class with FieldStruct's reader and writer shape: the

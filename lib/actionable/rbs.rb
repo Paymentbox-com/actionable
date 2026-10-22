@@ -378,10 +378,10 @@ module Actionable
     private_class_method :skip_code_alias
 
     # @param field [FieldStruct::Field]
-    # @return [String] +name: Type+ (required) or +?name: Type+ (optional). The
-    #   +?+ prefix carries optionality, so the type itself is not made nullable.
+    # @return [String] +name: Type+ (required) or +?name: Type?+ (optional): an
+    #   optional field may be omitted or passed +nil+ (+run(note: nil)+ succeeds).
     def self.run_param(field)
-      "#{"?" unless field.required?}#{field.name}: #{rbs_type(field, nullable: false)}"
+      "#{"?" unless field.required?}#{field.name}: #{rbs_type(field)}"
     end
     private_class_method :run_param
 

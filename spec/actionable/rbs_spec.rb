@@ -45,7 +45,7 @@ RSpec.describe Actionable::RBS do
     subject(:rbs) { described_class.generate(RbsSampleAction) }
 
     it 'emits a typed .run signature from the input schema' do
-      expect(rbs).to include('def self.run: (amount: ::Integer, ?name: ::String) -> Result')
+      expect(rbs).to include('def self.run: (amount: ::Integer, ?name: ::String?) -> Result')
     end
 
     it 'emits typed, nullability-aware output accessors' do
