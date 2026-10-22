@@ -17,6 +17,17 @@
   `types` CI job on Ruby 3.4 that never fails the build. The Steepfile now
   checks the core only (the RSpec and Rails adapters are ignored); Steep is
   no longer in the main Gemfile.
+- **More precise signatures** (RBS only; no runtime change). Keyword splats
+  are typed per value (`**Object options`, not `**::Hash[Symbol, Object]
+  options`, which RBS reads as "every value is a Hash"); `.run`, `#initialize`
+  and `Job::Mixin#run_actionable` take `*Object, **Object`; the gem's
+  constants (`Actionable::HALT`, `VERSION`, `Action::GEM_FAILURE_CODES`, …)
+  are declared; and the halt/measurement helpers declare their block. The
+  DSL methods whose block runs with another `self` (`output`, `input`,
+  `fails`, `skips`, `case_step`, `input_for`, and the `define` builders)
+  gain a block overload with its self-type in the new
+  `sig/actionable/dsl.rbs`. `untyped` in sig/ falls from 46 to 27, and the
+  sord fallback allowlist from 24 entries to 4.
 
 ## [1.5.2] - 2026-10-22
 

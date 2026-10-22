@@ -40,6 +40,10 @@ module Actionable
     private
 
     # Run the body, marking measurement active so nested runs cascade.
+    #
+    # @yield the body to run
+    # @yieldreturn [Object]
+    # @return [Object] the block's value
     def measured(&)
       return yield unless @measuring
 
@@ -47,6 +51,8 @@ module Actionable
     end
 
     # The main steps, then the outcome and always lifecycle hooks.
+    #
+    # @return [void]
     def perform
       Actionable.catch_halt { run_steps }
       @result = instance_result || Success.new

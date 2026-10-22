@@ -23,14 +23,20 @@ SIG_FILE = 'sig/actionable.rbs'
 SORD_FIXUPS = [
   # Sord emits a bare `include Enumerable`, but RBS's Enumerable is generic and
   # requires its element type. BatchResult enumerates Results (decision D19).
-  [/^(\s*)include Enumerable$/, '\1include ::Enumerable[Result]']
+  [/^(\s*)include Enumerable$/, '\1include ::Enumerable[Result]'],
+  # Constants a consumer cannot reference, which RBS has no way to mark:
+  # those assigned inside +class << self+ live on the singleton class
+  # (+Action.singleton_class::OUTCOME_BASES+, not +Action::OUTCOME_BASES+), and
+  # +private_constant+s raise NameError from outside. Sord declares both as
+  # public constants of the class, so drop them.
+  [/^\s*(?:RESERVED_OUTPUT_FIELDS|OUTCOME_BASES|BOOL_CLASSES|HASH_OUTPUT): .*\n/, '']
 ].freeze
 
 # The committed sigs may only get MORE typed. `sigs:untyped` counts the
 # non-comment `untyped` tokens in sig/ and fails when the count is above this
 # ceiling — or below it, so a typing PR lowers the ceiling in the same commit
 # and it can never creep back up. Ratchet down only.
-SIG_UNTYPED_CEILING = 46
+SIG_UNTYPED_CEILING = 27
 
 # Every place sord falls back to `untyped` because the YARD is missing
 # ([OMIT]) or names a duck type ([DUCK]), keyed without file:line so edits
@@ -41,27 +47,7 @@ SORD_WARNING_ALLOWLIST = [
   'DUCK Actionable::Action#fail_with: #errors looks like a duck type',
   'DUCK Actionable::Action#fail_with!: #errors looks like a duck type',
   'DUCK Actionable::Failure#absorb_errors_from: #errors looks like a duck type',
-  'DUCK Actionable::Steps::Base#evaluate_guard: #call looks like a duck type',
-  'OMIT Actionable::Action#initialize: no YARD type given for "**_kwargs"',
-  'OMIT Actionable::Action#initialize: no YARD type given for "*_args"',
-  'OMIT Actionable::Action.build_dispatched_input: no YARD type given for "args"',
-  'OMIT Actionable::Action.build_dispatched_input: no YARD type given for "kwargs"',
-  'OMIT Actionable::Action.build_input: no YARD type given for "args"',
-  'OMIT Actionable::Action.build_input: no YARD type given for "kwargs"',
-  'OMIT Actionable::Action.run: no YARD type given for "**kwargs"',
-  'OMIT Actionable::Action.run: no YARD type given for "*args"',
-  'OMIT Actionable::Job::Mixin#run_actionable: no YARD type given for "**kwargs"',
-  'OMIT Actionable::Job::Mixin#run_actionable: no YARD type given for "*args"',
-  'OMIT Actionable::Measurement.store: no YARD return type given',
-  'OMIT Actionable::Measurement.with: no YARD return type given',
-  'OMIT Actionable::Measurement.with: no YARD type given for "changes"',
-  'OMIT Actionable::Result#method_missing: no YARD return type given',
-  'OMIT Actionable::Result#method_missing: no YARD type given for "*args"',
-  'OMIT Actionable::Result#method_missing: no YARD type given for "name"',
-  'OMIT Actionable::Result#respond_to_missing?: no YARD type given for "include_private"',
-  'OMIT Actionable::Result#respond_to_missing?: no YARD type given for "name"',
-  'OMIT Actionable::Runner#measured: no YARD return type given',
-  'OMIT Actionable::Runner#perform: no YARD return type given'
+  'DUCK Actionable::Steps::Base#evaluate_guard: #call looks like a duck type'
 ].freeze
 
 # --- Docs guard (`docs:check`, decision D19) --------------------------
@@ -129,7 +115,7 @@ def sord_run(target)
   stashed = File.exist?(SIG_FILE) && File.rename(SIG_FILE, stash) && true
   ok = false
   require 'open3'
-  cmd = "bundle exec sord #{target} --rbs --no-sord-comments --skip-constants"
+  cmd = "bundle exec sord #{target} --rbs --no-sord-comments"
   puts cmd
   output, status = Open3.capture2e(cmd)
   puts output

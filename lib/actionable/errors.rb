@@ -16,6 +16,7 @@ module Actionable
   # Halting (+fail!+ / +succeed!+ / +halt!+) throws this symbol; the runner
   # catches it via {Actionable.catch_halt}. This is control flow, NOT an
   # exception (decision D4).
+  # @return [Symbol]
   HALT = :actionable_halt
 
   module_function
@@ -27,6 +28,7 @@ module Actionable
   # +throw Actionable::HALT+). A raised StandardError is deliberately NOT
   # caught — it propagates to the caller (decision D4).
   #
+  # @yieldreturn [Object]
   # @return [Object] the block's value, or the thrown halt value
   def catch_halt(&block)
     catch(HALT, &block)

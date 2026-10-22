@@ -44,6 +44,7 @@ module Actionable
   # delegation. Referenced field types appear as qualified names (+::Invoice+) —
   # generate RBS for those (e.g. via +FieldStruct::RBS+) so they resolve.
   module RBS
+    # @return [Array<Class>]
     BOOL_CLASSES = [TrueClass, FalseClass].freeze
     private_constant :BOOL_CLASSES
 
@@ -202,6 +203,7 @@ module Actionable
     end
     private_class_method :code_type
 
+    # @return [String]
     HASH_OUTPUT = '::Hash[::Symbol, untyped]'
     private_constant :HASH_OUTPUT
 

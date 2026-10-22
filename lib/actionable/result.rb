@@ -126,12 +126,18 @@ module Actionable
     # declared on a typed output schema delegate; incidental data never does
     # (decision D6).
     #
+    # @param name [Symbol] the method name asked about (Ruby passes a Symbol)
+    # @param include_private [Boolean] whether private methods count
     # @return [Boolean]
     def respond_to_missing?(name, include_private = false)
       delegates_to_output?(name) || super
     end
 
     # @see #respond_to_missing?
+    # @param name [Symbol] the method called
+    # @param args [Object] its arguments, forwarded to the output
+    # @return [undefined] the output field's value: left untyped on purpose,
+    #   like any field reader whose type the schema decides
     def method_missing(name, *args, &block)
       return output.public_send(name, *args, &block) if delegates_to_output?(name)
 

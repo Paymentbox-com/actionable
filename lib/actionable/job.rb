@@ -17,6 +17,7 @@ module Actionable
     # Failure codes that should NOT be retried — a re-run can't fix bad input or
     # a missing record, so the job is discarded rather than retried. Override
     # per job via {Mixin#actionable_permanent_codes}.
+    # @return [Array<Symbol>]
     DEFAULT_PERMANENT_CODES = %i[invalid_input invalid_output not_found].freeze
 
     # Raised by {Mixin#run_actionable} for a retryable failure, so the host
@@ -66,6 +67,8 @@ module Actionable
       # (+:retry+). A genuine exception inside the action propagates unchanged.
       #
       # @param action_class [Class<Actionable::Action>]
+      # @param args [Object] positional arguments, forwarded to +.run+
+      # @param kwargs [Object] keyword arguments, forwarded to +.run+
       # @return [Result] the run's result (for an ack/discard outcome)
       # @raise [RetryableFailure] when the failure should be retried
       def run_actionable(action_class, *args, **kwargs)

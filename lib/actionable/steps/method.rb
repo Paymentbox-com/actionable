@@ -7,7 +7,7 @@ module Actionable
     class Method < Base
       # @param name [Symbol, String] the instance method to call; normalized
       #   to a Symbol
-      # @param options [Hash{Symbol=>Object}] step options (e.g. +:if+, +:unless+)
+      # @param options [Object] step options (e.g. +:if+, +:unless+)
       def initialize(name, **options)
         super(name.to_sym, **options)
       end

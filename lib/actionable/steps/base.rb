@@ -19,7 +19,7 @@ module Actionable
       attr_reader :options
 
       # @param name [Object] the step name (see {#name})
-      # @param options [Hash{Symbol=>Object}] step options
+      # @param options [Object] step options
       def initialize(name, **options)
         @name = name
         @options = options
