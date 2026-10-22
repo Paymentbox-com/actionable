@@ -511,8 +511,8 @@ action takes its own savepoint (`requires_new: true`), so a recorded failure
 rolls back the action's writes and leaves the rest of your transaction alone;
 pass `requires_new: false` to join it instead. The lifecycle hooks run **inside** the transaction too: a
 write in `on_failure` rolls back with the rest, and an email or webhook sent
-from `on_success` fires before the commit. Keep external side effects out of
-hooks, or enqueue them so they run after the commit.
+from `on_success` fires before the commit. Put external side effects in an
+`after_commit` hook instead (below).
 
 ```ruby
 class Billing::SettleInvoice < Actionable::Action
@@ -527,6 +527,28 @@ class Billing::SettleInvoice < Actionable::Action
   def credit = input.invoice.credit! # a raise here rolls the debit back
 end
 ```
+
+### Side effects after the commit
+
+`after_commit` (ActiveRecord >= 7.2) runs a hook only once the data is really
+committed, and only when the run succeeded:
+
+```ruby
+class Billing::SettleInvoice < Actionable::Action
+  transactional model: :invoice
+  step :debit
+  step :credit
+  after_commit :send_receipt # or a nested action: after_commit SendReceipt, input: %i[invoice]
+
+  def send_receipt = ReceiptMailer.with(invoice: input.invoice).deliver_later
+end
+```
+
+It waits for the **outermost** transaction: called inside a transaction your app
+already opened, the receipt goes out when that one commits, and never if it rolls
+back. With no transaction open it runs right after the run. A failure or a skip
+never runs it. It can't change the result and isn't in the history; an exception
+it raises propagates after the commit.
 
 ### Validating with ActiveModel — `ProxyValidator`
 

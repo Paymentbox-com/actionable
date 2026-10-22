@@ -94,7 +94,10 @@ When asked to build one:
 - **Branch:** `case_step :status do on 'active', :handle; default :other end`
   (matches by `==`, `Regexp`, or Array membership).
 - **Hooks:** `on_success` / `on_failure` / `on_skip` / `always` run after the
-  main steps by outcome.
+  main steps by outcome, inside any `transactional` transaction. With the Rails
+  adapter, `after_commit :method` (ActiveRecord >= 7.2) runs only after the
+  outermost transaction commits a successful run — the place for emails,
+  webhooks and enqueues. It can't change the result and isn't in the history.
 - **Discriminated input:** `input_for(:event_type) { on 'sale', SaleShape;
   default UnknownShape }` picks the input schema at run time from a discriminator
   (typed polymorphic input). An unmatched value with no `default` →
