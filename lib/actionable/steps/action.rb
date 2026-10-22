@@ -48,12 +48,16 @@ module Actionable
 
       # Copy the child's exposed output fields onto the parent as instance
       # variables, so the parent's later steps and output capture see them.
+      # Only fields the child actually set are copied: a field it left nil or
+      # at its default must not overwrite the parent's value.
       #
       # @param instance [Actionable::Action]
       # @param child [Result]
       # @return [void]
       def absorb(instance, child)
         data = output_hash(child.output)
+        set = child.output_fields_set
+        data = data.slice(*set) if set && child.output.is_a?(FieldStruct::Base)
         exposed = options.key?(:expose) ? data.slice(*Array(options[:expose])) : data
         exposed.each { |field, value| instance.instance_variable_set(:"@#{field}", value) }
       end

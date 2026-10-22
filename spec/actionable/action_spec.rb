@@ -111,4 +111,75 @@ RSpec.describe Actionable::Action do
       expect(parent.steps.map(&:name)).to eq(%i[a])
     end
   end
+
+  describe 'private step and hook methods' do
+    it 'runs a private step method' do
+      klass = Class.new(Actionable::Action) do
+        step :go
+
+        private
+
+        def go = succeed('ran')
+      end
+
+      expect(klass.run.message).to eq('ran')
+    end
+
+    it 'runs a private lifecycle hook' do
+      calls = []
+      klass = Class.new(Actionable::Action) do
+        step :go
+        on_success :notify
+        define_method(:go) { nil }
+        define_method(:notify) { calls << :notify }
+        private :notify
+      end
+
+      klass.run
+
+      expect(calls).to eq(%i[notify])
+    end
+  end
+
+  describe 'a step named like a Kernel method the action does not define' do
+    it 'raises a DefinitionError instead of calling Kernel' do
+      klass = Class.new(Actionable::Action) { step :puts }
+
+      expect { klass.run }.to raise_error(Actionable::DefinitionError, /:puts/)
+    end
+
+    it 'raises a DefinitionError for a hook named like a Kernel method' do
+      klass = Class.new(Actionable::Action) do
+        define_method(:go) { nil }
+        step :go
+        always :exit
+      end
+
+      expect { klass.run }.to raise_error(Actionable::DefinitionError, /:exit/)
+    end
+  end
+
+  describe 'a step that assigns @result' do
+    it 'raises a DefinitionError naming the reserved ivar' do
+      klass = Class.new(Actionable::Action) do
+        define_method(:go) { @result = 'oops' }
+        step :go
+      end
+
+      expect { klass.run }.to raise_error(Actionable::DefinitionError, /@result/)
+    end
+  end
+
+  describe '.input with no block' do
+    it 'returns the declared schema without replacing it' do
+      klass = Class.new(Actionable::Action) do
+        input { required :amount, :integer }
+      end
+
+      schema = klass.input_schema
+
+      expect(klass.input).to equal(schema)
+      expect(klass.input_schema.attribute_names).to eq(%i[amount])
+    end
+  end
 end

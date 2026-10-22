@@ -486,6 +486,8 @@ module Actionable
 
       # Copy the child's exposed output fields onto the parent as instance
       # variables, so the parent's later steps and output capture see them.
+      # Only fields the child actually set are copied: a field it left nil or
+      # at its default must not overwrite the parent's value.
       # 
       # _@param_ `instance`
       # 
@@ -566,8 +568,11 @@ module Actionable
     #     optional :name,   :string
     #   end
     # 
-    # _@return_ — the input schema
-    def self.input: () -> singleton(FieldStruct::Base)
+    # Called without a block it reads the declared schema, as {.output} does.
+    # 
+    # _@return_ — the input schema, or +nil+ when
+    # none has been declared
+    def self.input: () -> singleton(FieldStruct::Base)?
 
     # Declare a *discriminated* input schema (decision D19): pick the input
     # FieldStruct at run time from a discriminator value, instead of a single
@@ -934,6 +939,15 @@ module Actionable
     # _@param_ `instance`
     def self.ensure_steps_implemented!: (Action _instance) -> void
 
+    # Whether +instance+ implements +method+ itself (public or private), not
+    # merely inherits it from Ruby's core: steps are called with +__send__+,
+    # so +step :puts+ or +always :exit+ must not reach +Kernel+.
+    # 
+    # _@param_ `instance`
+    # 
+    # _@param_ `method`
+    def self.implements?: (Action _instance, Symbol method) -> bool
+
     # Coerce +.run+ arguments into the input struct: pass an existing input
     # instance through untouched, otherwise build one from the keyword args.
     # With discriminated input ({.input_for}), the schema is chosen from the
@@ -1290,6 +1304,12 @@ module Actionable
     # 
     # _@param_ `name`
     def output_field: (Symbol name) -> Object?
+
+    # The output fields the run actually set (captured instance variables and
+    # +succeed+/+skip+ kwargs), as opposed to fields left nil or at their
+    # default. A parent absorbing a nested action's output copies only these
+    # (decision D3). +nil+ when unknown, e.g. a hand-built result.
+    attr_accessor output_fields_set: ::Array[Symbol]?
   end
 
   # Executes an action instance's steps and produces the {Result}.
@@ -1376,6 +1396,19 @@ module Actionable
 
     def refresh_success_output: () -> void
 
+    # Build the output struct and note on the result which fields the run
+    # actually set, so a parent absorbing this run copies only those (D3).
+    # 
+    # _@param_ `schema`
+    # 
+    # _@param_ `attrs`
+    def build_output: (singleton(FieldStruct::Base) schema, ::Hash[Symbol, Object] attrs) -> FieldStruct::Base
+
+    # The result the action instance recorded, refusing anything else stored
+    # in the reserved +@result+ ivar with a clear error instead of a deep
+    # +NoMethodError+.
+    def instance_result: () -> Result?
+
     # Attach +output+ when it is valid; otherwise the run ends as a
     # +Failure(:invalid_output)+ carrying it.
     # 
@@ -1396,7 +1429,8 @@ module Actionable
 
     # A skip or failure's output fields, from the kwargs it was recorded with,
     # never from instance variables (decision D23). After a hook refresh the
-    # output is already the struct, so its own attributes are reused.
+    # output is already the struct, so its own attributes are reused, limited
+    # to the fields the kwargs set so the set-fields marker stays true.
     # 
     # _@param_ `schema`
     def outcome_attributes: (singleton(FieldStruct::Base) schema) -> ::Hash[Symbol, Object]

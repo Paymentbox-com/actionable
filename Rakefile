@@ -49,6 +49,7 @@ DOC_COVERAGE_ALLOWLIST = %w[
   input_dispatch input_schema output_schema
   length measure_all? measure_rate measure_sample_hit? measure_sampled?
   method_missing
+  output_fields_set output_fields_set=
 ].freeze
 
 def sord_run(target)

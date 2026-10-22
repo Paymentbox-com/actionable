@@ -49,7 +49,7 @@ module Actionable
     # The main steps, then the outcome and always lifecycle hooks.
     def perform
       Actionable.catch_halt { run_steps }
-      @result = @instance.result || Success.new
+      @result = instance_result || Success.new
       refresh_output
       run_lifecycle
     end
@@ -98,7 +98,7 @@ module Actionable
         record(section, hook) { hook.call(@instance) }
         completed = true
       end
-      @result = @instance.result unless @instance.result.equal?(before)
+      @result = instance_result unless instance_result.equal?(before)
       refresh_output
       throw HALT unless completed
     end
@@ -131,7 +131,7 @@ module Actionable
         Measurement.recording(entry, &)
       ensure
         entry.duration = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
-        entry.code = @instance.result&.code unless @instance.result.equal?(before)
+        entry.code = instance_result&.code unless @instance.result.equal?(before)
         @history << entry
       end
     end
@@ -154,11 +154,11 @@ module Actionable
       return refresh_success_output if @result.success?
 
       if (schema = outcome_schema)
-        attach_validated(schema.new(**outcome_attributes(schema)))
+        attach_validated(build_output(schema, outcome_attributes(schema)))
       elsif @instance.class.typed_outcomes?
         @result.output = {} unless gem_failure?
       elsif (schema = @instance.class.output_schema) && !gem_failure?
-        attach_unvalidated(schema.new(**captured_attributes(schema)))
+        attach_unvalidated(build_output(schema, captured_attributes(schema)))
       end
     end
 
@@ -167,7 +167,33 @@ module Actionable
       schema = @instance.class.output_schema
       return unless schema
 
-      attach_validated(schema.new(**captured_attributes(schema)))
+      attach_validated(build_output(schema, captured_attributes(schema)))
+    end
+
+    # Build the output struct and note on the result which fields the run
+    # actually set, so a parent absorbing this run copies only those (D3).
+    #
+    # @param schema [Class<FieldStruct::Base>]
+    # @param attrs [Hash{Symbol=>Object}]
+    # @return [FieldStruct::Base]
+    def build_output(schema, attrs)
+      @result.output_fields_set = attrs.keys
+      schema.new(**attrs)
+    end
+
+    # The result the action instance recorded, refusing anything else stored
+    # in the reserved +@result+ ivar with a clear error instead of a deep
+    # +NoMethodError+.
+    #
+    # @raise [DefinitionError] when +@result+ holds something other than a {Result}
+    # @return [Result, nil]
+    def instance_result
+      result = @instance.result
+      return result if result.nil? || result.is_a?(Result)
+
+      raise DefinitionError,
+        "#{@instance.class.name || "action"} set @result to a #{result.class}; " \
+        '@result is reserved for the run\'s result, so rename the instance variable'
     end
 
     # Attach +output+ when it is valid; otherwise the run ends as a
@@ -202,13 +228,17 @@ module Actionable
 
     # A skip or failure's output fields, from the kwargs it was recorded with,
     # never from instance variables (decision D23). After a hook refresh the
-    # output is already the struct, so its own attributes are reused.
+    # output is already the struct, so its own attributes are reused, limited
+    # to the fields the kwargs set so the set-fields marker stays true.
     #
     # @param schema [Class<FieldStruct::Base>]
     # @return [Hash{Symbol=>Object}]
     def outcome_attributes(schema)
       recorded = @result.output
-      recorded = recorded.attributes if recorded.is_a?(FieldStruct::Base)
+      if recorded.is_a?(FieldStruct::Base)
+        set = @result.output_fields_set
+        recorded = set ? recorded.attributes.slice(*set) : recorded.attributes
+      end
       recorded.is_a?(Hash) ? recorded.slice(*schema.attribute_names) : {}
     end
 

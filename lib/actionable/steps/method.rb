@@ -17,7 +17,7 @@ module Actionable
       # @param instance [Object] the action instance
       # @return [Object] the method's return value
       def call(instance)
-        instance.public_send(name)
+        instance.__send__(name) # private step methods work, like guards
       end
 
       # @return [Array<Symbol>] the instance method this step calls

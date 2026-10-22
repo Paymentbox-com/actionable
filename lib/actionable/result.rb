@@ -26,6 +26,15 @@ module Actionable
     #   Firms up into a +History+ once measurement lands (D10).
     optional :history, :value, default: -> { [] }
 
+    # The output fields the run actually set (captured instance variables and
+    # +succeed+/+skip+ kwargs), as opposed to fields left nil or at their
+    # default. A parent absorbing a nested action's output copies only these
+    # (decision D3). +nil+ when unknown, e.g. a hand-built result.
+    #
+    # @api private
+    # @return [Array<Symbol>, nil]
+    attr_accessor :output_fields_set
+
     # @return [Boolean] whether the run succeeded. Abstract here; each
     #   subclass flips the predicate that applies to it.
     def success?

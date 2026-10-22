@@ -217,4 +217,34 @@ RSpec.describe 'actionable rspec stubs' do
       expect(typed.run).to be_an_instance_of(typed::Skipped)
     end
   end
+
+  describe 'a stubbed nested child' do
+    it 'absorbs only the fields the stub was given, like a real run' do
+      child = Class.new(Actionable::Action) do
+        typed_outcomes
+        output do
+          optional :a, :string
+          optional :b, :string
+        end
+        def go = raise('the action should not actually run')
+        step :go
+      end
+      stub_const('StubbedChild', child)
+      parent = Class.new(Actionable::Action) do
+        output do
+          optional :a, :string
+          optional :b, :string
+        end
+        define_method(:prime) { @b = 'parent-b' }
+        step :prime
+        step StubbedChild
+      end
+      allow_actionable_success(StubbedChild, output: {a: 'stub-a'})
+
+      result = parent.run
+
+      expect(result.output.a).to eq('stub-a')
+      expect(result.output.b).to eq('parent-b')
+    end
+  end
 end

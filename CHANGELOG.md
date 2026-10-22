@@ -10,6 +10,21 @@
   (measured on ActiveRecord 8.1 + SQLite). Inside an open transaction the action
   now takes its own savepoint (`requires_new: true`) unless `requires_new:` is
   given; `requires_new: false` keeps the old joining behaviour.
+- **A nested action no longer wipes parent ivars it never set.** Absorbing a
+  successful or skipped child copied every declared output field, so a field
+  the child left nil (or at its default) overwrote the parent's value. Only
+  fields the child actually set are absorbed now; `expose:` still narrows them.
+- **Private step, hook and `case_step` methods work.** The definition check
+  already accepted them, but the step then raised `NoMethodError`; they are
+  now called like guards are. A step or hook named after a method the action
+  only inherits from Ruby's core (`step :puts`, `always :exit`) raises
+  `DefinitionError` up front instead of calling `Kernel`.
+- **`Action.input` without a block reads the schema** instead of replacing it
+  with an empty one, matching `output`.
+- **A step that assigns `@result`** gets a clear `DefinitionError` instead of a
+  `NoMethodError` deep in the runner.
+- **`History#to_json` requires Oj itself** rather than relying on another file
+  having loaded it.
 
 - **A bang verb inside a lifecycle hook now sets the result.** `fail!`,
   `skip!` or `succeed!` in a hook used to be dropped: `fail!` in `on_success`

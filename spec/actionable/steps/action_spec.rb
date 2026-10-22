@@ -73,6 +73,116 @@ RSpec.describe Actionable::Steps::Action do
       expect(result.output.receipt).to eq('RCP')
       expect(result.output.tracking).to eq('TRK')
     end
+
+    it 'leaves a parent ivar alone when a successful child never set that field' do
+      child = Class.new(Actionable::Action) do
+        output { optional :val, :string }
+        define_method(:noop) { nil }
+        step :noop
+      end
+      parent = Class.new(Actionable::Action) do
+        output { optional :val, :string }
+        define_method(:prime) { @val = 'parent' }
+        step :prime
+        step child
+      end
+
+      expect(parent.run.output.val).to eq('parent')
+    end
+
+    it 'does not overwrite a parent ivar with a field default the child never set' do
+      child = Class.new(Actionable::Action) do
+        output { optional :status, :string, default: 'new' }
+        define_method(:noop) { nil }
+        step :noop
+      end
+      parent = Class.new(Actionable::Action) do
+        output { optional :status, :string }
+        define_method(:prime) { @status = 'settled' }
+        step :prime
+        step child
+      end
+
+      expect(parent.run.output.status).to eq('settled')
+    end
+
+    it 'absorbs a field the child set by succeed kwarg' do
+      child = Class.new(Actionable::Action) do
+        output { optional :val, :string }
+        define_method(:go) { succeed(val: 'child') }
+        step :go
+      end
+      parent = Class.new(Actionable::Action) do
+        output { optional :val, :string }
+        define_method(:prime) { @val = 'parent' }
+        step :prime
+        step child
+      end
+
+      expect(parent.run.output.val).to eq('child')
+    end
+
+    it 'leaves a parent ivar alone when a skipped child never set that field' do
+      child = Class.new(Actionable::Action) do
+        output { optional :val, :string }
+        define_method(:go) { skip!(:duplicate) }
+        step :go
+      end
+      parent = Class.new(Actionable::Action) do
+        output { optional :val, :string }
+        define_method(:prime) { @val = 'parent' }
+        step :prime
+        step child
+      end
+
+      expect(parent.run.output.val).to eq('parent')
+    end
+
+    it 'leaves a parent ivar alone when a declared-skip child with a hook never set that field' do
+      child = Class.new(Actionable::Action) do
+        skips(:nope) do
+          optional :a, :string
+          optional :b, :string
+        end
+        define_method(:go) { skip!(:nope, nil, a: 'x') }
+        define_method(:noop) { nil }
+        step :go
+        always :noop
+      end
+      stub_const('SkipChildWithHook', child)
+      parent = Class.new(Actionable::Action) do
+        output do
+          optional :a, :string
+          optional :b, :string
+        end
+        define_method(:prime) { @b = 'parent-b' }
+        step :prime
+        step SkipChildWithHook
+      end
+
+      result = parent.run
+
+      expect(result.output.a).to eq('x')
+      expect(result.output.b).to eq('parent-b')
+    end
+
+    it 'leaves a parent ivar alone when a typed-outcomes child never set that field' do
+      child = Class.new(Actionable::Action) do
+        typed_outcomes
+        output { optional :val, :string }
+        define_method(:noop) { nil }
+        step :noop
+      end
+      stub_const('TypedChild', child)
+      parent = Class.new(Actionable::Action) do
+        output { optional :val, :string }
+        define_method(:prime) { @val = 'parent' }
+        step :prime
+        step TypedChild
+      end
+
+      expect(parent.run.output.val).to eq('parent')
+    end
   end
 
   describe 'nested failure' do
