@@ -1,0 +1,18 @@
+# frozen_string_literal: true
+
+# Report-only Steep lane (see the `types` job in .github/workflows/main.yml).
+# Steep 2.x needs rbs 4.x, which needs Ruby >= 3.3, while the main Gemfile
+# keeps rbs 3.x so `sigs:validate` and sord still run on the 3.2 lane.
+#
+#   BUNDLE_GEMFILE=gemfiles/types.gemfile bundle install
+#   BUNDLE_GEMFILE=gemfiles/types.gemfile bundle exec rbs collection install
+#   BUNDLE_GEMFILE=gemfiles/types.gemfile bundle exec steep check
+source 'https://rubygems.org'
+
+gemspec path: '..'
+
+# Same pin as the main Gemfile.
+gem 'field_struct', git: 'https://github.com/Paymentbox-com/field_struct', tag: 'v0.11.0'
+
+gem 'rbs', '~> 4.2', require: false
+gem 'steep', '~> 2.1', require: false

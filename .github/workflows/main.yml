@@ -33,10 +33,33 @@ jobs:
       run: bundle exec rbs collection install
     - name: Run the default task
       run: bundle exec rake
-    - name: Type signature guards (staleness + grammar)
+    - name: Type signature guards (staleness, sord allowlist, grammar)
       run: bundle exec rake sigs:check sigs:validate
     - name: Docs guard (public API documented in USAGE)
       run: bundle exec rake docs:check
+
+  # Report-only Steep (Steep 2.x / rbs 4.x need Ruby >= 3.3, so it has its own
+  # gemfile). It never fails the build and is deliberately NOT in `ci`'s needs:
+  # the problem count is a trend to read, not a gate.
+  types:
+    runs-on: ubuntu-latest
+    name: types (report-only)
+    continue-on-error: true
+    env:
+      BUNDLE_GEMFILE: gemfiles/types.gemfile
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: '3.4'
+        bundler-cache: true
+    - name: Install RBS collection
+      run: bundle exec rbs collection install
+    - name: Steep check (core only, report-only)
+      run: |
+        bundle exec steep check | tee steep.log || true
+        echo "### Steep (report-only): $(tail -n 1 steep.log)" >> "$GITHUB_STEP_SUMMARY"
 
   # One stable check name for branch protection: it passes only when every
   # matrix job passed, so the required check survives matrix changes.
