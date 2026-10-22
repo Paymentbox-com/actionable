@@ -15,6 +15,10 @@
   The declarations repeat byte-identically across files and merge. A namespace
   that is a class now opens as `class`, not `module`, which RBS rejected as a
   duplicate declaration.
+  **Upgrade note:** if your own sig files declare one of those bases with a
+  different superclass (e.g. `class ApplicationAction < ::Actionable::Action`
+  while Ruby says otherwise), RBS now reports a superclass mismatch; make your
+  declaration match Ruby's ancestry or drop it.
 
 ### Changed
 
