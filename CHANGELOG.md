@@ -4,6 +4,21 @@
 
 ### Added
 
+- **`after_commit` hook kind (Rails adapter).** After `require 'actionable/rails'`,
+  `after_commit :method` (or a nested action, with `:if` / `:unless` /
+  `:input` like any hook) runs a side effect only after the database work
+  really committed. It is registered with
+  `ActiveRecord.after_all_transactions_commit` when a run ends in a `Success`,
+  so it waits for the **outermost** open transaction (not the action's own
+  savepoint), runs immediately when none is open, and never runs if an
+  enclosing transaction rolls back. A `Failure` or `Skipped` never runs it.
+  The run is over by then: the hook can't change the result, isn't recorded in
+  the history, and an exception it raises propagates after the commit (from
+  the outer `transaction` call, or `.run` when no transaction was open).
+  Needs ActiveRecord >= 7.2; declaring it on an older one (or without
+  ActiveRecord loaded) raises a `DefinitionError`. Existing hooks and the
+  core are unchanged.
+
 - **`honor_retry_metadata`: let `Actionable::Job` act on declared `retry:`
   metadata.** An action that calls it (the macro comes with
   `require 'actionable/job'`) has the `retry:` key of its declared failures and

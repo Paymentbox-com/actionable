@@ -10,10 +10,15 @@ require 'active_support/core_ext/string/inflections' # camelize/constantize
 
 require_relative 'rails/transactions'
 require_relative 'rails/proxy_validator'
+require_relative 'rails/after_commit'
 
-# Wire the adapter into the core: the transactional macro onto Action, and the
-# transaction-wrapping behavior onto the Runner.
+# Wire the adapter into the core: the transactional and after_commit macros
+# onto Action, and their behavior onto the Runner. RunnerAfterCommit is
+# prepended last so it wraps RunnerTransaction: a run registers its
+# after_commit hooks only once its own transaction is over.
 Actionable::Action.extend(Actionable::Rails::Transactions)
+Actionable::Action.singleton_class.prepend(Actionable::Rails::AfterCommit)
 Actionable::Runner.prepend(Actionable::Rails::RunnerTransaction)
+Actionable::Runner.prepend(Actionable::Rails::RunnerAfterCommit)
 
 require_relative 'railtie' if defined?(Rails::Railtie)

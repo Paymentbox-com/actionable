@@ -49,7 +49,10 @@ result.invoice        # => same, via convenience delegation
    with `perform_actionable(...).and_raise(SomeError)`.
 4. **Transactions need the Rails adapter.** `transactional model: :invoice` only
    works after `require 'actionable/rails'` (auto-loaded when ActiveRecord is present).
-   The core never wraps a transaction on its own.
+   The core never wraps a transaction on its own. The same goes for
+   `after_commit :method` (ActiveRecord >= 7.2): it runs a successful run's side
+   effect only after the outermost transaction commits — use it, not `on_success`,
+   for emails/webhooks/enqueues from a transactional action.
 5. **Nested actions thread values explicitly.** `step Child, input: %i[invoice]`
    passes `invoice` in; `expose: %i[receipt]` limits what comes back. Without
    `expose:`, all of the child's outputs are absorbed.

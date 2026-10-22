@@ -524,6 +524,10 @@ and appear in the history when measuring. Output is re-captured and
 re-validated after each hook, and `succeed`/`skip` kwargs keep winning over
 ivars on every refresh.
 
+For side effects that must wait until the database work really committed (an
+email, a webhook, an enqueue), the Rails adapter adds an `after_commit` hook
+kind — see [Rails adapter](#rails-adapter).
+
 ## Nested actions
 
 ```ruby
@@ -734,6 +738,28 @@ cryptic `NoMethodError`:
   `requires_new: false` to join the outer one instead. Lifecycle hooks run inside the
   transaction, so a hook's writes share its fate and its external side effects
   fire before the commit.
+- `after_commit :method` (or a nested action: `after_commit Notify, input: %i[order]`,
+  with `:if` / `:unless` guards like any hook) runs a side effect only after the
+  database work really committed. Needs ActiveRecord >= 7.2 (it is built on
+  `ActiveRecord.after_all_transactions_commit`); declaring it on an older
+  ActiveRecord, or with ActiveRecord not loaded, raises a `DefinitionError`.
+  Existing hooks are unchanged. Inherited like the other hooks.
+
+  | Scenario | Runs? | When |
+  |---|---|---|
+  | `transactional` action succeeds at the top level | yes | right after its transaction commits, before `.run` returns |
+  | succeeds inside an outer `Model.transaction` | yes | after the **outermost** transaction commits, not at the action's savepoint |
+  | succeeds, then an enclosing transaction rolls back | no | — |
+  | the run ends in a `Failure` | no | its writes rolled back, so nothing committed |
+  | the run ends in a `Skipped` | no | a skip's writes still commit, but there was nothing to do, so no side effect |
+  | non-transactional action, no transaction open | yes | immediately after the run, before `.run` returns |
+  | nested actions, each with `after_commit` | each once, child first | after the outermost commit; a child's hook is dropped if a transactional parent then fails |
+
+  The run is already over when the hook fires: it can't change the result (a
+  halting verb only stops the remaining `after_commit` hooks) and it is not
+  recorded in the history. An exception it raises propagates (decision D4) from
+  wherever the commit happened — the outer `transaction` call, or `.run` when no
+  transaction was open — after the writes are committed.
 - `Actionable::ProxyValidator` runs ActiveModel rules against a delegate object;
   `#formatted_errors` returns a hash ready to splat into `fail`.
 

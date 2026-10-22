@@ -385,6 +385,10 @@ end
 A success commits; a recorded failure **or** a raised exception rolls back; a
 skip commits (nothing to roll back).
 
+`after_commit :send_receipt` (ActiveRecord >= 7.2) runs a side effect only
+after the **outermost** transaction commits a successful run — never after a
+rollback, a failure, or a skip; immediately when no transaction is open.
+
 `ProxyValidator` applies ActiveModel rules to a delegate object:
 
 ```ruby
