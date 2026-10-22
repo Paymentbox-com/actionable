@@ -107,10 +107,18 @@ module Actionable
   # (decision D13). Sord covers the library's static classes, but it can't see
   # +CreateInvoice.run(amount:)+ or +result.invoice+: those depend on the
   # action's declared +input+/+output+ schemas. This walks those schemas (via
-  # FieldStruct's metadata and +ruby_type+ mapping) and emits:
+  # FieldStruct's metadata and +FieldStruct::RBS.type_for+) and emits:
   # 
   # * a typed +.run+ signature from the input schema (or +(*untyped)+ when
-  #   free-form);
+  #   free-form), with an overload taking a built input struct;
+  # * for a fixed +input+ schema, a nested +InputSchema+ struct and a typed
+  #   +#input+ reader returning it. Like +Output+ and +Result+ it exists only
+  #   in RBS, so generation raises +ArgumentError+ when Ruby already resolves
+  #   +Action::InputSchema+;
+  # * a nullable instance variable per output field (+@total: ::Integer?+),
+  #   so steps that assign it type-check. The generated RBS owns these: a
+  #   host sig must not declare them again, since RBS rejects an instance
+  #   variable declared twice;
   # * a nested +Output+ struct with a typed accessor per output field;
   # * a nested +Result+ with +output+ and the convenience-delegation readers,
   #   which +.run+ returns;
@@ -137,6 +145,10 @@ module Actionable
   #   puts Actionable::RBS.generate(CreateInvoice)
   #   # class CreateInvoice < ::Actionable::Action
   #   #   def self.run: (amount: ::Integer) -> Result
+  #   #               | (InputSchema input) -> Result
+  #   #   def input: () -> InputSchema
+  #   #   @invoice: ::String?
+  #   #   class InputSchema < ::FieldStruct::Base ... end
   #   #   class Output < ::FieldStruct::Base ... end
   #   #   class Result < ::Actionable::Result ... end
   #   # end
@@ -145,10 +157,13 @@ module Actionable
   # {Actionable::Action} is declared before it, member-less, so the output
   # resolves without the host generating its abstract bases.
   # 
-  # The emitted +Result+/+Output+ are generated type aids: at runtime +.run+
-  # returns a {Success}/{Failure}/{Skipped} that responds to these via output
-  # delegation. Referenced field types appear as qualified names (+::Invoice+) —
-  # generate RBS for those (e.g. via +FieldStruct::RBS+) so they resolve.
+  # The emitted +Result+/+Output+/+InputSchema+ are generated type aids: at
+  # runtime +.run+ returns a {Success}/{Failure}/{Skipped} that responds to
+  # these via output delegation, and the schemas are anonymous classes. Field
+  # types come from +FieldStruct::RBS.type_for+, so they match FieldStruct's own
+  # generator, and describe a valid instance. Referenced field types appear as
+  # qualified names (+::Invoice+) — generate RBS for those (e.g. via
+  # +FieldStruct::RBS+) so they resolve.
   module RBS
 
     # Generate RBS source for a user action class.
@@ -157,6 +172,21 @@ module Actionable
     # 
     # _@return_ — RBS for the action, wrapped in its module nesting
     def self.generate: (singleton(Actionable::Action) klass) -> String
+
+    # The generated input type is named +InputSchema+, nested in the action.
+    # It exists only in RBS, so a Ruby constant that +klass::InputSchema+
+    # already resolves to (on the action, an ancestor class or an included
+    # module; +Object+'s top-level constants don't resolve through +klass::+)
+    # would make the RBS name lie.
+    # 
+    # _@param_ `klass`
+    def self.check_input_schema_name!: (singleton(Actionable::Action) klass) -> void
+
+    # _@param_ `klass`
+    # 
+    # _@return_ — whether the generated RBS declares +InputSchema+: for a
+    # fixed +input+ schema, not a discriminated +input_for+ one
+    def self.input_schema_class?: (singleton(Actionable::Action) klass) -> bool
 
     # Declares every named ancestor between +klass+ and {Actionable::Action},
     # so the action's superclass resolves on its own: a host often never
@@ -201,6 +231,23 @@ module Actionable
     # 
     # _@param_ `klass`
     def self.typed_class_block: (singleton(Actionable::Action) klass) -> String
+
+    # The sections every action's class block opens with: the code aliases,
+    # +.run+, the typed +#input+ reader, the output instance variables, and the
+    # +InputSchema+ class.
+    # 
+    # _@param_ `klass`
+    # 
+    # _@param_ `return_type` — what +.run+ returns
+    def self.leading_sections: (singleton(Actionable::Action) klass, String return_type) -> ::Array[String]
+
+    # One instance variable per output field, which steps assign and the
+    # {Runner} captures into the output. Each is nullable: it is unset until a
+    # step assigns it. The generator owns these declarations, since RBS rejects
+    # the same instance variable declared in two files.
+    # 
+    # _@param_ `schema` — the success output schema
+    def self.output_ivar_lines: (singleton(FieldStruct::Base) schema) -> ::Array[String]
 
     # The nested output class of every skip, then every failure, code that
     # declares an output schema, named after the code.
@@ -271,9 +318,9 @@ module Actionable
     # _@param_ `return_type` — what +.run+ returns
     # 
     # _@return_ — the +.run+ signature: typed kwargs from the input schema
-    # (or +(*untyped)+ free-form), returning the generated +Result+ when an
-    # output schema is declared, else +::Actionable::Result+.
-    def self.run_signature: (singleton(Actionable::Action) klass, ?return_type: String) -> String
+    # (or +(*untyped)+ free-form), plus an overload taking a built
+    # +InputSchema+ instance, which +.run+ passes through
+    def self.run_signature: (singleton(Actionable::Action) klass, return_type: String) -> String
 
     # _@param_ `klass` — an action that declares failures
     # 
@@ -293,11 +340,14 @@ module Actionable
     # +?+ prefix carries optionality, so the type itself is not made nullable.
     def self.run_param: (FieldStruct::Field field) -> String
 
-    # _@param_ `schema` — the output schema
+    # A nested struct class with FieldStruct's reader and writer shape: the
+    # reader nullable when optional, the writer +(T? value) -> T?+.
+    # 
+    # _@param_ `schema` — an output or input schema
     # 
     # _@param_ `name` — the nested class name
     # 
-    # _@return_ — the nested output class block
+    # _@return_ — the nested class block
     def self.output_block: (singleton(FieldStruct::Base) schema, ?String name) -> String
 
     # _@param_ `schema` — the output schema
@@ -305,26 +355,18 @@ module Actionable
     # _@return_ — the nested +Result+ class block with output delegation
     def self.result_block: (singleton(FieldStruct::Base) schema) -> String
 
+    # The field's RBS type, as FieldStruct's own generator emits it: made
+    # nullable when optional, or as +nullable+ says (D13).
+    # 
     # _@param_ `field`
     # 
-    # _@return_ — the field's RBS type, made nullable when optional
-    def self.rbs_type: (FieldStruct::Field field) -> String
+    # _@param_ `nullable` — +nil+ follows the field's optionality
+    def self.rbs_type: (FieldStruct::Field field, ?nullable: bool?) -> String
 
-    # Map a FieldStruct type (plus options, for arrays) to an RBS type — reusing
-    # FieldStruct's +ruby_type+ for the field → Ruby class mapping (D13).
+    # _@param_ `type` — an RBS type expression
     # 
-    # _@param_ `type_instance`
-    # 
-    # _@param_ `options`
-    def self.type_expr: (FieldStruct::Types::Base type_instance, ::Hash[Symbol, Object] options) -> String
-
-    # _@param_ `of_type` — an array's element type
-    def self.element_expr: ((Class | FieldStruct::Types::Base)? of_type) -> String
-
-    # _@param_ `klass` — a Ruby class from a +ruby_type+
-    # 
-    # _@return_ — qualified RBS name, or +untyped+ for the value type's +::Object+
-    def self.class_to_rbs: (Class klass) -> String
+    # _@return_ — +type+ made nullable, unless it already admits +nil+
+    def self.nullable: (String _type) -> String
 
     # Wrap a class block in the nesting implied by its qualified name,
     # indenting two spaces per level. A namespace that is a class opens as

@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require 'rbs'
+require_relative '../support/rbs_environment'
 
 # A host's hierarchy: an application base with no members, an intermediate base
 # under it, and the actions that run.
@@ -49,10 +49,7 @@ RbsChainPastAnonymous = Class.new(Class.new(RbsChainApplicationAction))
 RSpec.describe Actionable::RBS, 'superclass chain' do
   # The gem's own signatures, plus field_struct's, as a host's environment has.
   def base_environment
-    loader = RBS::EnvironmentLoader.new
-    loader.add(path: Pathname(File.expand_path('../../sig', __dir__)))
-    loader.add(path: Pathname(Gem.loaded_specs.fetch('field_struct').full_gem_path).join('sig'))
-    RBS::Environment.from_loader(loader)
+    RbsEnvironment.base
   end
 
   # Each action's RBS in a file of its own, as a host writes them.

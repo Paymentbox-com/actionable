@@ -51,7 +51,7 @@ RSpec.describe Actionable::RBS do
     it 'emits typed, nullability-aware output accessors' do
       expect(rbs).to include('attr_reader invoice: ::String')
       expect(rbs).to include('attr_reader paid: bool?')
-      expect(rbs).to include('attr_reader lines: ::Array[::String]')
+      expect(rbs).to include('attr_reader lines: ::Array[::String?]')
     end
 
     it 'emits result-delegation methods for the declared output fields' do

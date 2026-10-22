@@ -5,10 +5,18 @@ module Actionable
   # (decision D13). Sord covers the library's static classes, but it can't see
   # +CreateInvoice.run(amount:)+ or +result.invoice+: those depend on the
   # action's declared +input+/+output+ schemas. This walks those schemas (via
-  # FieldStruct's metadata and +ruby_type+ mapping) and emits:
+  # FieldStruct's metadata and +FieldStruct::RBS.type_for+) and emits:
   #
   # * a typed +.run+ signature from the input schema (or +(*untyped)+ when
-  #   free-form);
+  #   free-form), with an overload taking a built input struct;
+  # * for a fixed +input+ schema, a nested +InputSchema+ struct and a typed
+  #   +#input+ reader returning it. Like +Output+ and +Result+ it exists only
+  #   in RBS, so generation raises +ArgumentError+ when Ruby already resolves
+  #   +Action::InputSchema+;
+  # * a nullable instance variable per output field (+@total: ::Integer?+),
+  #   so steps that assign it type-check. The generated RBS owns these: a
+  #   host sig must not declare them again, since RBS rejects an instance
+  #   variable declared twice;
   # * a nested +Output+ struct with a typed accessor per output field;
   # * a nested +Result+ with +output+ and the convenience-delegation readers,
   #   which +.run+ returns;
@@ -35,6 +43,10 @@ module Actionable
   #   puts Actionable::RBS.generate(CreateInvoice)
   #   # class CreateInvoice < ::Actionable::Action
   #   #   def self.run: (amount: ::Integer) -> Result
+  #   #               | (InputSchema input) -> Result
+  #   #   def input: () -> InputSchema
+  #   #   @invoice: ::String?
+  #   #   class InputSchema < ::FieldStruct::Base ... end
   #   #   class Output < ::FieldStruct::Base ... end
   #   #   class Result < ::Actionable::Result ... end
   #   # end
@@ -43,28 +55,60 @@ module Actionable
   # {Actionable::Action} is declared before it, member-less, so the output
   # resolves without the host generating its abstract bases.
   #
-  # The emitted +Result+/+Output+ are generated type aids: at runtime +.run+
-  # returns a {Success}/{Failure}/{Skipped} that responds to these via output
-  # delegation. Referenced field types appear as qualified names (+::Invoice+) —
-  # generate RBS for those (e.g. via +FieldStruct::RBS+) so they resolve.
+  # The emitted +Result+/+Output+/+InputSchema+ are generated type aids: at
+  # runtime +.run+ returns a {Success}/{Failure}/{Skipped} that responds to
+  # these via output delegation, and the schemas are anonymous classes. Field
+  # types come from +FieldStruct::RBS.type_for+, so they match FieldStruct's own
+  # generator, and describe a valid instance. Referenced field types appear as
+  # qualified names (+::Invoice+) — generate RBS for those (e.g. via
+  # +FieldStruct::RBS+) so they resolve.
   module RBS
-    # @return [Array<Class>]
-    BOOL_CLASSES = [TrueClass, FalseClass].freeze
-    private_constant :BOOL_CLASSES
-
     # Generate RBS source for a user action class.
     #
     # @param klass [Class<Actionable::Action>]
     # @return [String] RBS for the action, wrapped in its module nesting
-    # @raise [ArgumentError] when +klass+ is not a named {Actionable::Action} subclass
+    # @raise [ArgumentError] when +klass+ is not a named {Actionable::Action}
+    #   subclass, or declares a fixed +input+ schema while Ruby already
+    #   resolves +klass::InputSchema+
     def self.generate(klass)
       unless klass.is_a?(::Class) && klass < Actionable::Action
         raise ArgumentError, "Actionable::RBS.generate expects an Actionable::Action subclass, got #{klass.inspect}"
       end
       raise ArgumentError, 'cannot generate RBS for an anonymous action' unless klass.name
 
+      check_input_schema_name!(klass)
       ancestor_blocks(klass) + wrap_namespace(klass.name, class_block(klass))
     end
+
+    # The generated input type is named +InputSchema+, nested in the action.
+    # It exists only in RBS, so a Ruby constant that +klass::InputSchema+
+    # already resolves to (on the action, an ancestor class or an included
+    # module; +Object+'s top-level constants don't resolve through +klass::+)
+    # would make the RBS name lie.
+    #
+    # @param klass [Class<Actionable::Action>]
+    # @return [void]
+    # @raise [ArgumentError] when +klass+ has a fixed input schema and Ruby
+    #   already resolves +klass::InputSchema+
+    def self.check_input_schema_name!(klass)
+      return unless input_schema_class?(klass)
+
+      owner = klass.ancestors.take_while { |mod| mod != ::Object }.find { |mod| mod.const_defined?(:InputSchema, false) }
+      return unless owner
+
+      raise ArgumentError,
+        "#{klass.name}::InputSchema is already defined (in #{owner.name || owner.inspect}); " \
+        'Actionable::RBS.generate names the generated input type InputSchema, so rename that constant'
+    end
+    private_class_method :check_input_schema_name!
+
+    # @param klass [Class<Actionable::Action>]
+    # @return [Boolean] whether the generated RBS declares +InputSchema+: for a
+    #   fixed +input+ schema, not a discriminated +input_for+ one
+    def self.input_schema_class?(klass)
+      !klass.input_schema.nil? && klass.input_dispatch.nil?
+    end
+    private_class_method :input_schema_class?
 
     # Declares every named ancestor between +klass+ and {Actionable::Action},
     # so the action's superclass resolves on its own: a host often never
@@ -128,18 +172,12 @@ module Actionable
     def self.class_block(klass)
       return typed_class_block(klass) if klass.typed_outcomes?
 
-      aliases = []
-      aliases << failure_code_alias(klass) unless klass.declared_failures.empty?
-      aliases << skip_code_alias(klass) unless klass.declared_skips.empty?
-      body = ["def self.run: #{run_signature(klass)}"]
-      body.unshift(*aliases, '') unless aliases.empty?
+      sections = leading_sections(klass, klass.output_schema ? 'Result' : '::Actionable::Result')
       if (schema = klass.output_schema)
-        body << ''
-        body << output_block(schema)
-        body << ''
-        body << result_block(schema)
+        sections << output_block(schema)
+        sections << result_block(schema)
       end
-      "#{class_head(klass)}\n#{indent(body.join("\n"))}\nend"
+      "#{class_head(klass)}\n#{indent(sections.join("\n\n"))}\nend"
     end
     private_class_method :class_block
 
@@ -148,18 +186,46 @@ module Actionable
     # @param klass [Class<Actionable::Action>]
     # @return [String]
     def self.typed_class_block(klass)
-      aliases = []
-      aliases << failure_code_alias(klass) unless klass.declared_failures.empty?
-      aliases << skip_code_alias(klass) unless klass.declared_skips.empty?
-      sections = []
-      sections << aliases.join("\n") unless aliases.empty?
-      sections << "def self.run: #{run_signature(klass, return_type: "(Success | Skipped | Failure)")}"
+      sections = leading_sections(klass, '(Success | Skipped | Failure)')
       sections << output_block(klass.output_schema) if klass.output_schema
       outcome_schemas(klass).each { |name, schema| sections << output_block(schema, name) }
       sections.concat(outcome_blocks(klass))
       "#{class_head(klass)}\n#{indent(sections.join("\n\n"))}\nend"
     end
     private_class_method :typed_class_block
+
+    # The sections every action's class block opens with: the code aliases,
+    # +.run+, the typed +#input+ reader, the output instance variables, and the
+    # +InputSchema+ class.
+    #
+    # @param klass [Class<Actionable::Action>]
+    # @param return_type [String] what +.run+ returns
+    # @return [Array<String>]
+    def self.leading_sections(klass, return_type)
+      aliases = []
+      aliases << failure_code_alias(klass) unless klass.declared_failures.empty?
+      aliases << skip_code_alias(klass) unless klass.declared_skips.empty?
+      sections = []
+      sections << aliases.join("\n") unless aliases.empty?
+      sections << "def self.run: #{run_signature(klass, return_type: return_type)}"
+      sections << 'def input: () -> InputSchema' if input_schema_class?(klass)
+      sections << output_ivar_lines(klass.output_schema).join("\n") if klass.output_schema&.metadata&.any?
+      sections << output_block(klass.input_schema, 'InputSchema') if input_schema_class?(klass)
+      sections
+    end
+    private_class_method :leading_sections
+
+    # One instance variable per output field, which steps assign and the
+    # {Runner} captures into the output. Each is nullable: it is unset until a
+    # step assigns it. The generator owns these declarations, since RBS rejects
+    # the same instance variable declared in two files.
+    #
+    # @param schema [Class<FieldStruct::Base>] the success output schema
+    # @return [Array<String>]
+    def self.output_ivar_lines(schema)
+      schema.metadata.map { |field| "@#{field.name}: #{FieldStruct::RBS.type_for(field, nullable: true)}" }
+    end
+    private_class_method :output_ivar_lines
 
     # The nested output class of every skip, then every failure, code that
     # declares an output schema, named after the code.
@@ -213,9 +279,13 @@ module Actionable
       fields = Hash.new { |hash, name| hash[name] = [] }
       schemas.each { |schema| schema.metadata.each { |field| fields[field.name] << field } }
       fields.map do |name, declared|
-        types = declared.map { |field| type_expr(field.type_instance, field.options) }.uniq
-        type = types.one? ? types.first : "(#{types.join(" | ")})"
-        "def #{name}: () -> #{type}#{"?" if nullable || declared.any? { |field| !field.required? }}"
+        types = declared.map { |field| rbs_type(field, nullable: false) }.uniq
+        type = if types.include?('untyped') then 'untyped'
+               elsif types.one? then types.first
+               else "(#{types.join(" | ")})"
+               end
+        type = nullable(type) if nullable || declared.any? { |field| !field.required? }
+        "def #{name}: () -> #{type}"
       end
     end
     private_class_method :delegator_lines
@@ -278,12 +348,15 @@ module Actionable
     # @param klass [Class<Actionable::Action>]
     # @param return_type [String] what +.run+ returns
     # @return [String] the +.run+ signature: typed kwargs from the input schema
-    #   (or +(*untyped)+ free-form), returning the generated +Result+ when an
-    #   output schema is declared, else +::Actionable::Result+.
-    def self.run_signature(klass, return_type: klass.output_schema ? 'Result' : '::Actionable::Result')
+    #   (or +(*untyped)+ free-form), plus an overload taking a built
+    #   +InputSchema+ instance, which +.run+ passes through
+    def self.run_signature(klass, return_type:)
       schema = klass.input_schema
       params = schema ? schema.metadata.map { |field| run_param(field) }.join(', ') : '*untyped'
-      "(#{params}) -> #{return_type}"
+      signature = "(#{params}) -> #{return_type}"
+      return signature unless input_schema_class?(klass)
+
+      "#{signature}\n            | (InputSchema input) -> #{return_type}"
     end
     private_class_method :run_signature
 
@@ -308,18 +381,22 @@ module Actionable
     # @return [String] +name: Type+ (required) or +?name: Type+ (optional). The
     #   +?+ prefix carries optionality, so the type itself is not made nullable.
     def self.run_param(field)
-      "#{"?" unless field.required?}#{field.name}: #{type_expr(field.type_instance, field.options)}"
+      "#{"?" unless field.required?}#{field.name}: #{rbs_type(field, nullable: false)}"
     end
     private_class_method :run_param
 
-    # @param schema [Class<FieldStruct::Base>] the output schema
+    # A nested struct class with FieldStruct's reader and writer shape: the
+    # reader nullable when optional, the writer +(T? value) -> T?+.
+    #
+    # @param schema [Class<FieldStruct::Base>] an output or input schema
     # @param name [String] the nested class name
-    # @return [String] the nested output class block
+    # @return [String] the nested class block
     def self.output_block(schema, name = 'Output')
       lines = ["class #{name} < ::FieldStruct::Base"]
       schema.metadata.each do |field|
+        writer = rbs_type(field, nullable: true)
         lines << "  attr_reader #{field.name}: #{rbs_type(field)}"
-        lines << "  def #{field.name}=: (untyped value) -> untyped"
+        lines << "  def #{field.name}=: (#{writer} value) -> #{writer}"
       end
       lines << 'end'
       lines.join("\n")
@@ -336,50 +413,23 @@ module Actionable
     end
     private_class_method :result_block
 
+    # The field's RBS type, as FieldStruct's own generator emits it: made
+    # nullable when optional, or as +nullable+ says (D13).
+    #
     # @param field [FieldStruct::Field]
-    # @return [String] the field's RBS type, made nullable when optional
-    def self.rbs_type(field)
-      base = type_expr(field.type_instance, field.options)
-      field.required? ? base : "#{base}?"
+    # @param nullable [Boolean, nil] +nil+ follows the field's optionality
+    # @return [String]
+    def self.rbs_type(field, nullable: nil)
+      FieldStruct::RBS.type_for(field, nullable: nullable)
     end
     private_class_method :rbs_type
 
-    # Map a FieldStruct type (plus options, for arrays) to an RBS type — reusing
-    # FieldStruct's +ruby_type+ for the field → Ruby class mapping (D13).
-    #
-    # @param type_instance [FieldStruct::Types::Base]
-    # @param options [Hash{Symbol=>Object}]
-    # @return [String]
-    def self.type_expr(type_instance, options)
-      return "::Array[#{element_expr(options[:of_type])}]" if type_instance.is_a?(FieldStruct::Types::Array)
-
-      ruby_type = type_instance.ruby_type
-      classes = ruby_type.is_a?(::Array) ? ruby_type : [ruby_type]
-      return 'bool' if classes.sort_by(&:name) == BOOL_CLASSES.sort_by(&:name)
-
-      mapped = classes.map { |klass| class_to_rbs(klass) }.uniq
-      mapped.one? ? mapped.first : "(#{mapped.join(" | ")})"
+    # @param type [String] an RBS type expression
+    # @return [String] +type+ made nullable, unless it already admits +nil+
+    def self.nullable(type)
+      type == 'untyped' || type.end_with?('?') ? type : "#{type}?"
     end
-    private_class_method :type_expr
-
-    # @param of_type [Class, FieldStruct::Types::Base, nil] an array's element type
-    # @return [String]
-    def self.element_expr(of_type)
-      return 'untyped' if of_type.nil?
-
-      instance = of_type.is_a?(::Class) ? of_type.new : of_type
-      type_expr(instance, {})
-    end
-    private_class_method :element_expr
-
-    # @param klass [Class] a Ruby class from a +ruby_type+
-    # @return [String] qualified RBS name, or +untyped+ for the value type's +::Object+
-    def self.class_to_rbs(klass)
-      return 'untyped' if klass == ::Object
-
-      "::#{klass.name}"
-    end
-    private_class_method :class_to_rbs
+    private_class_method :nullable
 
     # Wrap a class block in the nesting implied by its qualified name,
     # indenting two spaces per level. A namespace that is a class opens as

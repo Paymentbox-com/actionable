@@ -460,8 +460,8 @@ affordances instead of guessing:
   steps, and hooks without reading its source.
 - `Actionable.registry` — enumerate registered actions (`keys`, `values`, `[]`,
   `each`).
-- `Actionable::RBS.generate(Klass)` — emit RBS for an action's typed `.run` and
-  output accessors (Steep / Solargraph).
+- `Actionable::RBS.generate(Klass)` — emit RBS for an action's typed `.run`,
+  `input`, output instance variables and output accessors (Steep / Solargraph).
 - `result.errors.full_messages` — validation errors as complete sentences.
 - `result.to_h` / `result.to_api_h(index:)` — a plain-Hash or HTTP-element view
   of a result, so controllers and batch endpoints don't hand-map the shape.
