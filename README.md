@@ -12,9 +12,14 @@ run returns a single value object — a `Success`, `Failure`, or `Skipped` — w
 
 ## Installation
 
+Actionable isn't on rubygems.org yet (the `actionable` gem there is an
+unrelated 2014 project), and neither is its `field_struct` dependency. Install
+both from GitHub, pinned to a release tag:
+
 ```ruby
 # Gemfile
-gem 'actionable'
+gem 'field_struct', git: 'https://github.com/Paymentbox-com/field_struct', tag: 'v0.10.0'
+gem 'actionable',   git: 'https://github.com/Paymentbox-com/actionable',   tag: 'v1.5.1'
 ```
 
 Requires Ruby 3.2+.
@@ -174,6 +179,11 @@ skipped.code     # => :not_ready
 skipped.metadata # => {retry: true}
 Reindex.declared_skips # => {not_ready: {retry: true}}
 ```
+
+Metadata is yours to interpret: the gem stores and returns it but never acts
+on it (decisions D20/D21). In particular `Actionable::Job` acks every skip;
+`retry: true` above does not make a job retry. Read `result.metadata` in your
+job, or list permanent failure codes with `actionable_permanent_codes`.
 
 Once an action declares any skip code, a `skip` with an undeclared one raises
 `Actionable::DefinitionError`, and that includes the default `:skipped`. See

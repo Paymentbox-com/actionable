@@ -505,7 +505,10 @@ The path mirrors the constant (`app/actions/billing/settle_invoice.rb` ↔
 
 `transactional` wraps the whole run in `model.transaction`. A success commits; a
 **recorded failure or a raised exception rolls back**; a skip commits (there's
-nothing to undo).
+nothing to undo). The lifecycle hooks run **inside** the transaction too: a
+write in `on_failure` rolls back with the rest, and an email or webhook sent
+from `on_success` fires before the commit. Keep external side effects out of
+hooks, or enqueue them so they run after the commit.
 
 ```ruby
 class Billing::SettleInvoice < Actionable::Action
@@ -558,4 +561,4 @@ end
 
 - [`USAGE.md`](../USAGE.md) — every step type, option, and macro on one page.
 - [`README.md`](../README.md) — the feature tour.
-- `docs/origin/plan.md` — the design rationale and locked decisions (D1–D18).
+- `docs/origin/plan.md` — the design rationale and locked decisions (D1–D23).
