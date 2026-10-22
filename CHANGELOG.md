@@ -39,6 +39,7 @@
 ### Changed
 
 - **Optional `.run` keywords are nullable in generated RBS** (`?note: ::String?`): an optional field may be passed `nil` explicitly, and the run succeeds.
+- **A required input field with a default is an optional `.run` keyword** (`?amount: ::Integer`), since `run` succeeds without it. An action whose input is chosen by an `input_for` dispatch (including one inherited under a fixed `input`) gets `.run: (*untyped)`, since the dispatch decides the keywords at run time.
 - **Requires field_struct >= 0.12.** The generator now takes every field type
   from `FieldStruct::RBS.type_for` instead of its own copy of the mapping, so
   generated action RBS matches `FieldStruct::RBS.generate`. Consumer-visible

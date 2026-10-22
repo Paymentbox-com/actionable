@@ -223,4 +223,34 @@ RSpec.describe Actionable::RBS, 'typed input and output ivars' do
   it 'ignores an InputSchema constant when the action declares no input schema' do
     expect { described_class.generate(RbsIoNoInputCollision) }.not_to raise_error
   end
+
+  it 'types .run loosely when an inherited input_for dispatch overrides a fixed input' do
+    shape = Class.new(FieldStruct::Base) do
+      required :kind, :string
+      required :x, :integer
+    end
+    parent = Class.new(Actionable::Action) do
+      input_for(:kind) { on 'a', shape }
+      step :go
+      define_method(:go) { nil }
+    end
+    stub_const('RbsIoDispatchParent', parent)
+    child = Class.new(RbsIoDispatchParent) { input { required :y, :string } }
+    stub_const('RbsIoDispatchChild', child)
+
+    expect(RbsIoDispatchChild.run(kind: 'a', x: 1)).to be_success
+    expect(described_class.generate(RbsIoDispatchChild)).to include('def self.run: (*untyped) -> ::Actionable::Result')
+  end
+
+  it 'makes a required field with a default an optional .run keyword' do
+    klass = Class.new(Actionable::Action) do
+      input { required :amount, :integer, default: 5 }
+      step :go
+      define_method(:go) { nil }
+    end
+    stub_const('RbsIoDefaulted', klass)
+
+    expect(RbsIoDefaulted.run).to be_success
+    expect(described_class.generate(RbsIoDefaulted)).to include('def self.run: (?amount: ::Integer) -> ::Actionable::Result')
+  end
 end

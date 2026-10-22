@@ -351,7 +351,9 @@ module Actionable
     #   (or +(*untyped)+ free-form), plus an overload taking a built
     #   +InputSchema+ instance, which +.run+ passes through
     def self.run_signature(klass, return_type:)
-      schema = klass.input_schema
+      # An input_for dispatch decides the input at run time, even under a
+      # fixed input schema, so its keywords can't be listed.
+      schema = klass.input_schema if klass.input_dispatch.nil?
       params = schema ? schema.metadata.map { |field| run_param(field) }.join(', ') : '*untyped'
       signature = "(#{params}) -> #{return_type}"
       return signature unless input_schema_class?(klass)
@@ -378,10 +380,12 @@ module Actionable
     private_class_method :skip_code_alias
 
     # @param field [FieldStruct::Field]
-    # @return [String] +name: Type+ (required) or +?name: Type?+ (optional): an
-    #   optional field may be omitted or passed +nil+ (+run(note: nil)+ succeeds).
+    # @return [String] +name: Type+ (required), +?name: Type+ (required with a
+    #   default, so it may be omitted) or +?name: Type?+ (optional: it may be
+    #   omitted or passed +nil+; +run(note: nil)+ succeeds).
     def self.run_param(field)
-      "#{"?" unless field.required?}#{field.name}: #{rbs_type(field)}"
+      omittable = !field.required? || !field.default.nil?
+      "#{"?" if omittable}#{field.name}: #{rbs_type(field)}"
     end
     private_class_method :run_param
 
