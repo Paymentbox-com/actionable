@@ -6,8 +6,9 @@ source 'https://rubygems.org'
 gemspec
 
 # Pull field_struct from GitHub rather than RubyGems (overrides the
-# gemspec runtime dependency for development/CI).
-gem 'field_struct', git: 'https://github.com/Paymentbox-com/field_struct'
+# gemspec runtime dependency for development/CI). Pinned to a release tag so
+# CI doesn't resolve whatever field_struct's default branch holds that day.
+gem 'field_struct', git: 'https://github.com/Paymentbox-com/field_struct', tag: 'v0.10.0'
 
 gem 'rake', '~> 13.0'
 gem 'rspec', '~> 3.0'
