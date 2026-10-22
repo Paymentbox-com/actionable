@@ -128,4 +128,110 @@ RSpec.describe 'Actionable typed output' do
       expect(klass.run.output).to eq({})
     end
   end
+
+  describe 'succeed/skip kwargs across lifecycle hooks' do
+    it 'keeps succeed kwargs after an on_success hook refreshes the output' do
+      klass = Class.new(Actionable::Action) do
+        output { required :id, :integer }
+        define_method(:go) { succeed('ok', id: 7) }
+        define_method(:notify) { nil }
+        step :go
+        on_success :notify
+      end
+
+      result = klass.run
+
+      expect(result).to be_success
+      expect(result.output.id).to eq(7)
+    end
+
+    it 'keeps succeed kwargs winning over an ivar after an always hook' do
+      klass = Class.new(Actionable::Action) do
+        output { required :total, :integer }
+        define_method(:go) do
+          @total = 1
+          succeed(total: 99)
+        end
+        define_method(:log) { nil }
+        step :go
+        always :log
+      end
+
+      result = klass.run
+
+      expect(result.output.total).to eq(99)
+    end
+
+    it 'keeps skip kwargs after a hook' do
+      klass = Class.new(Actionable::Action) do
+        output { optional :reason, :string }
+        define_method(:go) { skip(:duplicate, nil, reason: 'seen') }
+        define_method(:log) { nil }
+        step :go
+        always :log
+      end
+
+      expect(klass.run.output.reason).to eq('seen')
+    end
+  end
+
+  describe 'the invalid output of a Failure(:invalid_output) across hooks' do
+    it 'keeps the output that failed validation, kwargs included' do
+      klass = Class.new(Actionable::Action) do
+        output do
+          required :id, :integer
+          required :name, :string
+        end
+        define_method(:go) do
+          @id = 3
+          succeed(id: 7)
+        end
+        define_method(:log) { nil }
+        step :go
+        always :log
+      end
+
+      result = klass.run
+
+      expect(result.code).to eq(:invalid_output)
+      expect(result.output.id).to eq(7)
+      expect(result.errors.to_h).to eq(name: ['is required'], output: ['is invalid'])
+    end
+  end
+
+  describe 'best-effort output on a non-typed failure or skip' do
+    it 'adds no output error to a failure' do
+      klass = Class.new(Actionable::Action) do
+        output { required :total, :integer }
+        define_method(:go) { fail!(:nope) }
+        step :go
+      end
+
+      result = klass.run
+
+      expect(result.code).to eq(:nope)
+      expect(result.errors.to_h).to be_empty
+      expect(result.errors.full_messages).to be_empty
+    end
+
+    it 'adds no output error to a skip' do
+      klass = Class.new(Actionable::Action) do
+        output { required :total, :integer }
+        define_method(:go) { skip!(:dup) }
+        step :go
+      end
+
+      expect(klass.run.errors.to_h).to be_empty
+    end
+
+    it 'keeps errors the failure recorded itself' do
+      klass = Class.new(Actionable::Action) do
+        output { required :total, :integer }
+        define_method(:go) { fail!(:invalid, nil, amount: ['is negative']) }
+        step :go
+      end
+
+      expect(klass.run.errors.to_h).to eq(amount: ['is negative'])
+    end
+  end
 end

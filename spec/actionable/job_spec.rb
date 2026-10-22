@@ -102,4 +102,17 @@ RSpec.describe Actionable::Job do
       expect(result.code).to eq(:timeout)
     end
   end
+
+  describe 'a run whose hook calls fail!' do
+    it 'is not acked' do
+      klass = Class.new(Actionable::Action) do
+        step :go
+        on_success :verify
+        def go = nil
+        def verify = fail!(:timeout)
+      end
+
+      expect(described_class.disposition(klass.run)).to eq(:retry)
+    end
+  end
 end

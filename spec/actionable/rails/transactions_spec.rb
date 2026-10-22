@@ -116,4 +116,21 @@ RSpec.describe 'Actionable::Rails transactional macro' do
 
     expect(klass.run).to be_success
   end
+
+  it 'rolls back when an on_success hook calls fail!' do
+    stub = model
+    klass = Class.new(Actionable::Action) do
+      transactional model: stub
+      define_method(:write) { nil }
+      define_method(:verify) { fail!(:verification_failed) }
+      step :write
+      on_success :verify
+    end
+
+    result = klass.run
+
+    expect(result.code).to eq(:verification_failed)
+    expect(stub.rolled_back).to be(true)
+    expect(stub.committed).to be(false)
+  end
 end

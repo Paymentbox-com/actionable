@@ -471,8 +471,12 @@ end
 ```
 
 Dispatch is by the post-main outcome and does not re-dispatch. Hooks may use the
-control-flow verbs; `halt!` in a hook stops the remaining hooks. Output is
-re-captured and re-validated after each hook.
+control-flow verbs. A bang verb in a hook (`fail!`, `skip!`, `succeed!`) records
+its result *and* stops the remaining hooks, so `fail!(:verification_failed)` in
+`on_success` makes the run a `Failure` (and rolls back a `transactional` action);
+`halt!` stops the remaining hooks and keeps the current result. Output is
+re-captured and re-validated after each hook, and `succeed`/`skip` kwargs keep
+winning over ivars on every refresh.
 
 ## Nested actions
 
