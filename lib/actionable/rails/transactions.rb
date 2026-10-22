@@ -14,7 +14,12 @@ module Actionable
       # Wrap this action's run in +model.transaction(**options)+.
       #
       #   transactional model: :invoice
-      #   transactional model: Invoice, requires_new: true
+      #   transactional model: Invoice, requires_new: false # join an outer one
+      #
+      # Run inside a transaction that is already open, the action gets its own
+      # savepoint (+requires_new: true+) unless +requires_new:+ is given, so a
+      # recorded +Failure+ rolls back its own writes rather than leaving them for
+      # the outer transaction to commit.
       #
       # @param model [Symbol, Class] the model whose +transaction+ is used; a
       #   Symbol is resolved to a constant (+:invoice+ → +Invoice+)
@@ -46,7 +51,8 @@ module Actionable
         return super unless config
 
         result = nil
-        resolve_model(config[:model]).transaction(**config[:options]) do
+        model = resolve_model(config[:model])
+        model.transaction(**transaction_options(model, config[:options])) do
           result = super
           raise Rollback if result.failure?
         end
@@ -61,6 +67,21 @@ module Actionable
       def transaction_config
         klass = @instance.class
         klass.respond_to?(:transaction_config) ? klass.transaction_config : nil
+      end
+
+      # The configured options, plus +requires_new: true+ when a transaction is
+      # already open and the action did not say otherwise. Joining the outer
+      # transaction would swallow this run's rollback, so a recorded failure's
+      # writes would commit with it (decision D9).
+      #
+      # @param model [Class]
+      # @param options [Hash{Symbol=>Object}]
+      # @return [Hash{Symbol=>Object}]
+      def transaction_options(model, options)
+        return options if options.key?(:requires_new)
+        return options unless model.respond_to?(:connection) && model.connection.transaction_open?
+
+        options.merge(requires_new: true)
       end
 
       # @param model [Symbol, Class]

@@ -4,6 +4,12 @@
 
 ### Fixed
 
+- **A failed `transactional` action inside an outer transaction no longer
+  commits its writes.** It joined the outer transaction, whose commit ignored
+  the action's rollback, so a recorded `Failure` still committed its rows
+  (measured on ActiveRecord 8.1 + SQLite). Inside an open transaction the action
+  now takes its own savepoint (`requires_new: true`) unless `requires_new:` is
+  given; `requires_new: false` keeps the old joining behaviour.
 - **A nested action no longer wipes parent ivars it never set.** Absorbing a
   successful or skipped child copied every declared output field, so a field
   the child left nil (or at its default) overwrote the parent's value. Only

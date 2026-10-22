@@ -6,8 +6,9 @@ source 'https://rubygems.org'
 gemspec
 
 # Pull field_struct from GitHub rather than RubyGems (overrides the
-# gemspec runtime dependency for development/CI).
-gem 'field_struct', git: 'https://github.com/Paymentbox-com/field_struct'
+# gemspec runtime dependency for development/CI). Pinned to a release tag so
+# CI doesn't resolve whatever field_struct's default branch holds that day.
+gem 'field_struct', git: 'https://github.com/Paymentbox-com/field_struct', tag: 'v0.10.0'
 
 gem 'rake', '~> 13.0'
 gem 'rspec', '~> 3.0'
@@ -17,6 +18,10 @@ gem 'simplecov', '~> 0.22', require: false
 # Exercises the optional Rails adapter (actionable/rails) in adapter specs.
 # The core never loads active_*; this is dev/test only (decisions D8/D9).
 gem 'activemodel', '~> 8.0', require: false
+# Real ActiveRecord + in-memory SQLite for transaction specs that a stub model
+# cannot express (savepoints inside an outer transaction).
+gem 'activerecord', '~> 8.0', require: false
+gem 'sqlite3', '~> 2.0', require: false
 
 # Type signatures + docs (decision D13)
 gem 'rbs', '~> 3.0', require: false
