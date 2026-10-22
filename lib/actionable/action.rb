@@ -17,10 +17,12 @@ module Actionable
     # (a success's output failed validation). An action that declares failures
     # with {.fails} may still end with these without declaring them (decision
     # D20); declaring one only attaches metadata to it.
+    # @return [Array<Symbol>]
     GEM_FAILURE_CODES = %i[invalid_input invalid_output].freeze
 
     # Ruby's core classes, whose methods (+puts+, +exit+, +hash+…) never count
     # as an action implementing a step or hook.
+    # @return [Array<Module>]
     CORE_METHOD_OWNERS = [Kernel, Object, BasicObject].freeze
 
     class << self
@@ -37,6 +39,7 @@ module Actionable
       # (so delegation silently breaks) or with the action's reserved instance
       # variables (+@result+ / +@input+, which the runner reads). Declaring one
       # raises a {DefinitionError} (decisions D18/D20).
+      # @return [Array<Symbol>]
       RESERVED_OUTPUT_FIELDS = %i[code message output history errors metadata result input].freeze
 
       # Declare the action's typed output schema, or read it back.
@@ -141,7 +144,7 @@ module Actionable
       #
       # @param code [Symbol, String] the failure code
       # @param message [String, nil] the default message for this code
-      # @param metadata [Hash{Symbol=>Object}] per-code metadata, passed through
+      # @param metadata [Object] per-code metadata, passed through
       # @yield the FieldStruct field declarations of this code's output
       # @raise [DefinitionError] when an output field name is reserved
       # @return [Hash{Symbol=>Hash{Symbol=>Object}}] {.declared_failures}
@@ -210,7 +213,7 @@ module Actionable
       #
       # @param code [Symbol, String] the skip code
       # @param message [String, nil] the default message for this code
-      # @param metadata [Hash{Symbol=>Object}] per-code metadata, passed through
+      # @param metadata [Object] per-code metadata, passed through
       # @yield the FieldStruct field declarations of this code's output
       # @raise [DefinitionError] when an output field name is reserved
       # @return [Hash{Symbol=>Hash{Symbol=>Object}}] {.declared_skips}
@@ -230,6 +233,7 @@ module Actionable
 
       # The gem result class each outcome {Result#status} stands for, which an
       # action with typed outcomes subclasses once per outcome (decision D23).
+      # @return [Hash{Symbol=>Class<Result>}]
       OUTCOME_BASES = {success: Success, failure: Failure, skipped: Skipped}.freeze
 
       # Turn typed outcomes on (or off) for this action and its descendants
@@ -286,7 +290,7 @@ module Actionable
       # String names an instance method — a {Steps::Method}).
       #
       # @param target [Symbol, String] the step target
-      # @param options [Hash{Symbol=>Object}] step options (e.g. +:if+, +:unless+)
+      # @param options [Object] step options (e.g. +:if+, +:unless+)
       # @return [Set<Steps::Base>] the updated step set
       def step(target, **options)
         steps << Steps.build(target, **options)
@@ -318,7 +322,7 @@ module Actionable
 
       # Declare a hook that runs at the end of a run iff it succeeded (D2).
       # @param target [Symbol, String] the instance method to run
-      # @param options [Hash{Symbol=>Object}] step options (e.g. +:if+)
+      # @param options [Object] step options (e.g. +:if+)
       # @return [Set<Steps::Base>]
       def on_success(target, **options)
         success_hooks << Steps.build(target, **options)
@@ -326,7 +330,7 @@ module Actionable
 
       # Declare a hook that runs at the end of a run iff it failed (D2).
       # @param target [Symbol, String] the instance method to run
-      # @param options [Hash{Symbol=>Object}] step options (e.g. +:if+)
+      # @param options [Object] step options (e.g. +:if+)
       # @return [Set<Steps::Base>]
       def on_failure(target, **options)
         failure_hooks << Steps.build(target, **options)
@@ -334,7 +338,7 @@ module Actionable
 
       # Declare a hook that runs at the end of a run iff it was skipped (D17).
       # @param target [Symbol, String] the instance method to run
-      # @param options [Hash{Symbol=>Object}] step options (e.g. +:if+)
+      # @param options [Object] step options (e.g. +:if+)
       # @return [Set<Steps::Base>]
       def on_skip(target, **options)
         skip_hooks << Steps.build(target, **options)
@@ -342,7 +346,7 @@ module Actionable
 
       # Declare a hook that runs at the end of a run regardless of outcome (D2).
       # @param target [Symbol, String] the instance method to run
-      # @param options [Hash{Symbol=>Object}] step options (e.g. +:if+)
+      # @param options [Object] step options (e.g. +:if+)
       # @return [Set<Steps::Base>]
       def always(target, **options)
         always_hooks << Steps.build(target, **options)
@@ -358,7 +362,7 @@ module Actionable
       #   end
       #
       # @param value_source [Symbol, String] the method whose value is switched on
-      # @param options [Hash{Symbol=>Object}] step options (e.g. +:if+, +:unless+)
+      # @param options [Object] step options (e.g. +:if+, +:unless+)
       # @yield the branch declarations
       # @return [Set<Steps::Base>] the updated step set
       def case_step(value_source, **options, &block)
@@ -484,6 +488,10 @@ module Actionable
       # Under typed outcomes the result is an instance of the action's own
       # result class for its outcome (decision D23).
       #
+      # @param args [Object] positional arguments: a single input-schema
+      #   instance, or (free-form) whatever the constructor takes
+      # @param kwargs [Object] keyword arguments: the input fields, or
+      #   (free-form) whatever the constructor takes
       # @return [Result] the run's {Success} or {Failure}
       def run(*args, **kwargs)
         typed_result(run_untyped(args, kwargs))
@@ -729,6 +737,8 @@ module Actionable
       # With discriminated input ({.input_for}), the schema is chosen from the
       # discriminator value first; an unmatched value returns a +Failure+.
       #
+      # @param args [Array<Object>] the positional arguments given to {.run}
+      # @param kwargs [Hash{Symbol=>Object}] the keyword arguments given to {.run}
       # @return [FieldStruct::Base, Failure]
       def build_input(args, kwargs)
         return build_dispatched_input(args, kwargs) if input_dispatch
@@ -743,6 +753,8 @@ module Actionable
       # the input the same way {.build_input} does — or return an
       # +:invalid_input+ {Failure} when nothing matches and there's no default.
       #
+      # @param args [Array<Object>] the positional arguments given to {.run}
+      # @param kwargs [Hash{Symbol=>Object}] the keyword arguments given to {.run}
       # @return [FieldStruct::Base, Failure]
       def build_dispatched_input(args, kwargs)
         candidate = args.first
@@ -806,6 +818,9 @@ module Actionable
     # action with no declared input still runs via {.run}. Subclasses override
     # this to capture their inputs (decision D7; typed input lands in a later
     # slice).
+    #
+    # @param _args [Object] ignored
+    # @param _kwargs [Object] ignored
     def initialize(*_args, **_kwargs)
     end
 
@@ -840,8 +855,9 @@ module Actionable
     #
     # @param code [Symbol] the error code
     # @param message [String, nil] human-readable description
-    # @param errors [Hash{Symbol=>String, Array<String>}] field => message(s)
-    #   added to the result's errors collection
+    # @param errors [String, Array<String>, Hash{Symbol=>Object}, FieldStruct::Base] each
+    #   keyword is a field => message(s) added to the result's errors collection;
+    #   under typed outcomes the +output:+ keyword is the failure's output instead
     # @return [false] so a step can branch on the call
     def fail(code, message = nil, **errors)
       output = self.class.typed_outcomes? ? errors.delete(:output) : nil
@@ -897,7 +913,7 @@ module Actionable
     # Record a {Success} as the run's result without halting (decision D4).
     #
     # @param message [String, nil] human-readable description
-    # @param output [Hash{Symbol=>Object}] the success output payload
+    # @param output [Object] the success output payload
     # @return [true] so a step can branch on the call
     def succeed(message = nil, **output)
       @result = Success.new(message: message, output: output)
@@ -909,7 +925,7 @@ module Actionable
     #
     # @param code [Symbol] the error code
     # @param message [String, nil] human-readable description
-    # @param errors [Hash{Symbol=>String, Array<String>}] field => message(s)
+    # @param errors [String, Array<String>, Hash{Symbol=>Object}, FieldStruct::Base] see {#fail}
     # @raise [UncaughtThrowError] never escapes the {Runner}'s halt catch
     # @return [void]
     def fail!(code, message = nil, **errors)
@@ -921,7 +937,7 @@ module Actionable
     # (decision D4).
     #
     # @param message [String, nil] human-readable description
-    # @param output [Hash{Symbol=>Object}] the success output payload
+    # @param output [Object] the success output payload
     # @return [void]
     def succeed!(message = nil, **output)
       succeed(message, **output)
@@ -938,7 +954,7 @@ module Actionable
     #
     # @param code [Symbol] the skip reason; defaults to +:skipped+
     # @param message [String, nil] human-readable description
-    # @param output [Hash{Symbol=>Object}] the skip output payload — captured
+    # @param output [Object] the skip output payload — captured
     #   best-effort like a {Success}'s output, but never validated (decision
     #   D17). Lets an idempotent hit return the existing record's data.
     # @raise [DefinitionError] when the action declares skips but not +code+
@@ -959,7 +975,7 @@ module Actionable
     #
     # @param code [Symbol] the skip reason; defaults to +:skipped+
     # @param message [String, nil] human-readable description
-    # @param output [Hash{Symbol=>Object}] the skip output payload (see {#skip})
+    # @param output [Object] the skip output payload (see {#skip})
     # @return [void]
     def skip!(code = :skipped, message = nil, **output)
       skip(code, message, **output)

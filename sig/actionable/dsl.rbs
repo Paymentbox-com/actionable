@@ -1,0 +1,42 @@
+# Hand-written overloads for the DSL methods whose blocks run with a different
+# +self+. Sord cannot express a block self-type, so the generated
+# sig/actionable.rbs declares these methods without their block; each `| ...`
+# here adds the block form alongside the generated signature rather than
+# replacing it. Keep the non-block shapes in YARD.
+#
+# A schema block (+output+, +input+, +fails+, +skips+) is the body of
+# +Class.new(FieldStruct::Base, &block)+, so +self+ is the new schema class.
+# A branch block (+case_step+, +input_for+) is +instance_eval+'d on a builder.
+module Actionable
+  class Action
+    def self.output: () { (singleton(FieldStruct::Base) schema) [self: singleton(FieldStruct::Base)] -> void } -> singleton(FieldStruct::Base)
+                   | ...
+
+    def self.input: () { (singleton(FieldStruct::Base) schema) [self: singleton(FieldStruct::Base)] -> void } -> singleton(FieldStruct::Base)
+                  | ...
+
+    def self.fails: ((Symbol | String) code, ?String? message, **Object metadata) { (singleton(FieldStruct::Base) schema) [self: singleton(FieldStruct::Base)] -> void } -> ::Hash[Symbol, ::Hash[Symbol, Object]]
+                  | ...
+
+    def self.skips: ((Symbol | String) code, ?String? message, **Object metadata) { (singleton(FieldStruct::Base) schema) [self: singleton(FieldStruct::Base)] -> void } -> ::Hash[Symbol, ::Hash[Symbol, Object]]
+                  | ...
+
+    def self.case_step: ((Symbol | String) value_source, **Object options) { (Steps::Case::Builder builder) [self: Steps::Case::Builder] -> void } -> ::Set[Steps::Base]
+                      | ...
+
+    def self.input_for: ((Symbol | String) discriminator) { (InputDispatch::Builder builder) [self: InputDispatch::Builder] -> void } -> InputDispatch
+                      | ...
+  end
+
+  class InputDispatch
+    def self.define: ((Symbol | String) discriminator) { (Builder builder) [self: Builder] -> void } -> InputDispatch
+                   | ...
+  end
+
+  module Steps
+    class Case
+      def self.define: ((Symbol | String) value_source, **Object options) { (Builder builder) [self: Builder] -> void } -> Case
+                     | ...
+    end
+  end
+end

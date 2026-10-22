@@ -8,7 +8,7 @@ module Actionable
     # block type ({Steps::Case}) joins in a later slice.
     #
     # @param target [Symbol, String, Class<Actionable::Action>] the step target
-    # @param options [Hash{Symbol=>Object}] step options (e.g. +:if+, +:unless+,
+    # @param options [Object] step options (e.g. +:if+, +:unless+,
     #   and for action steps +:input+ / +:expose+)
     # @return [Steps::Base] the constructed step
     # @raise [ArgumentError] when the target's type is not supported

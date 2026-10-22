@@ -32,7 +32,7 @@ module Actionable
         #
         # @param value [Object, Regexp, Array]
         # @param target [Symbol, String, Class<Actionable::Action>]
-        # @param options [Hash{Symbol=>Object}] step options for the target
+        # @param options [Object] step options for the target
         # @return [void]
         def on(value, target, **options)
           @branches << [value, Steps.build(target, **options)]
@@ -41,7 +41,7 @@ module Actionable
         # Register the fallback branch, run when no +on+ branch matches.
         #
         # @param target [Symbol, String, Class<Actionable::Action>]
-        # @param options [Hash{Symbol=>Object}] step options for the target
+        # @param options [Object] step options for the target
         # @return [void]
         def default(target, **options)
           @default_step = Steps.build(target, **options)
@@ -51,7 +51,7 @@ module Actionable
       # Build a case step from a +case_step+ declaration.
       #
       # @param value_source [Symbol, String] the method whose value is switched on
-      # @param options [Hash{Symbol=>Object}] step options (e.g. +:if+, +:unless+)
+      # @param options [Object] step options (e.g. +:if+, +:unless+)
       # @yield the branch declarations (+on+ / +default+)
       # @return [Case]
       def self.define(value_source, **options, &block)
@@ -63,7 +63,7 @@ module Actionable
       # @param value_source [Symbol, String] the method whose value is switched on
       # @param branches [Array<Array(Object, Steps::Base)>] ordered [match, step] pairs
       # @param default_step [Steps::Base, nil] the fallback step
-      # @param options [Hash{Symbol=>Object}] step options
+      # @param options [Object] step options
       def initialize(value_source, branches, default_step, **options)
         super(value_source, **options)
         @branches = branches

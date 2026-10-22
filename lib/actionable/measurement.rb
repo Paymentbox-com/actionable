@@ -21,6 +21,7 @@ module Actionable
 
       # Mark measurement active for the block, so nested runs measure too.
       #
+      # @yieldreturn [Object]
       # @return [Object] the block's value
       def measuring(&)
         with({active: true}, &)
@@ -30,6 +31,7 @@ module Actionable
       # attach its child's history to it.
       #
       # @param record [History::Step]
+      # @yieldreturn [Object]
       # @return [Object] the block's value
       def recording(record, &)
         with({open_step: record}, &)
@@ -37,10 +39,19 @@ module Actionable
 
       private
 
+      # This thread's measurement state: +:active+ and +:open_step+.
+      #
+      # @return [Hash{Symbol=>Object}]
       def store
         Thread.current[:actionable_measurement] ||= {active: false, open_step: nil}
       end
 
+      # Merge +changes+ into the state for the block, restoring it afterwards.
+      #
+      # @param changes [Hash{Symbol=>Object}] the keys to override
+      # @yield the scope the changes apply to
+      # @yieldreturn [Object]
+      # @return [Object] the block's value
       def with(changes)
         previous = store.dup
         store.merge!(changes)

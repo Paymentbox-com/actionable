@@ -5,15 +5,8 @@
 # adapters (+actionable/rails+, +actionable/rspec+) are separate requires and
 # are deliberately NOT loaded here, keeping the core Rails-free.
 module Actionable
-  # Run +block+ inside the halt catch point.
-  # 
-  # Returns the block's value when nothing is thrown, or the value passed with
-  # +throw Actionable::HALT, value+ when the pipeline halts (+nil+ for a bare
-  # +throw Actionable::HALT+). A raised StandardError is deliberately NOT
-  # caught — it propagates to the caller (decision D4).
-  # 
-  # _@return_ — the block's value, or the thrown halt value
-  def catch_halt: () -> Object
+  HALT: Symbol
+  VERSION: String
 
   # Run +block+ inside the halt catch point.
   # 
@@ -23,7 +16,17 @@ module Actionable
   # caught — it propagates to the caller (decision D4).
   # 
   # _@return_ — the block's value, or the thrown halt value
-  def self.catch_halt: () -> Object
+  def catch_halt: () ?{ () -> Object } -> Object
+
+  # Run +block+ inside the halt catch point.
+  # 
+  # Returns the block's value when nothing is thrown, or the value passed with
+  # +throw Actionable::HALT, value+ when the pipeline halts (+nil+ for a bare
+  # +throw Actionable::HALT+). A raised StandardError is deliberately NOT
+  # caught — it propagates to the caller (decision D4).
+  # 
+  # _@return_ — the block's value, or the thrown halt value
+  def self.catch_halt: () ?{ () -> Object } -> Object
 
   # _@return_ — the process-wide action registry
   def self.registry: () -> Registry
@@ -34,6 +37,8 @@ module Actionable
   # swallowed — they propagate so the queue's own retry/backoff handles them
   # (invariant 2).
   module Job
+    DEFAULT_PERMANENT_CODES: ::Array[Symbol]
+
     # Map a result to a queue disposition.
     # 
     # _@param_ `result` — the action's result
@@ -82,8 +87,12 @@ module Actionable
       # 
       # _@param_ `action_class`
       # 
+      # _@param_ `args` — positional arguments, forwarded to +.run+
+      # 
+      # _@param_ `kwargs` — keyword arguments, forwarded to +.run+
+      # 
       # _@return_ — the run's result (for an ack/discard outcome)
-      def run_actionable: (singleton(Actionable::Action) action_class, *untyped args, **untyped kwargs) -> Result
+      def run_actionable: (singleton(Actionable::Action) action_class, *Object args, **Object kwargs) -> Result
 
       # _@return_ — failure codes this job treats as non-retryable;
       # override to customize. Defaults to {DEFAULT_PERMANENT_CODES}.
@@ -137,6 +146,7 @@ module Actionable
   # delegation. Referenced field types appear as qualified names (+::Invoice+) —
   # generate RBS for those (e.g. via +FieldStruct::RBS+) so they resolve.
   module RBS
+
     # Generate RBS source for a user action class.
     # 
     # _@param_ `klass`
@@ -321,7 +331,7 @@ module Actionable
     # _@param_ `options` — step options (e.g. +:if+, +:unless+, and for action steps +:input+ / +:expose+)
     # 
     # _@return_ — the constructed step
-    def self.build: ((Symbol | String | singleton(Actionable::Action)) target, **::Hash[Symbol, Object] options) -> Steps::Base
+    def self.build: ((Symbol | String | singleton(Actionable::Action)) target, **Object options) -> Steps::Base
 
     # Shared behavior for every step: a +name+, an +options+ hash, value
     # identity for Set deduplication (keyed by +[type, name]+, decision D2),
@@ -332,7 +342,7 @@ module Actionable
       # _@param_ `name` — the step name (see {#name})
       # 
       # _@param_ `options` — step options
-      def initialize: (Object name, **::Hash[Symbol, Object] options) -> void
+      def initialize: (Object name, **Object options) -> void
 
       # Run the step against an action instance.
       # 
@@ -400,7 +410,7 @@ module Actionable
       # _@param_ `value_source` — the method whose value is switched on
       # 
       # _@param_ `options` — step options (e.g. +:if+, +:unless+)
-      def self.define: ((Symbol | String) value_source, **::Hash[Symbol, Object] options) -> Case
+      def self.define: ((Symbol | String) value_source, **Object options) -> Case
 
       # _@param_ `value_source` — the method whose value is switched on
       # 
@@ -413,7 +423,7 @@ module Actionable
                         (Symbol | String) value_source,
                         ::Array[[Object, Steps::Base]] branches,
                         Steps::Base? default_step,
-                        **::Hash[Symbol, Object] options
+                        **Object options
                       ) -> void
 
       # Evaluate the switch value and run the first matching branch (or the
@@ -446,14 +456,14 @@ module Actionable
         # _@param_ `target`
         # 
         # _@param_ `options` — step options for the target
-        def on: ((Object | Regexp | ::Array[untyped]) value, (Symbol | String | singleton(Actionable::Action)) target, **::Hash[Symbol, Object] options) -> void
+        def on: ((Object | Regexp | ::Array[untyped]) value, (Symbol | String | singleton(Actionable::Action)) target, **Object options) -> void
 
         # Register the fallback branch, run when no +on+ branch matches.
         # 
         # _@param_ `target`
         # 
         # _@param_ `options` — step options for the target
-        def default: ((Symbol | String | singleton(Actionable::Action)) target, **::Hash[Symbol, Object] options) -> void
+        def default: ((Symbol | String | singleton(Actionable::Action)) target, **Object options) -> void
 
         # _@return_ — ordered [match, step] pairs
         attr_reader branches: ::Array[[Object, Steps::Base]]
@@ -506,7 +516,7 @@ module Actionable
       # _@param_ `name` — the instance method to call; normalized to a Symbol
       # 
       # _@param_ `options` — step options (e.g. +:if+, +:unless+)
-      def initialize: ((Symbol | String) name, **::Hash[Symbol, Object] options) -> void
+      def initialize: ((Symbol | String) name, **Object options) -> void
 
       # Invoke the named method on the instance.
       # 
@@ -533,6 +543,9 @@ module Actionable
   # 
   #   Greet.run # => #<Actionable::Success ...>
   class Action
+    GEM_FAILURE_CODES: ::Array[Symbol]
+    CORE_METHOD_OWNERS: ::Array[Module]
+
     # The ordered, deduplicated set of steps declared on this action.
     # A +Set+ keyed by step identity ([type, name]) so a redeclared step
     # collapses to one entry; insertion order is preserved (decision D2).
@@ -620,7 +633,7 @@ module Actionable
     # _@param_ `metadata` — per-code metadata, passed through
     # 
     # _@return_ — {.declared_failures}
-    def self.fails: ((Symbol | String) code, ?String? message, **::Hash[Symbol, Object] metadata) -> ::Hash[Symbol, ::Hash[Symbol, Object]]
+    def self.fails: ((Symbol | String) code, ?String? message, **Object metadata) -> ::Hash[Symbol, ::Hash[Symbol, Object]]
 
     # The output schema declared for failure +code+ with a {.fails} block, or
     # +nil+ when the code has none (decision D23).
@@ -673,7 +686,7 @@ module Actionable
     # _@param_ `metadata` — per-code metadata, passed through
     # 
     # _@return_ — {.declared_skips}
-    def self.skips: ((Symbol | String) code, ?String? message, **::Hash[Symbol, Object] metadata) -> ::Hash[Symbol, ::Hash[Symbol, Object]]
+    def self.skips: ((Symbol | String) code, ?String? message, **Object metadata) -> ::Hash[Symbol, ::Hash[Symbol, Object]]
 
     # The output schema declared for skip +code+ with a {.skips} block, or
     # +nil+ when the code has none (decision D23).
@@ -721,7 +734,7 @@ module Actionable
     # _@param_ `options` — step options (e.g. +:if+, +:unless+)
     # 
     # _@return_ — the updated step set
-    def self.step: ((Symbol | String) target, **::Hash[Symbol, Object] options) -> ::Set[Steps::Base]
+    def self.step: ((Symbol | String) target, **Object options) -> ::Set[Steps::Base]
 
     # Lifecycle hooks that run after the main steps when the run succeeds.
     def self.success_hooks: () -> ::Set[Steps::Base]
@@ -740,28 +753,28 @@ module Actionable
     # _@param_ `target` — the instance method to run
     # 
     # _@param_ `options` — step options (e.g. +:if+)
-    def self.on_success: ((Symbol | String) target, **::Hash[Symbol, Object] options) -> ::Set[Steps::Base]
+    def self.on_success: ((Symbol | String) target, **Object options) -> ::Set[Steps::Base]
 
     # Declare a hook that runs at the end of a run iff it failed (D2).
     # 
     # _@param_ `target` — the instance method to run
     # 
     # _@param_ `options` — step options (e.g. +:if+)
-    def self.on_failure: ((Symbol | String) target, **::Hash[Symbol, Object] options) -> ::Set[Steps::Base]
+    def self.on_failure: ((Symbol | String) target, **Object options) -> ::Set[Steps::Base]
 
     # Declare a hook that runs at the end of a run iff it was skipped (D17).
     # 
     # _@param_ `target` — the instance method to run
     # 
     # _@param_ `options` — step options (e.g. +:if+)
-    def self.on_skip: ((Symbol | String) target, **::Hash[Symbol, Object] options) -> ::Set[Steps::Base]
+    def self.on_skip: ((Symbol | String) target, **Object options) -> ::Set[Steps::Base]
 
     # Declare a hook that runs at the end of a run regardless of outcome (D2).
     # 
     # _@param_ `target` — the instance method to run
     # 
     # _@param_ `options` — step options (e.g. +:if+)
-    def self.always: ((Symbol | String) target, **::Hash[Symbol, Object] options) -> ::Set[Steps::Base]
+    def self.always: ((Symbol | String) target, **Object options) -> ::Set[Steps::Base]
 
     # Declare a branching step (decision D3). The switch value is read from
     # +value_source+ (an instance method); the block declares branches with
@@ -777,7 +790,7 @@ module Actionable
     # _@param_ `options` — step options (e.g. +:if+, +:unless+)
     # 
     # _@return_ — the updated step set
-    def self.case_step: ((Symbol | String) value_source, **::Hash[Symbol, Object] options) -> ::Set[Steps::Base]
+    def self.case_step: ((Symbol | String) value_source, **Object options) -> ::Set[Steps::Base]
 
     # Enable or read the action's measurement mode (decisions D10/D19). +:all+
     # records an execution {History}; +:none+ (the default) records nothing for
@@ -831,8 +844,12 @@ module Actionable
     # Under typed outcomes the result is an instance of the action's own
     # result class for its outcome (decision D23).
     # 
+    # _@param_ `args` — positional arguments: a single input-schema instance, or (free-form) whatever the constructor takes
+    # 
+    # _@param_ `kwargs` — keyword arguments: the input fields, or (free-form) whatever the constructor takes
+    # 
     # _@return_ — the run's {Success} or {Failure}
-    def self.run: (*untyped args, **untyped kwargs) -> Result
+    def self.run: (*Object args, **Object kwargs) -> Result
 
     # Run the action once per item in +enumerable+, collecting the per-item
     # results into a {BatchResult} (decision D19). The single most common
@@ -952,12 +969,20 @@ module Actionable
     # instance through untouched, otherwise build one from the keyword args.
     # With discriminated input ({.input_for}), the schema is chosen from the
     # discriminator value first; an unmatched value returns a +Failure+.
-    def self.build_input: (untyped args, untyped kwargs) -> (FieldStruct::Base | Failure)
+    # 
+    # _@param_ `args` — the positional arguments given to {.run}
+    # 
+    # _@param_ `kwargs` — the keyword arguments given to {.run}
+    def self.build_input: (::Array[Object] args, ::Hash[Symbol, Object] kwargs) -> (FieldStruct::Base | Failure)
 
     # Resolve the discriminated schema from the discriminator value, then build
     # the input the same way {.build_input} does — or return an
     # +:invalid_input+ {Failure} when nothing matches and there's no default.
-    def self.build_dispatched_input: (untyped args, untyped kwargs) -> (FieldStruct::Base | Failure)
+    # 
+    # _@param_ `args` — the positional arguments given to {.run}
+    # 
+    # _@param_ `kwargs` — the keyword arguments given to {.run}
+    def self.build_dispatched_input: (::Array[Object] args, ::Hash[Symbol, Object] kwargs) -> (FieldStruct::Base | Failure)
 
     # _@param_ `value` — the unmatched discriminator value
     # 
@@ -979,7 +1004,11 @@ module Actionable
     # action with no declared input still runs via {.run}. Subclasses override
     # this to capture their inputs (decision D7; typed input lands in a later
     # slice).
-    def initialize: (*untyped _args, **untyped _kwargs) -> void
+    # 
+    # _@param_ `_args` — ignored
+    # 
+    # _@param_ `_kwargs` — ignored
+    def initialize: (*Object _args, **Object _kwargs) -> void
 
     # Record a {Failure} as the run's result without halting — later steps
     # still run, and the final result reflects the most recent record (decision
@@ -999,10 +1028,10 @@ module Actionable
     # 
     # _@param_ `message` — human-readable description
     # 
-    # _@param_ `errors` — field => message(s) added to the result's errors collection
+    # _@param_ `errors` — each keyword is a field => message(s) added to the result's errors collection; under typed outcomes the +output:+ keyword is the failure's output instead
     # 
     # _@return_ — so a step can branch on the call
-    def fail: (Symbol code, ?String? message, **::Hash[Symbol, (String | ::Array[String])] errors) -> bool
+    def fail: (Symbol code, ?String? message, **(String | ::Array[String] | ::Hash[Symbol, Object] | FieldStruct::Base) errors) -> bool
 
     # Record a {Failure} that absorbs an arbitrary FieldStruct's validation
     # errors, without halting (decision D19). The same machinery
@@ -1052,7 +1081,7 @@ module Actionable
     # _@param_ `output` — the success output payload
     # 
     # _@return_ — so a step can branch on the call
-    def succeed: (?String? message, **::Hash[Symbol, Object] output) -> bool
+    def succeed: (?String? message, **Object output) -> bool
 
     # Record a {Failure} and halt the run, skipping the remaining steps
     # (decision D4).
@@ -1061,8 +1090,8 @@ module Actionable
     # 
     # _@param_ `message` — human-readable description
     # 
-    # _@param_ `errors` — field => message(s)
-    def fail!: (Symbol code, ?String? message, **::Hash[Symbol, (String | ::Array[String])] errors) -> void
+    # _@param_ `errors` — see {#fail}
+    def fail!: (Symbol code, ?String? message, **(String | ::Array[String] | ::Hash[Symbol, Object] | FieldStruct::Base) errors) -> void
 
     # Record a {Success} and halt the run, skipping the remaining steps
     # (decision D4).
@@ -1070,7 +1099,7 @@ module Actionable
     # _@param_ `message` — human-readable description
     # 
     # _@param_ `output` — the success output payload
-    def succeed!: (?String? message, **::Hash[Symbol, Object] output) -> void
+    def succeed!: (?String? message, **Object output) -> void
 
     # Record a {Skipped} as the run's result without halting — the action had
     # nothing to do (decision D17). Not a failure; later steps still run and the
@@ -1087,7 +1116,7 @@ module Actionable
     # _@param_ `output` — the skip output payload — captured best-effort like a {Success}'s output, but never validated (decision D17). Lets an idempotent hit return the existing record's data.
     # 
     # _@return_ — so a step can branch on the call (the run did not succeed here)
-    def skip: (?Symbol code, ?String? message, **::Hash[Symbol, Object] output) -> bool
+    def skip: (?Symbol code, ?String? message, **Object output) -> bool
 
     # Record a {Skipped} and halt the run, skipping the remaining steps — the
     # common "nothing to do, stop here" case (decision D17).
@@ -1097,7 +1126,7 @@ module Actionable
     # _@param_ `message` — human-readable description
     # 
     # _@param_ `output` — the skip output payload (see {#skip})
-    def skip!: (?Symbol code, ?String? message, **::Hash[Symbol, Object] output) -> void
+    def skip!: (?Symbol code, ?String? message, **Object output) -> void
 
     # Build a {Failure} for +code+ carrying what {Action.fails} declared for it:
     # its metadata, and its message when +message+ is +nil+ (decision D20).
@@ -1288,11 +1317,21 @@ module Actionable
     # the result (+result.invoice+ → +result.output.invoice+). Only fields
     # declared on a typed output schema delegate; incidental data never does
     # (decision D6).
-    def respond_to_missing?: (untyped name, ?untyped include_private) -> bool
+    # 
+    # _@param_ `name` — the method name asked about (Ruby passes a Symbol)
+    # 
+    # _@param_ `include_private` — whether private methods count
+    def respond_to_missing?: (Symbol name, ?bool include_private) -> bool
 
+    # _@param_ `name` — the method called
+    # 
+    # _@param_ `args` — its arguments, forwarded to the output
+    # 
+    # _@return_ — the output field's value: left untyped on purpose,
+    # like any field reader whose type the schema decides
     # 
     # _@see_ `#respond_to_missing?`
-    def method_missing: (untyped name, *untyped args) -> untyped
+    def method_missing: (Symbol name, *Object args) -> untyped
 
     # _@param_ `name`
     # 
@@ -1341,10 +1380,12 @@ module Actionable
     def run: () -> Result
 
     # Run the body, marking measurement active so nested runs cascade.
-    def measured: () -> untyped
+    # 
+    # _@return_ — the block's value
+    def measured: () ?{ () -> Object } -> Object
 
     # The main steps, then the outcome and always lifecycle hooks.
-    def perform: () -> untyped
+    def perform: () -> void
 
     # Run each declared step in order, skipping any whose guard opts out.
     def run_steps: () -> void
@@ -1568,7 +1609,7 @@ module Actionable
     # Mark measurement active for the block, so nested runs measure too.
     # 
     # _@return_ — the block's value
-    def self.measuring: () -> Object
+    def self.measuring: () ?{ () -> Object } -> Object
 
     # Make +record+ the open step for the block, so a nested action step can
     # attach its child's history to it.
@@ -1576,11 +1617,17 @@ module Actionable
     # _@param_ `record`
     # 
     # _@return_ — the block's value
-    def self.recording: (History::Step record) -> Object
+    def self.recording: (History::Step record) ?{ () -> Object } -> Object
 
-    def self.store: () -> untyped
+    # This thread's measurement state: +:active+ and +:open_step+.
+    def self.store: () -> ::Hash[Symbol, Object]
 
-    def self.with: (untyped changes) -> untyped
+    # Merge +changes+ into the state for the block, restoring it afterwards.
+    # 
+    # _@param_ `changes` — the keys to override
+    # 
+    # _@return_ — the block's value
+    def self.with: (::Hash[Symbol, Object] changes) ?{ () -> Object } -> Object
   end
 
   # Shared branch-value matching for the two places Actionable dispatches on a
