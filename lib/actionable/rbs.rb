@@ -39,6 +39,10 @@ module Actionable
   #   #   class Result < ::Actionable::Result ... end
   #   # end
   #
+  # The action names its real superclass, and every named ancestor up to
+  # {Actionable::Action} is declared before it, member-less, so the output
+  # resolves without the host generating its abstract bases.
+  #
   # The emitted +Result+/+Output+ are generated type aids: at runtime +.run+
   # returns a {Success}/{Failure}/{Skipped} that responds to these via output
   # delegation. Referenced field types appear as qualified names (+::Invoice+) —
@@ -62,23 +66,55 @@ module Actionable
       ancestor_blocks(klass) + wrap_namespace(klass.name, class_block(klass))
     end
 
-    # The result classes a typed action's own subclass, declared empty up its
-    # typed ancestors, so the generated RBS resolves on its own. A host often
-    # never generates its abstract base action. Being empty, each merges with
-    # the ancestor's full signature when that is generated too, and repeats
-    # harmlessly across the subclasses of one base.
+    # Declares every named ancestor between +klass+ and {Actionable::Action},
+    # so the action's superclass resolves on its own: a host often never
+    # generates its abstract base actions. Each is member-less, except that a
+    # typed ancestor also declares its result classes empty, for a typed
+    # subclass's result classes to subclass. Being empty, each declaration
+    # merges with the ancestor's full signature when that is generated too, and
+    # repeats byte-identically across the subclasses of one base, which RBS
+    # accepts across files.
     #
     # @param klass [Class<Actionable::Action>]
-    # @return [String] one namespaced block per typed ancestor, outermost first
+    # @return [String] one namespaced block per ancestor, outermost first
     def self.ancestor_blocks(klass)
-      parent = klass.superclass
-      return '' unless klass.typed_outcomes? && typed_parent?(parent)
-
-      lines = %w[Success Skipped Failure].map { |name| "class #{name} < #{outcome_base(parent.superclass, name)}\nend" }
-      block = "class #{parent.name.split("::").last} < ::Actionable::Action\n#{indent(lines.join("\n"))}\nend"
-      "#{ancestor_blocks(parent)}#{wrap_namespace(parent.name, block)}\n"
+      named_ancestors(klass).reverse.map { |ancestor| "#{wrap_namespace(ancestor.name, ancestor_block(ancestor))}\n" }.join
     end
     private_class_method :ancestor_blocks
+
+    # @param ancestor [Class<Actionable::Action>]
+    # @return [String] the ancestor's member-less class block
+    def self.ancestor_block(ancestor)
+      head = class_head(ancestor)
+      return "#{head}\nend" unless typed_parent?(ancestor)
+
+      lines = %w[Success Skipped Failure].map { |name| "class #{name} < #{outcome_base(ancestor.superclass, name)}\nend" }
+      "#{head}\n#{indent(lines.join("\n"))}\nend"
+    end
+    private_class_method :ancestor_block
+
+    # @param klass [Class<Actionable::Action>]
+    # @return [Array<Class<Actionable::Action>>] the named classes strictly
+    #   between +klass+ and {Actionable::Action}, nearest first
+    def self.named_ancestors(klass)
+      chain = []
+      parent = klass.superclass
+      while parent && parent != Actionable::Action
+        chain << parent if parent.name
+        parent = parent.superclass
+      end
+      chain
+    end
+    private_class_method :named_ancestors
+
+    # @param klass [Class<Actionable::Action>]
+    # @return [String] +class Name < ::Superclass+, naming the nearest named
+    #   superclass (anonymous ones have no RBS name)
+    def self.class_head(klass)
+      parent = named_ancestors(klass).first || Actionable::Action
+      "class #{klass.name.split("::").last} < ::#{parent.name}"
+    end
+    private_class_method :class_head
 
     # @param parent [Class]
     # @return [Boolean] whether a subclass's result classes subclass +parent+'s
@@ -92,7 +128,6 @@ module Actionable
     def self.class_block(klass)
       return typed_class_block(klass) if klass.typed_outcomes?
 
-      simple = klass.name.split('::').last
       aliases = []
       aliases << failure_code_alias(klass) unless klass.declared_failures.empty?
       aliases << skip_code_alias(klass) unless klass.declared_skips.empty?
@@ -104,7 +139,7 @@ module Actionable
         body << ''
         body << result_block(schema)
       end
-      "class #{simple} < ::Actionable::Action\n#{indent(body.join("\n"))}\nend"
+      "#{class_head(klass)}\n#{indent(body.join("\n"))}\nend"
     end
     private_class_method :class_block
 
@@ -122,7 +157,7 @@ module Actionable
       sections << output_block(klass.output_schema) if klass.output_schema
       outcome_schemas(klass).each { |name, schema| sections << output_block(schema, name) }
       sections.concat(outcome_blocks(klass))
-      "class #{klass.name.split("::").last} < ::Actionable::Action\n#{indent(sections.join("\n\n"))}\nend"
+      "#{class_head(klass)}\n#{indent(sections.join("\n\n"))}\nend"
     end
     private_class_method :typed_class_block
 
@@ -346,15 +381,21 @@ module Actionable
     end
     private_class_method :class_to_rbs
 
-    # Wrap a class block in the +module … end+ nesting implied by its qualified
-    # name, indenting two spaces per level.
+    # Wrap a class block in the nesting implied by its qualified name,
+    # indenting two spaces per level. A namespace that is a class opens as
+    # +class+ (no superclass, so it merges with the class's own declaration),
+    # since RBS rejects a class and a module of the same name.
     #
     # @param full_name [String]
     # @param inner [String]
     # @return [String] RBS source ending in a trailing newline
     def self.wrap_namespace(full_name, inner)
+      parts = full_name.split('::')[0...-1]
       block = inner
-      full_name.split('::')[0...-1].reverse_each { |mod| block = "module #{mod}\n#{indent(block)}\nend" }
+      parts.each_index.reverse_each do |i|
+        keyword = Object.const_get(parts[0..i].join('::')).is_a?(::Class) ? 'class' : 'module'
+        block = "#{keyword} #{parts[i]}\n#{indent(block)}\nend"
+      end
       "#{block}\n"
     end
     private_class_method :wrap_namespace

@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **`Actionable::RBS.generate` declares the real superclass chain.** An action
+  under an intermediate base (`class Codes::DecideMapping < ApplicationAction`)
+  was declared `< ::Actionable::Action`, hiding its bases from the type
+  checker, and a host that declared the real superclass got
+  `NoSuperclassFoundError` / a failing `rbs validate` when the base had no
+  signature. The action now names its nearest named superclass, and every
+  named ancestor up to `Actionable::Action` is declared first, member-less
+  (a typed one with its empty result classes), so the RBS resolves on its own.
+  The declarations repeat byte-identically across files and merge. A namespace
+  that is a class now opens as `class`, not `module`, which RBS rejected as a
+  duplicate declaration.
+
 ### Changed
 
 - **The committed signatures can only get more typed.** Contributor tooling

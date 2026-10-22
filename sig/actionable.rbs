@@ -141,6 +141,10 @@ module Actionable
   #   #   class Result < ::Actionable::Result ... end
   #   # end
   # 
+  # The action names its real superclass, and every named ancestor up to
+  # {Actionable::Action} is declared before it, member-less, so the output
+  # resolves without the host generating its abstract bases.
+  # 
   # The emitted +Result+/+Output+ are generated type aids: at runtime +.run+
   # returns a {Success}/{Failure}/{Skipped} that responds to these via output
   # delegation. Referenced field types appear as qualified names (+::Invoice+) —
@@ -154,16 +158,36 @@ module Actionable
     # _@return_ — RBS for the action, wrapped in its module nesting
     def self.generate: (singleton(Actionable::Action) klass) -> String
 
-    # The result classes a typed action's own subclass, declared empty up its
-    # typed ancestors, so the generated RBS resolves on its own. A host often
-    # never generates its abstract base action. Being empty, each merges with
-    # the ancestor's full signature when that is generated too, and repeats
-    # harmlessly across the subclasses of one base.
+    # Declares every named ancestor between +klass+ and {Actionable::Action},
+    # so the action's superclass resolves on its own: a host often never
+    # generates its abstract base actions. Each is member-less, except that a
+    # typed ancestor also declares its result classes empty, for a typed
+    # subclass's result classes to subclass. Being empty, each declaration
+    # merges with the ancestor's full signature when that is generated too, and
+    # repeats byte-identically across the subclasses of one base, which RBS
+    # accepts across files.
     # 
     # _@param_ `klass`
     # 
-    # _@return_ — one namespaced block per typed ancestor, outermost first
+    # _@return_ — one namespaced block per ancestor, outermost first
     def self.ancestor_blocks: (singleton(Actionable::Action) klass) -> String
+
+    # _@param_ `ancestor`
+    # 
+    # _@return_ — the ancestor's member-less class block
+    def self.ancestor_block: (singleton(Actionable::Action) ancestor) -> String
+
+    # _@param_ `klass`
+    # 
+    # _@return_ — the named classes strictly
+    # between +klass+ and {Actionable::Action}, nearest first
+    def self.named_ancestors: (singleton(Actionable::Action) klass) -> ::Array[singleton(Actionable::Action)]
+
+    # _@param_ `klass`
+    # 
+    # _@return_ — +class Name < ::Superclass+, naming the nearest named
+    # superclass (anonymous ones have no RBS name)
+    def self.class_head: (singleton(Actionable::Action) klass) -> String
 
     # _@param_ `parent`
     # 
@@ -302,8 +326,10 @@ module Actionable
     # _@return_ — qualified RBS name, or +untyped+ for the value type's +::Object+
     def self.class_to_rbs: (Class klass) -> String
 
-    # Wrap a class block in the +module … end+ nesting implied by its qualified
-    # name, indenting two spaces per level.
+    # Wrap a class block in the nesting implied by its qualified name,
+    # indenting two spaces per level. A namespace that is a class opens as
+    # +class+ (no superclass, so it merges with the class's own declaration),
+    # since RBS rejects a class and a module of the same name.
     # 
     # _@param_ `full_name`
     # 

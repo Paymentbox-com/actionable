@@ -898,9 +898,48 @@ every reader declared on `Failure` is nullable (`def key: () -> ::KeySummary?`):
 a broken output can lack a required field. A code with no schema, or no
 declarations at all, types as a Hash and a plain `::Symbol`.
 
+### Base actions
+
+The action is declared with its real superclass, and every named ancestor up to
+`Actionable::Action` is declared before it, without members, so the RBS resolves
+(and `rbs validate` passes) even when nobody generates your abstract bases:
+
+```ruby
+class ApplicationAction < Actionable::Action; end
+module Codes
+  class BaseAction < ApplicationAction; end
+  class DecideMapping < BaseAction
+    output { required :id, :integer }
+  end
+end
+
+Actionable::RBS.generate(Codes::DecideMapping)
+```
+
+```
+class ApplicationAction < ::Actionable::Action
+end
+
+module Codes
+  class BaseAction < ::ApplicationAction
+  end
+end
+
+module Codes
+  class DecideMapping < ::Codes::BaseAction
+    def self.run: (*untyped) -> Result
+    ...
+  end
+end
+```
+
+Write each action's RBS to its own file: the ancestor declarations repeat,
+byte-identical, in every file that shares a base, and RBS merges them. They also
+merge with a base's own signature when you generate or write that too, as long
+as it names the same superclass. A namespace that is a class opens as `class`
+(without a superclass), not `module`. An anonymous ancestor is skipped: the
+next named one becomes the superclass.
+
 A subclass of a typed action subclasses its parent's result classes
-(`class Success < ::Billing::BaseAction::Success`). So that the output resolves
-when the parent is an abstract base nobody generates, it also declares those
-parent classes, empty, up the chain of typed ancestors. Empty declarations merge
-with the parent's own signature when that is generated too, and repeat
-harmlessly across one base's subclasses.
+(`class Success < ::Billing::BaseAction::Success`), so a typed ancestor's
+declaration also carries its `Success`, `Skipped` and `Failure`, empty.
