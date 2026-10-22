@@ -18,8 +18,8 @@ both from GitHub, pinned to a release tag:
 
 ```ruby
 # Gemfile
-gem 'field_struct', git: 'https://github.com/Paymentbox-com/field_struct', tag: 'v0.10.0'
-gem 'actionable',   git: 'https://github.com/Paymentbox-com/actionable',   tag: 'v1.5.1'
+gem 'field_struct', git: 'https://github.com/Paymentbox-com/field_struct', tag: 'v0.11.0'
+gem 'actionable',   git: 'https://github.com/Paymentbox-com/actionable',   tag: 'v1.5.2'
 ```
 
 Requires Ruby 3.2+.

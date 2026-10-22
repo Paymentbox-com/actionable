@@ -2,8 +2,18 @@
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-10-22
+
+Runner and nested-action fixes: hooks that halt, kwargs that survive hooks,
+nested actions that neither wipe parent ivars nor commit failed writes.
+Requires field_struct 0.11.0 or later.
+
 ### Changed
 
+- **Requires field_struct >= 0.11.** It is the release whose numeric and input
+  fixes this one is tested against; CI now pins it by tag.
+- **CI runs Ruby 3.2, 3.3, 3.4 and 4.0** (was 3.3.6 only), plus the docs guard,
+  behind one aggregate `ci` check that `main` requires.
 - **The packaged gem leaves out contributor-only files** (`.claude/`,
   `CLAUDE.md`, `docs/origin/`, Rakefile/Steepfile/lint config). It still ships
   `lib/`, `sig/`, the user docs, `AGENTS.md` and the Claude skill.
