@@ -23,7 +23,7 @@ module Actionable
       #
       # @param model [Symbol, Class] the model whose +transaction+ is used; a
       #   Symbol is resolved to a constant (+:invoice+ → +Invoice+)
-      # @param options [Hash{Symbol=>Object}] options forwarded to +transaction+
+      # @param options [Object] options forwarded to +transaction+
       # @return [void]
       def transactional(model:, **options)
         @transaction_config = {model: model, options: options}
@@ -32,7 +32,8 @@ module Actionable
       # The transaction config for this action, inherited from ancestors when
       # not set locally (decision D9: inherited, overridable).
       #
-      # @return [Hash, nil]
+      # @return [Hash{Symbol=>Object}, nil] +{model:, options:}+, or +nil+ when
+      #   neither this action nor an ancestor is +transactional+
       def transaction_config
         return @transaction_config if defined?(@transaction_config) && @transaction_config
         return superclass.transaction_config if superclass.respond_to?(:transaction_config)
@@ -63,7 +64,7 @@ module Actionable
 
       private
 
-      # @return [Hash, nil] the running action's transaction config
+      # @return [Hash{Symbol=>Object}, nil] the running action's transaction config
       def transaction_config
         klass = @instance.class
         klass.respond_to?(:transaction_config) ? klass.transaction_config : nil

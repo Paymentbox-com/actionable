@@ -567,6 +567,12 @@ fail!(:invalid, **rules.formatted_errors) unless rules.valid?
 
 ### Types for Steep / Solargraph (RBS)
 
+The gem ships RBS in `sig/` for the core and for the adapters you call:
+`transactional` / `after_commit` (`actionable/rails`), `Actionable::Job`, and
+the RSpec matchers and stubs (`actionable/rspec`). RBS has no conditional
+loading, so those adapter methods are declared whether or not you require the
+adapter.
+
 If your app runs a type checker, generate RBS for your actions' dynamic `.run`
 and output accessors:
 

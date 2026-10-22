@@ -4,6 +4,23 @@
 
 ### Added
 
+- **RBS for the adapters' public surface (owner ruling P11).** `sig/` now
+  declares what clients call from the adapters: `transactional` /
+  `transaction_config` and `after_commit` / `after_commit_hooks` on
+  `Actionable::Action` (Rails adapter), and the RSpec matchers
+  (`perform_actionable` and its chain) and stubs (`allow_actionable_*`,
+  `stub_actionable_*`, `actionable_*_result`). They are generated from YARD by
+  sord like the core's (`.yardopts` now excludes only `ProxyValidator`, the
+  Railtie and `actionable/rspec/coverage`); the one runtime mix-in YARD cannot
+  see, `after_commit`'s singleton-class prepend, is declared by hand in
+  `sig/actionable/rails.rbs`. A spec compares each adapter type's public
+  methods, by reflection, with its RBS so neither can drift. `Actionable::Job`
+  was already generated. The report-only Steep lane now checks the adapters
+  too.
+- **`describe` / `describe_text` list `after_commit` hooks.** With the Rails
+  adapter loaded, `describe[:hooks][:after_commit]` names them, and
+  `describe_text` adds an `after_commit:` hooks line when there are any.
+
 - **`after_commit` hook kind (Rails adapter).** After `require 'actionable/rails'`,
   `after_commit :method` (or a nested action, with `:if` / `:unless` /
   `:input` like any hook) runs a side effect only after the database work

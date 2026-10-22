@@ -105,7 +105,7 @@ bundle exec rake sigs:generate      # Regenerate sig/actionable.rbs from YARD vi
 bundle exec rake sigs:check         # Fail if committed sigs are stale (CI guard)
 bundle exec rake sigs:validate      # rbs validate everything in sig/
 bundle exec rake sigs:untyped       # untyped count == SIG_UNTYPED_CEILING (ratchet down only; in default task)
-BUNDLE_GEMFILE=gemfiles/types.gemfile bundle exec steep check  # report-only Steep 2.x on the core
+BUNDLE_GEMFILE=gemfiles/types.gemfile bundle exec steep check  # report-only Steep 2.x on the core + adapters
 bundle exec rake docs:generate      # YARD HTML to doc/ (--fail-on-warning)
 bundle exec rake docs:stats         # List undocumented public methods
 bundle exec rake release:check      # Full pre-flight: spec + rubocop + sigs + docs
