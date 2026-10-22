@@ -40,6 +40,6 @@ Gem::Specification.new do |spec|
   spec.executables = spec.files.grep(%r{\Aexe/}) { |f| File.basename(f) }
   spec.require_paths = ['lib']
 
-  spec.add_dependency 'field_struct'        # typed input/output schemas + result objects
+  spec.add_dependency 'field_struct', '>= 0.11' # typed input/output schemas + result objects
   spec.add_dependency 'oj', '>= 3.0'         # JSON for history/result serialization (D15)
 end
