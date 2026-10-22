@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-22
+
+Valid, guarded RBS. The gem's own signatures can only get more typed (CI
+ratchet, `untyped` 46 → 27); generated RBS for your actions declares the real
+superclass chain, a typed `InputSchema`, typed `.run` keywords and output
+ivars, built on field_struct 0.12's `FieldStruct::RBS.type_for`. Requires
+field_struct >= 0.12. No runtime behaviour changes.
+
 ### Added
 
 - **`Actionable::RBS.generate` types an action's input and output instance
