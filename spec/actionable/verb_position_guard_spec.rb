@@ -4,6 +4,8 @@
 # `fail` as Kernel#fail (raise).
 # rubocop:disable Actionable/VerbNotLast, Lint/UnreachableCode, Layout/EmptyLineAfterGuardClause
 
+require 'open3'
+require 'rbconfig'
 require 'tempfile'
 
 # The first-run check (owner ruling R5): a step or hook method that calls a
@@ -190,6 +192,83 @@ RSpec.describe 'the recording-verb position check' do
     end
 
     expect(action.run).to be_failure
+  end
+
+  describe 'the production opt-out (Actionable.verb_position_check)' do
+    around do |example|
+      example.run
+    ensure
+      Actionable.verb_position_check = true
+    end
+
+    let(:late_fail) do
+      Class.new(Actionable::Action) do
+        step :work
+        def work
+          fail :x
+          nil
+        end
+      end
+    end
+
+    it 'is on by default' do
+      expect(Actionable.verb_position_check?).to be(true)
+    end
+
+    it 'runs an action unchecked when off, without reading any source' do
+      allow(Actionable::VerbPosition).to receive(:method_offenses).and_call_original
+      Actionable.verb_position_check = false
+
+      expect(late_fail.run).to be_failure
+      expect(Actionable::VerbPosition).not_to have_received(:method_offenses)
+    end
+
+    it 'does not cache a class run while off as checked: turning it back on checks it' do
+      Actionable.verb_position_check = false
+      late_fail.run
+      Actionable.verb_position_check = true
+
+      expect { late_fail.run }.to raise_error(Actionable::DefinitionError, /#work/)
+    end
+
+    it 'keeps the code check on' do
+      Actionable.verb_position_check = false
+      action = Class.new(Actionable::Action) do
+        step :work
+        def work = fail!('card expired')
+      end
+
+      expect { action.run }.to raise_error(ArgumentError, /not an identifier/)
+    end
+
+    it 'does not load Prism when off' do
+      script = <<~RUBY
+        require 'actionable'
+        Actionable.verb_position_check = ARGV.first == 'on'
+        class LateFail < Actionable::Action
+          step :work
+          def work
+            fail :x
+            nil
+          end
+        end
+        outcome = begin
+          LateFail.run.code
+        rescue Actionable::DefinitionError
+          :raised
+        end
+        print [outcome, defined?(Prism) ? :prism : :no_prism].inspect
+      RUBY
+      outputs = Tempfile.create(['late_fail', '.rb']) do |file|
+        file.write(script)
+        file.flush
+        %w[off on].map do |state|
+          Open3.capture2e(RbConfig.ruby, '-Ilib', file.path, state, chdir: File.expand_path('../..', __dir__)).first
+        end
+      end
+
+      expect(outputs).to eq(['[:x, :no_prism]', '[:raised, :prism]'])
+    end
   end
 
   context 'when Prism cannot be loaded (Ruby 3.2 without the gem)' do

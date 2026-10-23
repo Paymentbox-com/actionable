@@ -561,7 +561,7 @@ module Actionable
         end
 
         ensure_steps_implemented!(instance)
-        ensure_verbs_last! unless @verbs_checked
+        ensure_verbs_last! unless @verbs_checked || !Actionable.verb_position_check?
         Runner.new(instance).run
       end
 
@@ -741,8 +741,9 @@ module Actionable
       # method's last expression, or explicitly end it, since anything after
       # it still runs (+VerbPosition+ has the rules). Checked once per class,
       # by parsing each method's source with Prism; skipped where that can't
-      # be done (no Prism, no readable source). A failing check is not cached,
-      # so it raises on every run until fixed.
+      # be done (no Prism, no readable source), and not run at all while
+      # {Actionable.verb_position_check?} is off. A failing (or skipped) check
+      # is not cached, so it raises on every run until fixed.
       #
       # @raise [DefinitionError] naming each offending method, file:line and verb
       # @return [void]

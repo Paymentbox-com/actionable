@@ -215,6 +215,22 @@ is a default gem from 3.3), or no readable source (a method from `eval` or
 
 Methods that aren't steps or hooks (helpers they call) are not checked.
 
+**Turning the first-run check off.** It is on by default. As an escape hatch
+while upgrading (an app with misplaced verbs you can't fix yet), switch it off
+for the whole process, e.g. in an initializer:
+
+```ruby
+Actionable.verb_position_check = false # Actionable.verb_position_check? reads it back
+```
+
+Off, `run` never parses a method's source and never loads Prism. **The
+`Actionable/VerbNotLast` cop is then the only guard**, so run it in CI until the
+switch is back on. A class that ran while the check was off is checked on its
+first run after it's turned back on. The switch doesn't cover the code check at
+the `fail` / `skip` call (sentence codes raise `ArgumentError`): that check is a
+per-call regex match, not a parse, costs about 0.4 µs, and catches a wrong
+result code rather than a style problem.
+
 **The RuboCop cop.** The gem ships `Actionable/VerbNotLast`, the same rules as
 a lint, *not* loaded by `require 'actionable'`. Opt in from `.rubocop.yml`:
 

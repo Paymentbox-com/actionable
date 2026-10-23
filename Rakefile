@@ -61,7 +61,7 @@ SORD_WARNING_ALLOWLIST = [
 # USAGE.md (the catalog). Reflection respects `private`, so internal helpers
 # are excluded automatically.
 DOC_API_CLASSES = %w[
-  Actionable::Action Actionable::Result Actionable::Success Actionable::Failure
+  Actionable Actionable::Action Actionable::Result Actionable::Success Actionable::Failure
   Actionable::Skipped Actionable::BatchResult Actionable::InputDispatch
   Actionable::ValueMatch Actionable::Job
 ].freeze
@@ -73,6 +73,7 @@ DOC_API_CLASSES = %w[
 # ledger, not a dumping ground.
 DOC_COVERAGE_ALLOWLIST = %w[
   absorb_errors_from always_hooks failure_hooks skip_hooks success_hooks
+  catch_halt verb_position_check=
   branches default_schema define schema_for schemas
   code= history= message= metadata= output=
   input_dispatch input_schema output_schema

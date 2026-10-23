@@ -18,6 +18,11 @@
   pay one instance-variable read. Skipped without Prism >= 1.0 (Ruby 3.2
   without the `prism` gem; no new dependency) and for methods with no
   parseable source (`eval`, `define_method`).
+- **`Actionable.verb_position_check = false`** turns that first-run check off
+  for the process (on by default; `Actionable.verb_position_check?` reads it).
+  Off, `run` never parses source or loads Prism. It is an escape hatch while
+  upgrading, and leaves the cop as the only guard. The identifier check on
+  `fail` / `skip` codes stays on: it's a per-call regex, not a parse.
 - **`Actionable/VerbNotLast`, an opt-in RuboCop cop** with the same rules
   (one shared analyzer). Not loaded by `require 'actionable'`; enable it with
   `plugins: [{actionable: {require_path: actionable/rubocop}}]` (RuboCop >=
@@ -39,6 +44,8 @@
   first run: if the code after the verb should not run, use the bang verb
   (`fail!`); if it should, move the verb to the end of the method (or
   `return fail(...)`). Run the cop over your app to find them all up front.
+  If you can't fix them all before deploying, set
+  `Actionable.verb_position_check = false` in an initializer until you have.
 - `ArgumentError` "… code "…" is not an identifier": use a Symbol code and
   pass the sentence as the message (`fail(:card_expired, 'card expired')`),
   or `raise` if you meant an exception.

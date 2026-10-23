@@ -8,6 +8,25 @@ module Actionable
   HALT: Symbol
   VERSION: String
 
+  # Turn the first-run verb-position check (owner rulings R5, R10) on or
+  # off for the whole process. Off, {Action.run} never parses a method's
+  # source and never loads Prism; the per-call code check in +fail+ / +skip+
+  # stays on. Meant as an escape hatch while upgrading (set it in an
+  # initializer), with the +Actionable/VerbNotLast+ cop as the only guard
+  # left. A class first run while off is checked on its first run after the
+  # check is turned back on.
+  # 
+  #   Actionable.verb_position_check = false
+  # 
+  # _@param_ `enabled` — +false+ to skip the check
+  # 
+  # _@return_ — whether the check is now on
+  def self.verb_position_check=: (bool enabled) -> bool
+
+  # Whether {Action.run} checks where each step and hook method places its
+  # plain recording verbs on an action's first run. On by default.
+  def self.verb_position_check?: () -> bool
+
   # Run +block+ inside the halt catch point.
   # 
   # Returns the block's value when nothing is thrown, or the value passed with
@@ -1434,12 +1453,13 @@ module Actionable
     def self.ensure_steps_implemented!: (Action _instance) -> void
 
     # First-run guard (owner ruling R5): in every step and hook method, a
-    # non-bang recording verb (+fail+ / +skip+ / +succeed+) must be the
+    # non-bang recording verb (+fail+ / +fail_with+ / +skip+ / +succeed+) must be the
     # method's last expression, or explicitly end it, since anything after
     # it still runs (+VerbPosition+ has the rules). Checked once per class,
     # by parsing each method's source with Prism; skipped where that can't
-    # be done (no Prism, no readable source). A failing check is not cached,
-    # so it raises on every run until fixed.
+    # be done (no Prism, no readable source), and not run at all while
+    # {Actionable.verb_position_check?} is off. A failing (or skipped) check
+    # is not cached, so it raises on every run until fixed.
     def self.ensure_verbs_last!: () -> void
 
     # The steps and hooks whose methods {.ensure_verbs_last!} checks. The

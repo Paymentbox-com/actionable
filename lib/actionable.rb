@@ -31,4 +31,29 @@ require_relative 'actionable/rbs'
 # adapters (+actionable/rails+, +actionable/rspec+) are separate requires and
 # are deliberately NOT loaded here, keeping the core Rails-free.
 module Actionable
+  @verb_position_check = true
+
+  # Turn the first-run verb-position check (owner rulings R5, R10) on or
+  # off for the whole process. Off, {Action.run} never parses a method's
+  # source and never loads Prism; the per-call code check in +fail+ / +skip+
+  # stays on. Meant as an escape hatch while upgrading (set it in an
+  # initializer), with the +Actionable/VerbNotLast+ cop as the only guard
+  # left. A class first run while off is checked on its first run after the
+  # check is turned back on.
+  #
+  #   Actionable.verb_position_check = false
+  #
+  # @param enabled [Boolean] +false+ to skip the check
+  # @return [Boolean] whether the check is now on
+  def self.verb_position_check=(enabled)
+    @verb_position_check = enabled ? true : false
+  end
+
+  # Whether {Action.run} checks where each step and hook method places its
+  # plain recording verbs on an action's first run. On by default.
+  #
+  # @return [Boolean]
+  def self.verb_position_check?
+    @verb_position_check
+  end
 end
