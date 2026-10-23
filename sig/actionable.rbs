@@ -240,6 +240,7 @@ module Actionable
   # qualified names (+::Invoice+) — generate RBS for those (e.g. via
   # +FieldStruct::RBS+) so they resolve.
   module RBS
+    CONSTANT_NAME: Regexp
 
     # Generate RBS source for a user action class.
     # 
@@ -332,6 +333,17 @@ module Actionable
     # _@return_ — name, schema
     def self.outcome_schemas: (singleton(Actionable::Action) klass) -> ::Array[[String, singleton(FieldStruct::Base)]]
 
+    # Every output class name must be an RBS class name, and unique: two codes
+    # that camelize alike (+:ready+ / +:ready_+, +:expired?+ /
+    # +:expired_predicate+) would otherwise emit one class for two schemas.
+    # 
+    # _@param_ `klass`
+    # 
+    # _@param_ `kind` — +skip+ or +failure+
+    # 
+    # _@param_ `entries` — code, class name, schema
+    def self.check_outcome_names!: (singleton(Actionable::Action) klass, String kind, ::Array[[Symbol, String, singleton(FieldStruct::Base)]] entries) -> void
+
     # The +Success+, +Skipped+ and +Failure+ blocks of a typed action.
     # 
     # _@param_ `klass`
@@ -383,9 +395,13 @@ module Actionable
     # else the gem's
     def self.outcome_base: (Class parent, String name) -> String
 
+    # A code's trailing +?+ / +!+ becomes +Predicate+ / +Bang+, since neither
+    # may appear in a constant; +:x+ and +:x?+ get different names.
+    # 
     # _@param_ `code`
     # 
-    # _@return_ — +:already_active+ as +AlreadyActive+
+    # _@return_ — +:already_active+ as +AlreadyActive+, +:expired?+ as
+    # +ExpiredPredicate+, +:done!+ as +DoneBang+
     def self.camelize: (Symbol code) -> String
 
     # _@param_ `klass`

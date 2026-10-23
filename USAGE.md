@@ -1231,6 +1231,15 @@ every reader declared on `Failure` is nullable (`def key: () -> ::KeySummary?`):
 a broken output can lack a required field. A code with no schema, or no
 declarations at all, types as a Hash and a plain `::Symbol`.
 
+Each output class is named after its code, camelized: `:already_active` gives
+`AlreadyActiveSkipOutput`. A trailing `?` or `!`, which can't appear in a class
+name, becomes `Predicate` or `Bang`: `fails(:expired?) { … }` gives
+`ExpiredPredicateFailureOutput` and `skips(:done!) { … }` gives
+`DoneBangSkipOutput`, so `:expired` and `:expired?` never share a class.
+`generate` raises `ArgumentError` when two codes of one kind would still land on
+one name (`:ready` and `:ready_`, or `:expired?` and `:expired_predicate`), or
+when a code doesn't start with an ASCII letter or underscore: rename one code.
+
 ### Base actions
 
 The action is declared with its real superclass, and every named ancestor up to

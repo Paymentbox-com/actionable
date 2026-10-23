@@ -94,6 +94,7 @@ run:
 | ``DefinitionError: … calls `fail` with more code after it …`` | 1.8.0 | [Verb position](#a-plain-verb-must-end-its-step-or-hook-method) |
 | `ArgumentError: … code "…" is not an identifier …` | 1.8.0 | [Identifier codes](#fail--skip-codes-must-be-identifiers) |
 | A guarded `case_step` branch no longer runs | 1.8.2 | [Branch guards](#case_step-branch-guards-are-honoured) |
+| `ArgumentError: … both name …Output in the generated RBS` | 1.8.2 | [Output class names](#actionablerbs-refuses-codes-that-share-an-output-class-name) |
 
 ## 1.5.x → 1.5.2
 
@@ -715,6 +716,34 @@ def route_sms = sms_enabled? ? send_sms : send_email
 
 **Why.** The guard was accepted and silently dropped; a branch now behaves
 like the plain step it is.
+
+### `Actionable::RBS` refuses codes that share an output class name
+<!-- upgrading: rbs-outcome-class-names -->
+
+**Symptom.** Under `typed_outcomes`, `Actionable::RBS.generate` raises:
+```
+ArgumentError: Billing::Charge: skip codes :ready and :ready_ both name ReadySkipOutput in the generated RBS; rename one of the codes
+```
+(or `... is not a valid RBS class name ...` for a code that doesn't start with
+an ASCII letter or underscore). Codes ending in `?` / `!` that declare an output
+schema now generate `…PredicateFailureOutput` / `…BangSkipOutput`; before,
+their RBS didn't parse, so nothing can reference the old names.
+
+**Find.** Run `Actionable::RBS.generate` (your sigs task) for every action; it
+names each clash. No search finds them reliably.
+
+**Fix.** Rename one of the two codes, and its `fail` / `skip` calls:
+```ruby
+# before
+skips(:ready) { required :id, :integer }
+skips(:ready_) { required :id, :integer }
+
+# after
+skips(:ready) { required :id, :integer }
+skips(:ready_later) { required :id, :integer }
+```
+
+**Why.** Both schemas went into one RBS class, so one of them typed wrong.
 
 ## New, opt-in: worth adopting
 

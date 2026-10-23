@@ -11,6 +11,15 @@
   branch whose guard opts out does nothing: no fall-through to the next branch
   or the `default`. **Upgrade note:** a branch you guarded now really skips.
   <!-- upgrading: case-branch-guards -->
+- **`Actionable::RBS` names output classes for `?` / `!` codes validly.**
+  Under `typed_outcomes`, `fails(:expired?) { … }` emitted `class
+  Expired?FailureOutput`, which RBS can't parse. A trailing `?` / `!` now
+  becomes `Predicate` / `Bang` (`ExpiredPredicateFailureOutput`,
+  `DoneBangSkipOutput`), so `:x` and `:x?` get different classes. `generate`
+  now raises `ArgumentError` when two codes of one kind would share a class
+  name (`:ready` / `:ready_`), which silently emitted one class for two
+  schemas, or when a code can't start a class name. **Upgrade note:** rename
+  one of two clashing codes. <!-- upgrading: rbs-outcome-class-names -->
 
 ## [1.8.1] - 2026-10-23
 

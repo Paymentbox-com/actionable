@@ -25,6 +25,31 @@ class RbsTypedClash < Actionable::Action
   skips(:named) { optional :id, :string }
 end
 
+class RbsTypedSuffixed < Actionable::Action
+  typed_outcomes
+  fails(:expired?) { required :at, :string }
+  fails(:expired) { required :at, :string }
+  skips(:done!) { required :id, :integer }
+  skips(:done) { required :id, :integer }
+end
+
+class RbsTypedSuffixClash < Actionable::Action
+  typed_outcomes
+  fails(:expired?) { required :at, :string }
+  fails(:expired_predicate) { required :at, :string }
+end
+
+class RbsTypedUnderscoreClash < Actionable::Action
+  typed_outcomes
+  skips(:ready) { required :id, :integer }
+  skips(:ready_) { required :id, :integer }
+end
+
+class RbsTypedUncased < Actionable::Action
+  typed_outcomes
+  fails(:日本) { required :at, :string }
+end
+
 RSpec.describe Actionable::RBS, 'under typed outcomes (decision D23)' do
   def add_signature(env, source)
     buffer, directives, decls = RBS::Parser.parse_signature(source)
@@ -92,6 +117,36 @@ RSpec.describe Actionable::RBS, 'under typed outcomes (decision D23)' do
 
   it 'produces syntactically valid RBS' do
     expect { RBS::Parser.parse_signature(described_class.generate(RbsTypedAction)) }.not_to raise_error
+  end
+
+  describe 'codes ending in ? or !' do
+    let(:rbs) { described_class.generate(RbsTypedSuffixed) }
+
+    it 'names their output classes Predicate / Bang, apart from the bare code' do
+      expect(rbs).to include('class ExpiredPredicateFailureOutput < ::FieldStruct::Base',
+        'class ExpiredFailureOutput < ::FieldStruct::Base',
+        'class DoneBangSkipOutput < ::FieldStruct::Base',
+        'class DoneSkipOutput < ::FieldStruct::Base')
+    end
+
+    it 'produces syntactically valid RBS' do
+      expect { RBS::Parser.parse_signature(rbs) }.not_to raise_error
+    end
+
+    it 'raises at generation when two codes would share an output class name' do
+      expect { described_class.generate(RbsTypedSuffixClash) }
+        .to raise_error(ArgumentError, /RbsTypedSuffixClash: failure codes :expired\? and :expired_predicate both name ExpiredPredicateFailureOutput/)
+    end
+
+    it 'raises for codes that differ only by underscores' do
+      expect { described_class.generate(RbsTypedUnderscoreClash) }
+        .to raise_error(ArgumentError, /skip codes :ready and :ready_ both name ReadySkipOutput/)
+    end
+
+    it 'raises when a code cannot start an RBS class name' do
+      expect { described_class.generate(RbsTypedUncased) }
+        .to raise_error(ArgumentError, /failure code :日本 .*not a valid RBS class name/)
+    end
   end
 
   it 'resolves a subclass’s result classes without the parent being generated too' do
