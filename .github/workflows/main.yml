@@ -61,13 +61,55 @@ jobs:
         bundle exec steep check | tee steep.log || true
         echo "### Steep (report-only): $(tail -n 1 steep.log)" >> "$GITHUB_STEP_SUMMARY"
 
+  # The full suite with real ActiveJob (test adapter) and Sidekiq (inline
+  # testing mode, no Redis), so spec/actionable/job_backends/ runs instead of
+  # skipping as it does in `build`.
+  jobs:
+    runs-on: ubuntu-latest
+    name: jobs (ActiveJob + Sidekiq)
+    env:
+      BUNDLE_GEMFILE: gemfiles/jobs.gemfile
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: '4.0'
+        bundler-cache: true
+    - name: Backends load (so their specs run, not skip)
+      run: bundle exec ruby -e 'require "active_job"; require "sidekiq"'
+    - name: Run the suite
+      run: bundle exec rspec
+
+  # The full suite on ActiveRecord 7.1: transactional keeps working and
+  # after_commit refuses to declare (it needs 7.2). AR 7.1 is tested on 3.3.
+  activerecord-7-1:
+    runs-on: ubuntu-latest
+    name: activerecord 7.1
+    env:
+      BUNDLE_GEMFILE: gemfiles/activerecord_7_1.gemfile
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: '3.3'
+        bundler-cache: true
+    - name: ActiveRecord is really below 7.2 (so the legacy spec runs, not skips)
+      run: bundle exec ruby -e 'require "active_record"; abort ActiveRecord.version.to_s unless ActiveRecord.gem_version < Gem::Version.new("7.2")'
+    - name: Run the suite
+      run: bundle exec rspec
+
   # One stable check name for branch protection: it passes only when every
-  # matrix job passed, so the required check survives matrix changes.
+  # gating job passed, so the required check survives matrix changes.
   ci:
     runs-on: ubuntu-latest
     name: ci
-    needs: [build]
+    needs: [build, jobs, activerecord-7-1]
     if: always()
     steps:
     - name: Require every job to pass
-      run: test "${{ needs.build.result }}" = "success"
+      run: |
+        test "${{ needs.build.result }}" = "success"
+        test "${{ needs.jobs.result }}" = "success"
+        test "${{ needs.activerecord-7-1.result }}" = "success"

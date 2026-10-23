@@ -54,6 +54,20 @@
   pass the sentence as the message (`fail(:card_expired, 'card expired')`),
   or `raise` if you meant an exception.
 
+### Tests / CI
+
+- **Real-backend lanes.** Two new CI jobs feed the required `ci` check:
+  `jobs (ActiveJob + Sidekiq)` runs the suite with `gemfiles/jobs.gemfile`, so
+  `spec/actionable/job_backends/` proves `Job` + `honor_retry_metadata` on a
+  real ActiveJob (`retry_on Actionable::Job::RetryableFailure`: `retry: true`
+  re-enqueues until attempts run out, `retry: false` discards or acks, the
+  default is unchanged) and that `RetryableFailure` propagates out of a Sidekiq
+  job in inline testing mode (no Redis). `activerecord 7.1` runs the suite on
+  ActiveRecord 7.1 (`gemfiles/activerecord_7_1.gemfile`, Ruby 3.3):
+  `transactional` and savepoints work there, and declaring `after_commit`
+  raises the `DefinitionError` naming 7.2. These specs skip in the default
+  suite, where the gems or versions they need are absent.
+
 ### Documentation
 
 - README "Types (RBS)" says the adapter signatures (`transactional`,
