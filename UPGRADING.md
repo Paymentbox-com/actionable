@@ -1,6 +1,6 @@
 # Upgrading Actionable
 
-<!-- upgrading-range: 1.5.0..1.8.1 -->
+<!-- upgrading-range: 1.5.0..1.8.2 -->
 
 This guide takes an app from any **1.5.x** release to **1.8.0**, one version at
 a time or [straight through](#straight-from-15-to-18). It lists every change a
@@ -93,6 +93,7 @@ run:
 | `describe[:hooks]` has an extra `after_commit:` key | 1.7.0 | [`describe`](#describe-lists-after_commit-hooks-under-the-rails-adapter) |
 | ``DefinitionError: … calls `fail` with more code after it …`` | 1.8.0 | [Verb position](#a-plain-verb-must-end-its-step-or-hook-method) |
 | `ArgumentError: … code "…" is not an identifier …` | 1.8.0 | [Identifier codes](#fail--skip-codes-must-be-identifiers) |
+| A guarded `case_step` branch no longer runs | 1.8.2 | [Branch guards](#case_step-branch-guards-are-honoured) |
 
 ## 1.5.x → 1.5.2
 
@@ -676,6 +677,44 @@ No caller action. The `Actionable/VerbNotLast` cop now resolves a superclass by
 its lexical full name, as Ruby does, so two same-named classes in one file no
 longer confuse it: it can only report fewer false offenses, never new ones on
 code it already accepted. Everything else in 1.8.1 is test and tooling.
+
+## 1.8.1 → 1.8.2
+
+### `case_step` branch guards are honoured
+<!-- upgrading: case-branch-guards -->
+
+**Symptom.** A `case_step` branch declared with `if:` / `unless:` no longer
+runs when its guard opts out: an output field it set is `nil`, a side effect
+doesn't happen, or a spec that expected the branch to run fails. The run still
+succeeds. A guarded-out branch does **not** fall through to the next `on` or
+to the `default`.
+
+**Find.** Guarded branches inside a `case_step` block:
+```sh
+rg -n '^\s*(on|default)\b.*,\s*(if|unless):' app lib
+```
+
+**Fix.** If the branch should run regardless, drop the guard. If a
+guarded-out branch should fall back to another target, say so in a guard-free
+branch body:
+```ruby
+# before: the guard was ignored, so 'sms' always sent an SMS
+case_step :kind do
+  on 'sms', :send_sms, if: :sms_enabled?
+  default   :send_email
+end
+
+# after: 'sms' with SMS off sends an email
+case_step :kind do
+  on 'sms', :route_sms
+  default   :send_email
+end
+
+def route_sms = sms_enabled? ? send_sms : send_email
+```
+
+**Why.** The guard was accepted and silently dropped; a branch now behaves
+like the plain step it is.
 
 ## New, opt-in: worth adopting
 

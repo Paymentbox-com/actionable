@@ -32,7 +32,8 @@ module Actionable
         #
         # @param value [Object, Regexp, Array]
         # @param target [Symbol, String, Class<Actionable::Action>]
-        # @param options [Object] step options for the target
+        # @param options [Object] step options for the target (+:if+ / +:unless+
+        #   guard the branch: a matched branch whose guard opts out does nothing)
         # @return [void]
         def on(value, target, **options)
           @branches << [value, Steps.build(target, **options)]
@@ -73,12 +74,17 @@ module Actionable
       # Evaluate the switch value and run the first matching branch (or the
       # default). No-op when nothing matches and no default was declared.
       #
+      # The branch is chosen by value alone; its +:if+ / +:unless+ guards then
+      # decide whether its target runs, exactly as for a plain step. A matched
+      # branch whose guard opts out is a no-op: it does not fall through to a
+      # later branch or to the default.
+      #
       # @param instance [Actionable::Action]
       # @return [void]
       def call(instance)
         value = instance.__send__(name) # private, like step methods
         step = match(value) || @default_step
-        step&.call(instance)
+        step.call(instance) unless step.nil? || step.skip?(instance)
       end
 
       # @return [Array<Symbol>] the switch-value method plus every branch

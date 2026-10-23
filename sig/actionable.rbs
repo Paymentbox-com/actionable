@@ -905,6 +905,11 @@ module Actionable
       # Evaluate the switch value and run the first matching branch (or the
       # default). No-op when nothing matches and no default was declared.
       # 
+      # The branch is chosen by value alone; its +:if+ / +:unless+ guards then
+      # decide whether its target runs, exactly as for a plain step. A matched
+      # branch whose guard opts out is a no-op: it does not fall through to a
+      # later branch or to the default.
+      # 
       # _@param_ `instance`
       def call: (Actionable::Action _instance) -> void
 
@@ -938,7 +943,7 @@ module Actionable
         # 
         # _@param_ `target`
         # 
-        # _@param_ `options` — step options for the target
+        # _@param_ `options` — step options for the target (+:if+ / +:unless+ guard the branch: a matched branch whose guard opts out does nothing)
         def on: ((Object | Regexp | ::Array[untyped]) value, (Symbol | String | singleton(Actionable::Action)) target, **Object options) -> void
 
         # Register the fallback branch, run when no +on+ branch matches.

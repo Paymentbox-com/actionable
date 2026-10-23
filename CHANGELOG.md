@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **`case_step` branches honour `if:` / `unless:`.** `on 'x', :handle, if:
+  :ready?` (and `default :y, unless: …`) accepted the guard and then ignored
+  it, so the branch always ran. The branch is still picked by value alone; its
+  guard now decides whether the target runs, as for a plain step. A matched
+  branch whose guard opts out does nothing: no fall-through to the next branch
+  or the `default`. **Upgrade note:** a branch you guarded now really skips.
+  <!-- upgrading: case-branch-guards -->
+
 ## [1.8.1] - 2026-10-23
 
 Housekeeping. The `Actionable/VerbNotLast` cop resolves superclass names the way

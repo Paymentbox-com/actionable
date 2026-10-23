@@ -706,6 +706,32 @@ Branch.run(kind: 'x').output.picked    # => "default"
 A branch target is any step target (method or nested action). When nothing
 matches and there's no `default`, the case step is a no-op.
 
+A branch (or the `default`) takes `if:` / `unless:` like any step. The branch
+is picked by value alone; its guard then decides whether the target runs. A
+matched branch whose guard opts out does nothing: it does not fall through to
+the next branch or the `default`.
+
+<!-- doctest -->
+```ruby
+class Notify < Actionable::Action
+  input  { required :kind, :string }
+  output { optional :sent, :string }
+  def kind = input.kind
+  def sms_enabled? = false
+
+  case_step :kind do
+    on 'sms',  :send_sms, if: :sms_enabled?
+    default    :send_email
+  end
+
+  def send_sms   = @sent = 'sms'
+  def send_email = @sent = 'email'
+end
+
+Notify.run(kind: 'sms').output.sent    # => nil (guarded out, no fall-through)
+Notify.run(kind: 'push').output.sent   # => "email"
+```
+
 ## History & measurement
 
 <!-- doctest -->
