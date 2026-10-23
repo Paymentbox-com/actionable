@@ -180,11 +180,13 @@ of recalling changes. In short:
    between them.
 2. Bump field_struct first when the target needs it (>= 0.12 from 1.6.0) and
    follow its UPGRADING.md.
-3. Bump actionable; run every entry's **Find** in range.
-4. Enable the `Actionable/VerbNotLast` cop and run
+3. Bump actionable; check `rg --pcre2-version`, then run the Finds the guide
+   lists under "Which Finds to run" (silent changes) even on a green suite.
+4. Enable the `Actionable/VerbNotLast` cop (list every app base class defined in
+   its own file in `ActionBaseClasses`) and run
    `bundle exec rubocop --only Actionable/VerbNotLast`.
-5. Apply each **Fix**; never leave `Actionable.verb_position_check = false`
-   behind.
+5. Apply each **Fix**; set `Actionable.verb_position_check = false` only in
+   `spec_helper` for a baseline, and never leave it behind.
 6. Regenerate owned RBS with `Actionable::RBS.generate`.
 7. Run the suite with the check on.
 8. Report what was fixed, what was reviewed by hand (entries with no
