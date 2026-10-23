@@ -817,7 +817,8 @@ cryptic `NoMethodError`:
 
 ## Rails adapter
 
-`require 'actionable/rails'` (never loaded by the core):
+`require 'actionable/rails'` (never loaded by the core). CI runs it on
+ActiveRecord 7.1 and 8.x; only `after_commit` needs 7.2:
 
 - `transactional model: :invoice` (or a class) wraps the run in
   `model.transaction`. A success commits; a recorded failure or a raised
@@ -1018,7 +1019,10 @@ that calls `honor_retry_metadata` (added to `Actionable::Action` by
 included (`e.result` is the `Skipped`), so the same queue configuration covers
 both: Sidekiq retries any raised job by default; under ActiveJob declare
 `retry_on Actionable::Job::RetryableFailure` (otherwise the error goes to the
-queue backend's own handling, as for any transient failure). The macro is inherited, and a
+queue backend's own handling, as for any transient failure). CI checks both
+against the real backends: ActiveJob's test adapter with `retry_on` (a retry is
+a re-enqueue; once attempts run out the error is raised) and Sidekiq's inline
+testing mode. The macro is inherited, and a
 subclass backs out with `honor_retry_metadata(enabled: false)`;
 `honor_retry_metadata?` reads it. Without a job, ask
 `Actionable::Job.disposition(result, honor_retry: true)`.
