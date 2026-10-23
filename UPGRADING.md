@@ -1,6 +1,6 @@
 # Upgrading Actionable
 
-<!-- upgrading-range: 1.5.0..1.8.0 -->
+<!-- upgrading-range: 1.5.0..1.8.1 -->
 
 This guide takes an app from any **1.5.x** release to **1.8.0**, one version at
 a time or [straight through](#straight-from-15-to-18). It lists every change a
@@ -32,7 +32,7 @@ output, and Rails apps that nest `transactional` actions.
    0.12` (1.5.2 needs `>= 0.11`). Upgrade it and follow field_struct's
    [UPGRADING.md](https://github.com/Paymentbox-com/field_struct/blob/main/UPGRADING.md)
    until your suite is green.
-2. **Bump actionable** to `v1.8.0` in the Gemfile.
+2. **Bump actionable** to `v1.8.1` in the Gemfile.
 3. **Fix verb-position offenses.** If you need a green baseline first, run the
    suite once with `Actionable.verb_position_check = false`, then turn it back
    on. Enable the [`Actionable/VerbNotLast` cop](#a-plain-verb-must-end-its-step-or-hook-method)
@@ -59,7 +59,7 @@ run:
 1. Bump field_struct to >= 0.12 (step 1 above). Bundler refuses the actionable
    bump until you do: `Bundler could not find compatible versions for gem
    "field_struct"`.
-2. Bump actionable to `v1.8.0`. Set `Actionable.verb_position_check = false`
+2. Bump actionable to `v1.8.1`. Set `Actionable.verb_position_check = false`
    in an initializer or `spec_helper` for now.
 3. Run the suite. Work through the [1.5.2](#15x--152) and
    [1.7.0](#160--170) entries: they change runtime behaviour (savepoints,
@@ -669,6 +669,13 @@ result.message # => "card expired"
 
 **Why.** `fail 'card expired'` is `Kernel#fail` habit; inside an action it
 recorded the sentence as a code and kept running.
+
+## 1.8.0 → 1.8.1
+
+No caller action. The `Actionable/VerbNotLast` cop now resolves a superclass by
+its lexical full name, as Ruby does, so two same-named classes in one file no
+longer confuse it: it can only report fewer false offenses, never new ones on
+code it already accepted. Everything else in 1.8.1 is test and tooling.
 
 ## New, opt-in: worth adopting
 

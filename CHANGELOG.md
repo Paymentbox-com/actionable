@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-10-23
+
+Housekeeping. The `Actionable/VerbNotLast` cop resolves superclass names the way
+Ruby does, so same-named classes in one file no longer confuse it; the
+UPGRADING.md drift guard is fixture-tested and now asks for an explicit
+decision on every visible CHANGELOG entry. No runtime behaviour changes.
+
 ### Changed
 
 - **`Actionable/VerbNotLast` resolves a superclass by its lexical full name.**
