@@ -324,6 +324,26 @@ RSpec.describe RuboCop::Cop::Actionable::VerbNotLast, :config do
       end
     end
 
+    context 'with a multi-segment ActionBaseClasses name' do
+      let(:cop_config) { {'ActionBaseClasses' => ['Ops::Billing::BaseAction']} }
+
+      it 'resolves it relative to an enclosing module' do
+        expect_offense(<<~RUBY)
+          module Ops
+            class Charge < Billing::BaseAction
+              step :a
+
+              def a
+                fail :x
+                ^^^^^^^ `fail` records [...]
+                log
+              end
+            end
+          end
+        RUBY
+      end
+    end
+
     context 'with ActionBaseClasses configured' do
       let(:cop_config) { {'ActionBaseClasses' => ['::Ops::BaseAction']} }
 

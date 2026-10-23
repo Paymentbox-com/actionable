@@ -232,7 +232,7 @@ RSpec.describe 'Actionable control flow' do
     end
 
     {
-      fail: ['card expired', :'not-found', 'payment.declined', '404', '', SystemExit],
+      fail: ['card expired', :'not-found', 'payment.declined', '404', '', "card_expired\n", SystemExit],
       fail!: ['card expired'],
       skip: ['nothing to do', :'a b'],
       skip!: ['nothing to do']

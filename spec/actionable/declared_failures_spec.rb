@@ -104,6 +104,33 @@ RSpec.describe 'declared failures (fails)' do
     end
   end
 
+  describe 'a nested failure the parent declares' do
+    def parent_of(child)
+      Class.new(Actionable::Action) do
+        fails :child_bad, 'parent default'
+        step child
+      end
+    end
+
+    it 'keeps the child’s message over the parent’s declared one' do
+      child = Class.new(Actionable::Action) do
+        step :go
+        define_method(:go) { fail!(:child_bad, 'child says') }
+      end
+
+      expect(parent_of(child).run.message).to eq('child says')
+    end
+
+    it 'falls back to the parent’s declared message when the child gives none' do
+      child = Class.new(Actionable::Action) do
+        step :go
+        define_method(:go) { fail!(:child_bad) }
+      end
+
+      expect(parent_of(child).run.message).to eq('parent default')
+    end
+  end
+
   describe 'codes the gem emits itself' do
     it 'attach declared metadata to an :invalid_input failure' do
       action = Class.new(Actionable::Action) do
