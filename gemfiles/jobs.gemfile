@@ -1,0 +1,13 @@
+# frozen_string_literal: true
+
+# Real background-job backends for spec/actionable/job_backends/ (the `jobs`
+# job in .github/workflows/main.yml). The default suite skips those specs:
+# neither activejob nor sidekiq is in the main Gemfile. Sidekiq runs in
+# `sidekiq/testing` inline mode, so no Redis is needed.
+#
+#   BUNDLE_GEMFILE=gemfiles/jobs.gemfile bundle install
+#   BUNDLE_GEMFILE=gemfiles/jobs.gemfile bundle exec rspec
+eval_gemfile '../Gemfile'
+
+gem 'activejob', '~> 8.0', require: false
+gem 'sidekiq', '~> 8.0', require: false

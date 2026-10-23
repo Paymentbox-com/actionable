@@ -5,7 +5,10 @@ require 'actionable/rails'
 
 # Real ActiveRecord on in-memory SQLite: "after the outermost commit" and
 # "never after a rollback" are transaction behaviour a stub model cannot show.
-RSpec.describe 'Actionable::Rails after_commit hooks on ActiveRecord' do
+# Skipped on an ActiveRecord older than 7.2 (the activerecord-7.1 CI lane),
+# where after_commit refuses to declare; after_commit_legacy_ar_spec covers it.
+RSpec.describe 'Actionable::Rails after_commit hooks on ActiveRecord',
+  skip: (ActiveRecord.respond_to?(:after_all_transactions_commit) ? false : 'needs ActiveRecord >= 7.2') do
   before(:all) do
     ActiveRecord::Base.establish_connection(adapter: 'sqlite3', database: ':memory:')
     ActiveRecord::Schema.verbose = false
