@@ -246,11 +246,16 @@ and the methods that class names in a step, case-step branch or hook
 declaration. Methods a parent class declares as steps are left to the
 first-run check.
 
-A class counts as an action when its superclass, as written, is in
-`ActionBaseClasses` (default `Actionable::Action` and `ApplicationAction`; a
-leading `::` is ignored), or is a class defined in the same file (`class Base
-< …` or `Base = Class.new(…)`, matched by its last name segment, any depth)
-whose own superclass does. Any other class is left alone, so a dry-transaction
+A class counts as an action when its superclass is in `ActionBaseClasses`
+(full names; default `Actionable::Action` and `ApplicationAction`; a leading
+`::` is ignored), or is a class defined in the same file (`class Base < …` or
+`Base = Class.new(…)`, any depth) whose own superclass does. The superclass
+name resolves the way Ruby looks it up: from the enclosing `module` / `class`
+outwards (a compact `class A::B` opens only `A::B`), to the first class,
+module or listed base by that name, else the top level. So `Base` inside
+`module B` is `B::Base` when the file defines one, not an `A::Base` action,
+and a file's own `Legacy::ApplicationAction` shadows the listed one. Any
+other class is left alone, so a dry-transaction
 (`include Dry::Transaction` with its own `step`) gets no false positives, and
 neither does a class that reopens an action without naming its superclass
 (the first-run check still covers it). Name your app's own base classes:

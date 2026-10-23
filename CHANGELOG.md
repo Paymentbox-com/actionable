@@ -2,6 +2,29 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **`Actionable/VerbNotLast` resolves a superclass by its lexical full name.**
+  It matched by the last name segment, so in one file `module B; class Base;
+  end; class X < Base` counted as an action when `module A` held a `Base <
+  Actionable::Action`, and a file's own `Legacy::ApplicationAction` counted as
+  the listed base. It now looks the name up as Ruby does (enclosing `module` /
+  `class` outwards, a compact `class A::B` opens only `A::B`, `::X` is the
+  top level), so those classes are left alone, and a listed full name is
+  found from inside its namespace (`module Ops; class X < BaseAction` with
+  `Ops::BaseAction` listed). An offense it newly reports is a call the
+  first-run check already raises on. <!-- upgrading: none -->
+
+### Tests / CI
+
+- **The UPGRADING.md drift guard asks for a decision on every visible
+  change.** Each `[Unreleased]` bullet under `### Changed`, `### Removed` or
+  `### Breaking…` must carry an `upgrading: <slug>` marker comment (with its
+  guide entry, as before) or `upgrading: none`, so a change filed there
+  without an upgrade note no longer slips past it. Released sections are not
+  re-checked. The guard's own examples now run on fixtures, so they hold in
+  any release state; one example still checks the live files.
+
 ## [1.8.0] - 2026-10-22
 
 A guard against silently continuing runs, plus upgrade guidance. A plain
