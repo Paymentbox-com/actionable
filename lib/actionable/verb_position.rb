@@ -129,8 +129,13 @@ module Actionable
       # offenses, for the RuboCop cop. A class body counts when its superclass
       # is an action base (owner ruling R10): one of +base_classes+, or a
       # class defined in this file (+class X < Y+ or +X = Class.new(Y)+, any
-      # depth, matched by its last name segment) whose superclass is. So a
-      # dry-transaction class, which also declares +step+, is left alone. It
+      # depth) whose superclass is. So a dry-transaction class, which also
+      # declares +step+, is left alone. A superclass name resolves the way
+      # Ruby looks it up: from the enclosing +module+ / +class+ keywords
+      # outwards (a compact +class A::B+ opens only +A::B+), to the first
+      # match among the file's classes and modules and +base_classes+, else
+      # the top level; +::X+ is the top level. So +B::Base+ is not +A::Base+,
+      # and a file class shadows a base class of the same name. It
       # must also declare a +step+ or +case_step+; the methods checked are the
       # ones it names in a declaration ({DECLARATIONS}, +case_step+ branch
       # targets), never a +case_step+'s value source. Covers +class X < Y+ and
@@ -142,9 +147,10 @@ module Actionable
       def declared_step_offenses(root, base_classes: ACTION_BASE_CLASSES)
         bases = base_classes.map { |name| name.to_s.delete_prefix('::') }
         parents = file_superclasses(root)
+        lineage = {bases: bases, parents: parents, known: known_names(parents.keys + bases)}
         found = [] # : Array[Offense]
-        each_class_body(root) do |statements, superclass|
-          next unless action_superclass?(superclass, bases, parents, [])
+        each_class_body(root) do |statements, superclass, nesting|
+          next unless action_superclass?(superclass, nesting, lineage, [])
 
           names = declared_methods(statements)
           next if names.empty?
@@ -346,69 +352,144 @@ module Actionable
           location.start_character_offset, location.end_character_offset)
       end
 
-      # Every class body in the tree, with its superclass: +class X < Y+
-      # bodies and +Class.new(Y) do ... end+ blocks.
+      # Every class body in the tree, with its superclass and the lexical
+      # nesting the superclass is looked up in: +class X < Y+ bodies and
+      # +Class.new(Y) do ... end+ blocks.
       #
       # @param root [Prism::Node]
       # @yieldparam statements [Prism::StatementsNode]
       # @yieldparam superclass [Prism::Node, nil]
+      # @yieldparam nesting [Array<String>]
       # @return [void]
       def each_class_body(root)
-        each_node(root) do |node|
+        each_scoped_node(root, []) do |node, nesting|
           body, superclass =
             if node.type == :class_node
               [node.body, node.superclass]
             elsif class_new?(node) && node.block&.type == :block_node
               [node.block.body, class_new_superclass(node)]
             end
-          yield body, superclass if body&.type == :statements_node
+          yield body, superclass, nesting if body&.type == :statements_node
         end
       end
 
-      # The superclass each class defined in the file names, keyed by the
-      # class's last name segment (a name can be defined more than once).
+      # Depth-first walk over every node, with the full names of the
+      # +module+ / +class+ keywords around it, innermost first (Ruby's
+      # +Module.nesting+). A class's own node (and so its superclass) sees the
+      # nesting outside it.
+      #
+      # @param node [Prism::Node]
+      # @param nesting [Array<String>]
+      # @yieldparam node [Prism::Node]
+      # @yieldparam nesting [Array<String>]
+      # @return [void]
+      def each_scoped_node(node, nesting, &block)
+        yield node, nesting
+        inner = nesting
+        if %i[class_node module_node].include?(node.type)
+          name = defined_name(node.constant_path, nesting)
+          inner = [name, *nesting] if name
+        end
+        node.compact_child_nodes.each { |child| each_scoped_node(child, inner, &block) }
+      end
+
+      # The classes and modules defined in the file, keyed by full name, with
+      # the superclass each definition names and the nesting it is looked up
+      # in. A module, or a class with no superclass, maps to none: it still
+      # shadows a base class of the same name.
       #
       # @param root [Prism::Node]
-      # @return [Hash{String=>Array<Prism::Node>}]
+      # @return [Hash{String=>Array<Array(Prism::Node, Array<String>)>}]
       def file_superclasses(root)
         parents = Hash.new { |hash, name| hash[name] = [] } # : Hash[String, Array[untyped]]
-        each_node(root) do |node|
-          if node.type == :class_node && node.superclass
-            parents[node.name.to_s] << node.superclass
-          elsif node.type == :constant_write_node && class_new?(node.value) && class_new_superclass(node.value)
-            parents[node.name.to_s] << class_new_superclass(node.value)
-          end
+        each_scoped_node(root, []) do |node, nesting|
+          name, superclass =
+            case node.type
+            when :class_node, :module_node
+              [defined_name(node.constant_path, nesting), node.type == :class_node && node.superclass]
+            when :constant_write_node
+              [defined_name(node, nesting), class_new_superclass(node.value)] if class_new?(node.value)
+            end
+          next unless name
+
+          parents[name]
+          parents[name] << [superclass, nesting] if superclass
         end
         parents
+      end
+
+      # Every name and each of its namespaces (+A::B::C+ gives +A+, +A::B+,
+      # +A::B::C+).
+      #
+      # @param names [Array<String>]
+      # @return [Array<String>]
+      def known_names(names)
+        names.flat_map do |name|
+          segments = name.split('::')
+          (1..segments.size).map { |size| segments.first(size).join('::') }
+        end.uniq
       end
 
       # Whether +node+ names an action base, directly or through classes
       # defined in the file. +seen+ guards against a superclass cycle.
       #
       # @param node [Prism::Node, nil]
-      # @param bases [Array<String>]
-      # @param parents [Hash{String=>Array<Prism::Node>}]
+      # @param nesting [Array<String>] where +node+ is looked up
+      # @param lineage [Hash{Symbol=>Array<String>, Hash}] +:bases+, +:parents+
+      #   ({file_superclasses}) and +:known+ ({known_names})
       # @param seen [Array<String>]
       # @return [Boolean]
-      def action_superclass?(node, bases, parents, seen)
-        path = constant_name(node)
-        return false unless path
-        return true if bases.include?(path)
-
-        name = path.split('::').last.to_s
+      def action_superclass?(node, nesting, lineage, seen)
+        name = resolve(node, nesting, lineage[:known])
+        return false unless name
+        return true if lineage[:bases].include?(name)
         return false if seen.include?(name)
 
         seen << name
-        parents.fetch(name, []).any? { |parent| action_superclass?(parent, bases, parents, seen) }
+        lineage[:parents].fetch(name, []).any? { |parent, scope| action_superclass?(parent, scope, lineage, seen) }
+      end
+
+      # The full name a constant reference resolves to: its first segment
+      # joined to the innermost +nesting+ entry that defines it, else the top
+      # level.
+      #
+      # @param node [Prism::Node, nil]
+      # @param nesting [Array<String>]
+      # @param known [Array<String>]
+      # @return [String, nil] +nil+ when +node+ is not a plain constant reference
+      def resolve(node, nesting, known)
+        path, absolute = constant_reference(node)
+        return path if path.nil? || absolute
+
+        head = path.split('::').first
+        scope = nesting.find { |cref| known.include?("#{cref}::#{head}") }
+        scope ? "#{scope}::#{path}" : path
+      end
+
+      # The full name a +class+ / +module+ keyword or constant assignment
+      # defines: its path inside the innermost nesting entry (a compact path
+      # is taken as written there), or as written after a leading +::+.
+      #
+      # @param node [Prism::Node] the constant path, or a +ConstantWriteNode+
+      # @param nesting [Array<String>]
+      # @return [String, nil]
+      def defined_name(node, nesting)
+        path, absolute = node.type == :constant_write_node ? [node.name.to_s, false] : constant_reference(node)
+        return path if path.nil? || absolute || nesting.empty?
+
+        "#{nesting.first}::#{path}"
       end
 
       # @param node [Prism::Node, nil]
-      # @return [String, nil] the constant path +node+ spells, without a
-      #   leading +::+; +nil+ for anything else (+Class.new(base)+, +foo::Bar+)
-      def constant_name(node)
+      # @return [Array(String, Boolean), nil] the constant path +node+ spells,
+      #   without a leading +::+, and whether it had one; +nil+ for anything
+      #   else (+Class.new(base)+, +foo::Bar+)
+      def constant_reference(node)
         case node&.type
-        when :constant_read_node then node.name.to_s
-        when :constant_path_node then node.full_name.delete_prefix('::')
+        when :constant_read_node then [node.name.to_s, false]
+        when :constant_path_node
+          name = node.full_name
+          [name.delete_prefix('::'), name.start_with?('::')]
         end
       rescue ::Prism::ConstantPathNode::DynamicPartsInConstantPathError
         nil

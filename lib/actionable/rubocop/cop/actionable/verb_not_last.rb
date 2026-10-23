@@ -17,8 +17,10 @@ module RuboCop
       # left alone.
       #
       # +ActionBaseClasses+ (default +Actionable::Action+, +ApplicationAction+)
-      # lists the base classes; a class defined in the same file whose
-      # superclass chain reaches one counts too.
+      # lists the base classes by full name; a class defined in the same file
+      # whose superclass chain reaches one counts too. A superclass name
+      # resolves lexically, as Ruby looks it up, so two same-named classes
+      # in different modules are told apart.
       #
       # @example
       #   # bad

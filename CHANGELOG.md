@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **`Actionable/VerbNotLast` resolves a superclass by its lexical full name.**
+  It matched by the last name segment, so in one file `module B; class Base;
+  end; class X < Base` counted as an action when `module A` held a `Base <
+  Actionable::Action`, and a file's own `Legacy::ApplicationAction` counted as
+  the listed base. It now looks the name up as Ruby does (enclosing `module` /
+  `class` outwards, a compact `class A::B` opens only `A::B`, `::X` is the
+  top level), so those classes are left alone, and a listed full name is
+  found from inside its namespace (`module Ops; class X < BaseAction` with
+  `Ops::BaseAction` listed). An offense it newly reports is a call the
+  first-run check already raises on. <!-- upgrading: none -->
+
 ### Tests / CI
 
 - **The UPGRADING.md drift guard asks for a decision on every visible

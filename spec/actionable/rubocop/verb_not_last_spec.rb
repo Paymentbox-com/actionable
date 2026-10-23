@@ -180,8 +180,181 @@ RSpec.describe RuboCop::Cop::Actionable::VerbNotLast, :config do
       RUBY
     end
 
+    describe 'resolving a superclass by its lexical full name' do
+      it 'tells apart same-named classes in different modules' do
+        expect_offense(<<~RUBY)
+          module A
+            class Base < Actionable::Action; end
+
+            class Charge < Base
+              step :a
+
+              def a
+                fail :x
+                ^^^^^^^ `fail` records [...]
+                log
+              end
+            end
+          end
+
+          module B
+            class Base; end
+
+            class Charge < Base
+              step :a
+
+              def a
+                fail :x
+                log
+              end
+            end
+          end
+
+          class Refund < A::Base
+            step :a
+
+            def a
+              skip :x
+              ^^^^^^^ `skip` records [...]
+              log
+            end
+          end
+
+          class Void < Base
+            step :a
+
+            def a
+              fail :x
+              log
+            end
+          end
+        RUBY
+      end
+
+      it 'looks a name up from the class keyword outwards, not through a compact path or past a leading ::' do
+        expect_offense(<<~RUBY)
+          module A
+            class Base < Actionable::Action; end
+
+            module Inner
+              class Charge < Base
+                step :a
+
+                def a
+                  fail :x
+                  ^^^^^^^ `fail` records [...]
+                  log
+                end
+              end
+            end
+
+            class Refund < ::Base
+              step :a
+
+              def a
+                fail :x
+                log
+              end
+            end
+          end
+
+          class A::Void < Base
+            step :a
+
+            def a
+              fail :x
+              log
+            end
+          end
+
+          module A::Deep
+            class Void < Base
+              step :a
+
+              def a
+                fail :x
+                log
+              end
+            end
+          end
+        RUBY
+      end
+
+      it 'does not take a file class for a configured base it shadows' do
+        expect_offense(<<~RUBY)
+          module Legacy
+            class ApplicationAction; end
+
+            class Charge < ApplicationAction
+              step :a
+
+              def a
+                fail :x
+                log
+              end
+            end
+          end
+
+          class Refund < ApplicationAction
+            step :a
+
+            def a
+              fail :x
+              ^^^^^^^ `fail` records [...]
+              log
+            end
+          end
+        RUBY
+      end
+
+      it 'reaches a configured base named relative to the enclosing module' do
+        expect_offense(<<~RUBY)
+          module Actionable
+            class Charge < Action
+              step :a
+
+              def a
+                fail :x
+                ^^^^^^^ `fail` records [...]
+                log
+              end
+            end
+          end
+        RUBY
+      end
+    end
+
     context 'with ActionBaseClasses configured' do
       let(:cop_config) { {'ActionBaseClasses' => ['::Ops::BaseAction']} }
+
+      it 'resolves a listed full name from inside its namespace' do
+        expect_offense(<<~RUBY)
+          module Ops
+            class Charge < BaseAction
+              step :a
+
+              def a
+                fail :x
+                ^^^^^^^ `fail` records [...]
+                log
+              end
+            end
+          end
+
+          module Billing
+            class BaseAction; end
+
+            class Refund < BaseAction
+              step :a
+
+              def a
+                fail :x
+                log
+              end
+            end
+          end
+        RUBY
+      end
 
       it 'checks subclasses of the listed classes only (a leading :: is ignored)' do
         expect_offense(<<~RUBY)
