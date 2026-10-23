@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [1.8.2] - 2026-10-23
+
+Three fixes found by a mutation-driven review, plus upgrade-guide answers from
+a dry run against a large app. `case_step` branches now honour `if:` /
+`unless:` (a guarded-out branch does nothing); `Actionable::RBS` generates valid
+class names for `?` / `!` codes and refuses colliding ones; the first-run verb
+check sees through `alias_method`. See `UPGRADING.md` "1.8.1 → 1.8.2".
+
 ### Fixed
 
 - **`case_step` branches honour `if:` / `unless:`.** `on 'x', :handle, if:

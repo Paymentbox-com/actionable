@@ -44,7 +44,7 @@ output, and Rails apps that nest `transactional` actions.
    0.12` (1.5.2 needs `>= 0.11`). Upgrade it and follow field_struct's
    [UPGRADING.md](https://github.com/Paymentbox-com/field_struct/blob/main/UPGRADING.md)
    until your suite is green.
-2. **Bump actionable** to `v1.8.1` in the Gemfile.
+2. **Bump actionable** to `v1.8.2` in the Gemfile.
 3. **Fix verb-position offenses.** If you need a green baseline first, run the
    suite once with `Actionable.verb_position_check = false`, then turn it back
    on. Enable the [`Actionable/VerbNotLast` cop](#a-plain-verb-must-end-its-step-or-hook-method)
@@ -73,7 +73,7 @@ run:
 1. Bump field_struct to >= 0.12 (step 1 above). Bundler refuses the actionable
    bump until you do: `Bundler could not find compatible versions for gem
    "field_struct"`.
-2. Bump actionable to `v1.8.1`. Set `Actionable.verb_position_check = false`
+2. Bump actionable to `v1.8.2`. Set `Actionable.verb_position_check = false`
    in `spec_helper` (or a `spec/support` file) for now, not in an initializer:
    an initializer also switches the check off in production, and that is easy
    to forget to undo. Use an initializer only if you must deploy before every
