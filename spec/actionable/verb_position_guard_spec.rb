@@ -182,6 +182,55 @@ RSpec.describe 'the recording-verb position check' do
     end
   end
 
+  it 'checks a private step method' do
+    action = Class.new(Actionable::Action) do
+      step :charge
+
+      private
+
+      def charge
+        fail :late
+        @charged = true
+      end
+    end
+
+    expect { action.run }.to raise_error(Actionable::DefinitionError, /#charge .*`fail`/)
+  end
+
+  it 're-reads a source file once its mtime changes (the cache is keyed by path and mtime)' do
+    offending = "class ReloadedAction < Actionable::Action\n  step :work\n  def work\n    fail :x\n    nil\n  end\nend\n"
+    clean = "class ReloadedAction < Actionable::Action\n  step :work\n  def work\n    nil\n    fail :x\n  end\nend\n"
+    Tempfile.create(['reloaded_action', '.rb']) do |file|
+      file.write(offending)
+      file.flush
+      load file.path
+      expect { ReloadedAction.run }.to raise_error(Actionable::DefinitionError)
+
+      File.write(file.path, clean)
+      later = File.mtime(file.path) + 10
+      File.utime(later, later, file.path)
+      Object.send(:remove_const, :ReloadedAction)
+      load file.path
+
+      expect(ReloadedAction.run).to be_failure
+    ensure
+      Object.send(:remove_const, :ReloadedAction) if defined?(ReloadedAction)
+    end
+  end
+
+  it 'checks a step that names an alias_method of the offending def' do
+    action = Class.new(Actionable::Action) do
+      step :charge
+      def do_charge
+        fail :late
+        @charged = true
+      end
+      alias_method :charge, :do_charge
+    end
+
+    expect { action.run }.to raise_error(Actionable::DefinitionError, /#charge .*`fail`/)
+  end
+
   it 'skips a method defined with define_method' do
     action = Class.new(Actionable::Action) do
       step :work

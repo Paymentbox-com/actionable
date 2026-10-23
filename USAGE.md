@@ -198,7 +198,10 @@ the method's last expression"). The check runs once per class (a later run pays
 nothing for it), and a failing check raises on every run until fixed. It is
 skipped where it can't be done: no Prism (Ruby 3.2 without the `prism` gem; it
 is a default gem from 3.3), or no readable source (a method from `eval` or
-`define_method`).
+`define_method`). A step naming an `alias_method` is checked against the
+original `def` (the cop doesn't follow aliases). A module `prepend`ed over a step method hides the class's own
+`def` from the check: the wrapper is what runs first, so only its body is read
+(the cop still reads the class's `def`).
 
 | The verb call (`fail`, `fail_with`, `skip`, `succeed`, or `self.fail` …) | |
 |---|---|
@@ -706,6 +709,32 @@ Branch.run(kind: 'x').output.picked    # => "default"
 A branch target is any step target (method or nested action). When nothing
 matches and there's no `default`, the case step is a no-op.
 
+A branch (or the `default`) takes `if:` / `unless:` like any step. The branch
+is picked by value alone; its guard then decides whether the target runs. A
+matched branch whose guard opts out does nothing: it does not fall through to
+the next branch or the `default`.
+
+<!-- doctest -->
+```ruby
+class Notify < Actionable::Action
+  input  { required :kind, :string }
+  output { optional :sent, :string }
+  def kind = input.kind
+  def sms_enabled? = false
+
+  case_step :kind do
+    on 'sms',  :send_sms, if: :sms_enabled?
+    default    :send_email
+  end
+
+  def send_sms   = @sent = 'sms'
+  def send_email = @sent = 'email'
+end
+
+Notify.run(kind: 'sms').output.sent    # => nil (guarded out, no fall-through)
+Notify.run(kind: 'push').output.sent   # => "email"
+```
+
 ## History & measurement
 
 <!-- doctest -->
@@ -1204,6 +1233,16 @@ breaks one ends the run as `invalid_output` carrying it. For the same reason
 every reader declared on `Failure` is nullable (`def key: () -> ::KeySummary?`):
 a broken output can lack a required field. A code with no schema, or no
 declarations at all, types as a Hash and a plain `::Symbol`.
+
+Each output class is named after its code, camelized: `:already_active` gives
+`AlreadyActiveSkipOutput`. A trailing `?` or `!`, which can't appear in a class
+name, becomes `Predicate` or `Bang`: `fails(:expired?) { … }` gives
+`ExpiredPredicateFailureOutput` and `skips(:done!) { … }` gives
+`DoneBangSkipOutput`, so `:expired` and `:expired?` never share a class.
+`generate` raises `ArgumentError` when two codes of one kind would still land on
+one name (`:ready` and `:ready_`, or `:expired?` and `:expired_predicate`), or
+when a code's class name would not be plain ASCII starting with a capital
+(`:日本`, `:foo_é`): rename one code.
 
 ### Base actions
 

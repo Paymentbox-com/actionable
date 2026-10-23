@@ -235,15 +235,44 @@ module Actionable
     def self.outcome_schemas(klass)
       skips = klass.skip_declarations.keys.filter_map do |code|
         schema = klass.skip_output_schema(code)
-        ["#{camelize(code)}SkipOutput", schema] if schema
+        [code, "#{camelize(code)}SkipOutput", schema] if schema
       end
       failures = klass.failure_declarations.keys.filter_map do |code|
         schema = klass.failure_output_schema(code)
-        ["#{camelize(code)}FailureOutput", schema] if schema
+        [code, "#{camelize(code)}FailureOutput", schema] if schema
       end
-      skips + failures
+      check_outcome_names!(klass, 'skip', skips)
+      check_outcome_names!(klass, 'failure', failures)
+      (skips + failures).map { |_, name, schema| [name, schema] }
     end
     private_class_method :outcome_schemas
+
+    # Every output class name must be an RBS class name, and unique: two codes
+    # that camelize alike (+:ready+ / +:ready_+, +:expired?+ /
+    # +:expired_predicate+) would otherwise emit one class for two schemas.
+    #
+    # @param klass [Class<Actionable::Action>]
+    # @param kind [String] +skip+ or +failure+
+    # @param entries [Array<Array(Symbol, String, Class<FieldStruct::Base>)>]
+    #   code, class name, schema
+    # @return [void]
+    # @raise [ArgumentError] on an invalid or a shared class name
+    def self.check_outcome_names!(klass, kind, entries)
+      entries.each do |code, name, _|
+        next if CONSTANT_NAME.match?(name)
+
+        raise ArgumentError, "#{klass.name}: #{kind} code #{code.inspect} gives #{name}, which is not a valid " \
+                             'RBS class name (it must start with an ASCII capital); rename the code'
+      end
+      entries.group_by { |_, name, _| name }.each_value do |same|
+        next if same.size == 1
+
+        codes = same.map { |code, _, _| code.inspect }.join(' and ')
+        raise ArgumentError, "#{klass.name}: #{kind} codes #{codes} both name #{same.first[1]} in the " \
+                             'generated RBS; rename one of the codes'
+      end
+    end
+    private_class_method :check_outcome_names!
 
     # The +Success+, +Skipped+ and +Failure+ blocks of a typed action.
     #
@@ -312,6 +341,10 @@ module Actionable
     HASH_OUTPUT = '::Hash[::Symbol, untyped]'
     private_constant :HASH_OUTPUT
 
+    # @return [Regexp] what RBS accepts as a class name
+    CONSTANT_NAME = /\A[A-Z][A-Za-z0-9_]*\z/
+    private_constant :CONSTANT_NAME
+
     # @param types [Array<String>] the output classes an outcome can carry
     # @return [String] them and a Hash, as one RBS type
     def self.union(types)
@@ -338,10 +371,15 @@ module Actionable
     end
     private_class_method :outcome_base
 
+    # A code's trailing +?+ / +!+ becomes +Predicate+ / +Bang+, since neither
+    # may appear in a constant; +:x+ and +:x?+ get different names.
+    #
     # @param code [Symbol]
-    # @return [String] +:already_active+ as +AlreadyActive+
+    # @return [String] +:already_active+ as +AlreadyActive+, +:expired?+ as
+    #   +ExpiredPredicate+, +:done!+ as +DoneBang+
     def self.camelize(code)
-      code.to_s.split('_').map(&:capitalize).join
+      base = code.to_s.split('_').map(&:capitalize).join
+      base.sub(/\?\z/, 'Predicate').sub(/!\z/, 'Bang')
     end
     private_class_method :camelize
 

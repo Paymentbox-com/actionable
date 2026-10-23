@@ -105,4 +105,71 @@ RSpec.describe Actionable::Steps::Case do
       expect(parent.run(kind: 'child').output.note).to eq('from child')
     end
   end
+
+  describe 'branch guards' do
+    def guarded(enabled:, **branch_options)
+      Class.new(Actionable::Action) do
+        output { optional :handled, :symbol }
+        define_method(:initialize) { |status:| @status = status }
+        define_method(:status) { @status }
+        define_method(:enabled?) { enabled }
+        define_method(:handle_active) { @handled = :active }
+        define_method(:handle_other) { @handled = :other }
+        case_step :status do
+          on 'active', :handle_active, **branch_options
+          default :handle_other
+        end
+      end
+    end
+
+    it 'runs a matched branch whose if: guard holds' do
+      expect(guarded(enabled: true, if: :enabled?).run(status: 'active').output.handled).to eq(:active)
+    end
+
+    it 'does not run a matched branch whose if: guard is false' do
+      expect(guarded(enabled: false, if: :enabled?).run(status: 'active').output.handled).to be_nil
+    end
+
+    it 'does not run a matched branch whose unless: guard is true' do
+      expect(guarded(enabled: true, unless: :enabled?).run(status: 'active').output.handled).to be_nil
+    end
+
+    it 'does not fall through to the default when the matched branch is guarded out' do
+      result = guarded(enabled: false, if: :enabled?).run(status: 'active')
+
+      expect(result).to be_success
+      expect(result.output.handled).to be_nil
+    end
+
+    it 'honours a guard on the default branch' do
+      klass = Class.new(Actionable::Action) do
+        output { optional :handled, :symbol }
+        define_method(:status) { 'unknown' }
+        define_method(:handle_other) { @handled = :other }
+        case_step :status do
+          on 'active', :handle_other
+          default :handle_other, if: ->(_) { false }
+        end
+      end
+
+      expect(klass.run.output.handled).to be_nil
+    end
+
+    it 'does not run a guarded-out nested action branch' do
+      ran = []
+      child = Class.new(Actionable::Action) do
+        define_method(:go) { ran << :child }
+        step :go
+      end
+      parent = Class.new(Actionable::Action) do
+        define_method(:kind) { 'child' }
+        case_step :kind do
+          on 'child', child, unless: ->(_) { true }
+        end
+      end
+
+      expect(parent.run).to be_success
+      expect(ran).to be_empty
+    end
+  end
 end

@@ -1,6 +1,6 @@
 # Upgrading Actionable
 
-<!-- upgrading-range: 1.5.0..1.8.1 -->
+<!-- upgrading-range: 1.5.0..1.8.2 -->
 
 This guide takes an app from any **1.5.x** release to **1.8.0**, one version at
 a time or [straight through](#straight-from-15-to-18). It lists every change a
@@ -19,14 +19,15 @@ built with PCRE2. Check first, in the shell that will run them, with
 that wraps `rg`. A pattern finds *candidates*; read each hit.
 
 **Which Finds to run.** Most changes raise or fail a spec, so the suite finds
-them; their Finds cover code the suite doesn't reach. Six change behaviour
+them; their Finds cover code the suite doesn't reach. Seven change behaviour
 without raising, so run their Finds even on a green suite: the
 [nested savepoint](#a-nested-transactional-action-takes-its-own-savepoint),
 [bang verbs in hooks](#a-bang-verb-inside-a-lifecycle-hook-sets-the-result),
 [nested output](#a-nested-action-no-longer-overwrites-parent-fields-it-didnt-set),
 [RSpec stubs](#rspec-stubs-absorb-only-the-fields-you-give-them),
-[redeclared steps](#redeclaring-a-step-or-hook-overrides-it-last-wins) and
-[`always` after a halt](#always-hooks-run-even-after-an-outcome-hook-halts). Every pattern has been checked against the "before" snippet it
+[redeclared steps](#redeclaring-a-step-or-hook-overrides-it-last-wins),
+[`always` after a halt](#always-hooks-run-even-after-an-outcome-hook-halts) and
+[`case_step` branch guards](#case_step-branch-guards-are-honoured). Every pattern has been checked against the "before" snippet it
 targets. [CHANGELOG.md](CHANGELOG.md) has the
 full list of changes, including internal ones.
 
@@ -109,6 +110,9 @@ run:
 | `describe[:hooks]` has an extra `after_commit:` key | 1.7.0 | [`describe`](#describe-lists-after_commit-hooks-under-the-rails-adapter) |
 | ``DefinitionError: … calls `fail` with more code after it …`` | 1.8.0 | [Verb position](#a-plain-verb-must-end-its-step-or-hook-method) |
 | `ArgumentError: … code "…" is not an identifier …` | 1.8.0 | [Identifier codes](#fail--skip-codes-must-be-identifiers) |
+| A guarded `case_step` branch no longer runs | 1.8.2 | [Branch guards](#case_step-branch-guards-are-honoured) |
+| `ArgumentError: … both name …Output in the generated RBS` | 1.8.2 | [Output class names](#actionablerbs-refuses-codes-that-share-an-output-class-name) |
+| ``DefinitionError: … calls `fail` …`` for an aliased step | 1.8.2 | [Aliased step](#the-verb-check-reads-an-aliased-steps-original-def) |
 
 ## 1.5.x → 1.5.2
 
@@ -716,6 +720,112 @@ No caller action. The `Actionable/VerbNotLast` cop now resolves a superclass by
 its lexical full name, as Ruby does, so two same-named classes in one file no
 longer confuse it: it can only report fewer false offenses, never new ones on
 code it already accepted. Everything else in 1.8.1 is test and tooling.
+
+## 1.8.1 → 1.8.2
+
+### `case_step` branch guards are honoured
+<!-- upgrading: case-branch-guards -->
+
+**Symptom.** A `case_step` branch declared with `if:` / `unless:` no longer
+runs when its guard opts out: an output field it set is `nil`, a side effect
+doesn't happen, or a spec that expected the branch to run fails. The run still
+succeeds. A guarded-out branch does **not** fall through to the next `on` or
+to the `default`.
+
+**Find.** Guarded branches inside a `case_step` block:
+```sh
+rg -n '^\s*(on|default)\b.*,\s*(if|unless):' app lib
+```
+
+**Fix.** If the branch should run regardless, drop the guard. If a
+guarded-out branch should fall back to another target, say so in a guard-free
+branch body:
+```ruby
+# before: the guard was ignored, so 'sms' always sent an SMS
+case_step :kind do
+  on 'sms', :send_sms, if: :sms_enabled?
+  default   :send_email
+end
+
+# after: 'sms' with SMS off sends an email
+case_step :kind do
+  on 'sms', :route_sms
+  default   :send_email
+end
+
+def route_sms = sms_enabled? ? send_sms : send_email
+```
+
+**Why.** The guard was accepted and silently dropped; a branch now behaves
+like the plain step it is.
+
+### `Actionable::RBS` refuses codes that share an output class name
+<!-- upgrading: rbs-outcome-class-names -->
+
+**Symptom.** Under `typed_outcomes`, `Actionable::RBS.generate` raises:
+```
+ArgumentError: Billing::Charge: skip codes :ready and :ready_ both name ReadySkipOutput in the generated RBS; rename one of the codes
+```
+(or `... is not a valid RBS class name ...` for a code whose class name would not
+be plain ASCII starting with a capital, e.g. `:日本` or `:foo_é`). Codes ending in `?` / `!` that declare an output
+schema now generate `…PredicateFailureOutput` / `…BangSkipOutput`; before,
+their RBS didn't parse, so nothing can reference the old names.
+
+**Find.** Run `Actionable::RBS.generate` (your sigs task) for every action; it
+names each clash. No search finds them reliably.
+
+**Fix.** Rename one of the two codes, and its `fail` / `skip` calls:
+```ruby
+# before
+skips(:ready) { required :id, :integer }
+skips(:ready_) { required :id, :integer }
+
+# after
+skips(:ready) { required :id, :integer }
+skips(:ready_later) { required :id, :integer }
+```
+
+**Why.** Both schemas went into one RBS class, so one of them typed wrong.
+
+### The verb check reads an aliased step's original `def`
+<!-- upgrading: verb-check-alias -->
+
+**Symptom.** On first run, the same `DefinitionError` as for any
+[verb-position offense](#a-plain-verb-must-end-its-step-or-hook-method),
+naming the step (`Charge#charge`) and the `file:line` of the aliased `def`:
+```
+Actionable::DefinitionError: Charge#charge (app/actions/charge.rb:4) calls `fail` with more code after it, which still runs: use fail! to stop here, or make it the method's last expression
+```
+
+**Find.** Aliases in action classes; read the `def` each step alias points
+at. The `Actionable/VerbNotLast` cop doesn't follow aliases, so it won't list
+these:
+```sh
+rg -n '^\s*(alias_method\b|alias\s)' app lib
+```
+
+**Fix.** As for any offense: a bang verb, or make the verb the last
+expression:
+```ruby
+# before
+step :charge
+def do_charge
+  fail :late if late?
+  @charged = true
+end
+alias_method :charge, :do_charge
+
+# after
+step :charge
+def do_charge
+  fail! :late if late?
+  @charged = true
+end
+alias_method :charge, :do_charge
+```
+
+**Why.** The check looked the `def` up by the alias's name, found none, and
+skipped the step.
 
 ## Class-level API an app base class may rely on
 

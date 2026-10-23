@@ -48,6 +48,16 @@ RSpec.describe 'Actionable definition guards' do
       expect { klass.run }.to raise_error(Actionable::DefinitionError, /notify_missing/)
     end
 
+    it 'raises when an on_skip hook method is not implemented' do
+      klass = Class.new(Actionable::Action) do
+        define_method(:work) { nil }
+        step :work
+        on_skip :skip_note_missing
+      end
+
+      expect { klass.run }.to raise_error(Actionable::DefinitionError, /skip_note_missing/)
+    end
+
     it 'raises when a case step value source is not implemented' do
       klass = Class.new(Actionable::Action) do
         case_step :status do

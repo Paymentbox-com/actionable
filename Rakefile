@@ -34,7 +34,7 @@ SORD_FIXUPS = [
   # (+Action.singleton_class::OUTCOME_BASES+, not +Action::OUTCOME_BASES+), and
   # +private_constant+s raise NameError from outside. Sord declares both as
   # public constants of the class, so drop them.
-  [/^\s*(?:RESERVED_OUTPUT_FIELDS|OUTCOME_BASES|BOOL_CLASSES|HASH_OUTPUT): .*\n/, '']
+  [/^\s*(?:RESERVED_OUTPUT_FIELDS|OUTCOME_BASES|BOOL_CLASSES|HASH_OUTPUT|CONSTANT_NAME): .*\n/, '']
 ].freeze
 
 # The committed sigs may only get MORE typed. `sigs:untyped` counts the

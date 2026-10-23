@@ -2,6 +2,33 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **`case_step` branches honour `if:` / `unless:`.** `on 'x', :handle, if:
+  :ready?` (and `default :y, unless: …`) accepted the guard and then ignored
+  it, so the branch always ran. The branch is still picked by value alone; its
+  guard now decides whether the target runs, as for a plain step. A matched
+  branch whose guard opts out does nothing: no fall-through to the next branch
+  or the `default`. **Upgrade note:** a branch you guarded now really skips.
+  <!-- upgrading: case-branch-guards -->
+- **`Actionable::RBS` names output classes for `?` / `!` codes validly.**
+  Under `typed_outcomes`, `fails(:expired?) { … }` emitted `class
+  Expired?FailureOutput`, which RBS can't parse. A trailing `?` / `!` now
+  becomes `Predicate` / `Bang` (`ExpiredPredicateFailureOutput`,
+  `DoneBangSkipOutput`), so `:x` and `:x?` get different classes. `generate`
+  now raises `ArgumentError` when two codes of one kind would share a class
+  name (`:ready` / `:ready_`), which silently emitted one class for two
+  schemas, or when a code can't start a class name. **Upgrade note:** rename
+  one of two clashing codes. <!-- upgrading: rbs-outcome-class-names -->
+- **The first-run verb check sees through `alias_method`.** A step naming an
+  alias (`step :charge` with `alias_method :charge, :do_charge`) looked up
+  the def by the alias name, found none, and skipped the check; it now reads
+  the original `def`, so a misplaced verb there raises `DefinitionError` like
+  any other step. Documented limit: a module `prepend`ed over a step method
+  hides the class's own `def` from the check. **Upgrade note:** fix the
+  reported verb, as for any verb-position offense.
+  <!-- upgrading: verb-check-alias -->
+
 ### Documentation
 
 - **UPGRADING.md, from a dry run against a large app (133 actions).** The guide

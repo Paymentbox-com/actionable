@@ -129,6 +129,13 @@ module VerbPositionRules
         end
       end
     RUBY
+    ['the end of a loop body whose loop is the last statement', <<~RUBY, []],
+      def a
+        while (item = queue.pop)
+          fail :bad if item.bad?
+        end
+      end
+    RUBY
     ['return fail(...) inside a block', <<~RUBY, []],
       def a
         items.each { |i| return fail(:bad) if i.bad? }
@@ -254,6 +261,12 @@ module VerbPositionRules
             next
           end
         end
+        save
+      end
+    RUBY
+    ['next fail(...) in a block followed by more code', <<~RUBY, [[:fail, 2]]],
+      def a
+        items.each { |i| next fail(:bad) if i.bad? }
         save
       end
     RUBY
