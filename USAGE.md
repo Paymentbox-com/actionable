@@ -1241,7 +1241,8 @@ name, becomes `Predicate` or `Bang`: `fails(:expired?) { … }` gives
 `DoneBangSkipOutput`, so `:expired` and `:expired?` never share a class.
 `generate` raises `ArgumentError` when two codes of one kind would still land on
 one name (`:ready` and `:ready_`, or `:expired?` and `:expired_predicate`), or
-when a code doesn't start with an ASCII letter or underscore: rename one code.
+when a code's class name would not be plain ASCII starting with a capital
+(`:日本`, `:foo_é`): rename one code.
 
 ### Base actions
 

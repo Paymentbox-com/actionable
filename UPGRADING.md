@@ -766,8 +766,8 @@ like the plain step it is.
 ```
 ArgumentError: Billing::Charge: skip codes :ready and :ready_ both name ReadySkipOutput in the generated RBS; rename one of the codes
 ```
-(or `... is not a valid RBS class name ...` for a code that doesn't start with
-an ASCII letter or underscore). Codes ending in `?` / `!` that declare an output
+(or `... is not a valid RBS class name ...` for a code whose class name would not
+be plain ASCII starting with a capital, e.g. `:日本` or `:foo_é`). Codes ending in `?` / `!` that declare an output
 schema now generate `…PredicateFailureOutput` / `…BangSkipOutput`; before,
 their RBS didn't parse, so nothing can reference the old names.
 

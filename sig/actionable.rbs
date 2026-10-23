@@ -240,7 +240,6 @@ module Actionable
   # qualified names (+::Invoice+) — generate RBS for those (e.g. via
   # +FieldStruct::RBS+) so they resolve.
   module RBS
-    CONSTANT_NAME: Regexp
 
     # Generate RBS source for a user action class.
     # 
