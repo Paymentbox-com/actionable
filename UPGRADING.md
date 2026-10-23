@@ -2,7 +2,7 @@
 
 <!-- upgrading-range: 1.5.0..1.8.2 -->
 
-This guide takes an app from any **1.5.x** release to **1.8.0**, one version at
+This guide takes an app from any **1.5.x** release to **1.8.2**, one version at
 a time or [straight through](#straight-from-15-to-18). It lists every change a
 caller can see, not just the breaking ones. Each entry has the same four parts:
 
@@ -38,13 +38,15 @@ Agents: follow the numbered procedure in [AGENTS.md](AGENTS.md#upgrading)
 
 **Who must act:** every app moving to 1.8.0 (two new checks raise on code that
 used to run), anyone who keeps hand-written RBS next to `Actionable::RBS`
-output, and Rails apps that nest `transactional` actions.
+output, and Rails apps that nest `transactional` actions. **Already on 1.8.1?**
+Skip to [1.8.1 → 1.8.2](#181--182): one silent change (`case_step` branch
+guards) and two narrow ones.
 
 1. **Bump field_struct first.** actionable >= 1.6 requires `field_struct >=
    0.12` (1.5.2 needs `>= 0.11`). Upgrade it and follow field_struct's
    [UPGRADING.md](https://github.com/Paymentbox-com/field_struct/blob/main/UPGRADING.md)
    until your suite is green.
-2. **Bump actionable** to `v1.8.1` in the Gemfile.
+2. **Bump actionable** to `v1.8.2` in the Gemfile.
 3. **Fix verb-position offenses.** If you need a green baseline first, run the
    suite once with `Actionable.verb_position_check = false`, then turn it back
    on. Enable the [`Actionable/VerbNotLast` cop](#a-plain-verb-must-end-its-step-or-hook-method)
@@ -73,7 +75,7 @@ run:
 1. Bump field_struct to >= 0.12 (step 1 above). Bundler refuses the actionable
    bump until you do: `Bundler could not find compatible versions for gem
    "field_struct"`.
-2. Bump actionable to `v1.8.1`. Set `Actionable.verb_position_check = false`
+2. Bump actionable to `v1.8.2`. Set `Actionable.verb_position_check = false`
    in `spec_helper` (or a `spec/support` file) for now, not in an initializer:
    an initializer also switches the check off in production, and that is easy
    to forget to undo. Use an initializer only if you must deploy before every
@@ -86,7 +88,9 @@ run:
    [identifier codes](#fail--skip-codes-must-be-identifiers).
 5. Regenerate your RBS and work through the [1.6.0](#152--160) entries and
    [adapter signatures](#adapter-signatures-now-ship-in-sig).
-6. Run the suite with the check on. Anything still failing:
+6. Work through the [1.8.2](#181--182) entries: a `case_step` branch guard
+   now takes effect, and that doesn't raise, so run its Find.
+7. Run the suite with the check on. Anything still failing:
    [bisect by version](#if-something-else-breaks).
 
 ## Symptom index
@@ -722,6 +726,24 @@ longer confuse it: it can only report fewer false offenses, never new ones on
 code it already accepted. Everything else in 1.8.1 is test and tooling.
 
 ## 1.8.1 → 1.8.2
+
+A patch release, but three fixes change what an app can see. Each is a bug
+fix: the old behaviour contradicted the documentation.
+
+| Change | Who is affected | What you see | Why |
+|---|---|---|---|
+| [`case_step` branch guards are honoured](#case_step-branch-guards-are-honoured) | Actions with `on …, if:` / `unless:` inside a `case_step` | **Silent:** a branch whose guard says no no longer runs; the run still succeeds | The guard was accepted and silently ignored |
+| [`Actionable::RBS` refuses colliding codes](#actionablerbs-refuses-codes-that-share-an-output-class-name) | `typed_outcomes` actions with codes like `:ready` + `:ready_`, or non-ASCII codes | `ArgumentError` from `generate`, naming both codes | Both schemas landed in one RBS class, so one was typed wrong |
+| [The verb check reads an aliased step's `def`](#the-verb-check-reads-an-aliased-steps-original-def) | Steps that name an `alias_method` alias of a method with a misplaced `fail` / `skip` | `DefinitionError` on first run | Aliased steps skipped the check that 1.8.0 applies to every other step |
+
+**From 1.8.1:**
+1. Bump the tag to `v1.8.2`.
+2. Run the `case_step` Find below, and check that each guarded branch should
+   really be skipped when its guard says no.
+3. If you use `typed_outcomes`, regenerate your RBS: `generate` names any clash.
+4. Run the suite.
+Nothing else changed for callers. Codes ending in `?` / `!` get valid RBS class
+names (`…PredicateFailureOutput`); before, their RBS didn't parse.
 
 ### `case_step` branch guards are honoured
 <!-- upgrading: case-branch-guards -->
