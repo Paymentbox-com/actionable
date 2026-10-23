@@ -74,6 +74,7 @@ A behavior change isn't done until the docs are. Some of this is enforced
 | **CHANGELOG.md** `[Unreleased]` | any `lib/**` change | ✅ `rake docs:check` (freshness) |
 | **README.md** | a user-facing feature or verb | ⚠️ judgment |
 | **docs/getting_started.md** | a feature an adopter would reach for early | ⚠️ judgment |
+| **UPGRADING.md** | a change a caller must act on (every CHANGELOG `**Upgrade note:**`): add a Symptom / Find / Fix / Why entry in that version's `## A → B` section, put the same `<!-- upgrading: slug -->` marker on the CHANGELOG bullet and the entry, and raise `<!-- upgrading-range: FROM..TO -->` to the next release | ✅ `spec/upgrading_spec.rb` |
 | **AGENTS.md** + **skills/actionable/SKILL.md** | a new verb / DSL macro / adapter agents should know | ⚠️ judgment |
 | **docs/origin/plan.md** | a new locked decision (Dnn) | ⚠️ judgment |
 

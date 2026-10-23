@@ -22,7 +22,7 @@ gem 'field_struct', git: 'https://github.com/Paymentbox-com/field_struct', tag: 
 gem 'actionable',   git: 'https://github.com/Paymentbox-com/actionable',   tag: 'v1.7.0'
 ```
 
-Requires Ruby 3.2+.
+Requires Ruby 3.2+. Upgrading from an earlier release? See [UPGRADING.md](UPGRADING.md).
 
 ## Quick start
 

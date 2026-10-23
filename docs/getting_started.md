@@ -45,6 +45,8 @@ options, and macros see [`USAGE.md`](../USAGE.md); for the feature tour see
 gem 'actionable'
 ```
 
+Upgrading an app that already uses Actionable? Follow [UPGRADING.md](../UPGRADING.md).
+
 Requires Ruby 3.2+. The core is pure Ruby (only `field_struct`). Two optional
 adapters are separate requires — never loaded by the core:
 

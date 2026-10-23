@@ -1,7 +1,7 @@
 ---
 name: actionable
 description: Author, edit, and debug Actionable service objects — declaring steps, choosing control-flow verbs (succeed/fail/fail_with/skip and their bang forms), wiring typed input/output schemas (including discriminated input via input_for), running over a collection with run_each, composing nested actions and case branches, lifecycle hooks, history/sampled measurement, serializing results (to_h/to_api_h), and the optional Rails/RSpec/job adapters.
-when_to_use: Use when defining or modifying a class that inherits from Actionable::Action (any step / case_step / on_success / output / input / input_for declaration), when choosing how a step should record its outcome, when running an action over a collection, when debugging why a run failed/skipped or an output wasn't captured, when mapping a result to an HTTP/job response, or when testing an action with the perform_actionable matcher.
+when_to_use: Use when defining or modifying a class that inherits from Actionable::Action (any step / case_step / on_success / output / input / input_for declaration), when choosing how a step should record its outcome, when running an action over a collection, when debugging why a run failed/skipped or an output wasn't captured, when mapping a result to an HTTP/job response, when testing an action with the perform_actionable matcher, or when upgrading the actionable gem to a newer version.
 ---
 
 # Working with Actionable
@@ -168,6 +168,27 @@ failures, hooks, measure, and transaction config (or `describe_text` for a reada
   `retry: true` retries (failures and skips) and `retry: false` doesn't.
 - **Prod observability:** `measure :sampled, rate: 0.1` records history on a
   fraction of runs (between `:all` and `:none`).
+
+## Upgrading the gem
+
+When asked to bump actionable, follow the gem's `UPGRADING.md` (next to
+`USAGE.md` in `bundle show actionable`, or
+https://github.com/Paymentbox-com/actionable/blob/main/UPGRADING.md) instead
+of recalling changes. In short:
+
+1. Read the from/to versions (`Gemfile.lock`) and only the guide's sections
+   between them.
+2. Bump field_struct first when the target needs it (>= 0.12 from 1.6.0) and
+   follow its UPGRADING.md.
+3. Bump actionable; run every entry's **Find** in range.
+4. Enable the `Actionable/VerbNotLast` cop and run
+   `bundle exec rubocop --only Actionable/VerbNotLast`.
+5. Apply each **Fix**; never leave `Actionable.verb_position_check = false`
+   behind.
+6. Regenerate owned RBS with `Actionable::RBS.generate`.
+7. Run the suite with the check on.
+8. Report what was fixed, what was reviewed by hand (entries with no
+   reliable Find), and residual behaviour risks.
 
 ## Testing (`require 'actionable/rspec'`)
 
