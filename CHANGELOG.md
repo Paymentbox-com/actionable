@@ -5,10 +5,12 @@
 ## [1.8.2] - 2026-10-23
 
 Three fixes found by a mutation-driven review, plus upgrade-guide answers from
-a dry run against a large app. `case_step` branches now honour `if:` /
-`unless:` (a guarded-out branch does nothing); `Actionable::RBS` generates valid
-class names for `?` / `!` codes and refuses colliding ones; the first-run verb
-check sees through `alias_method`. See `UPGRADING.md` "1.8.1 → 1.8.2".
+a dry run against a large app. All three change what an app can see, so read
+`UPGRADING.md` "1.8.1 → 1.8.2" before bumping. `case_step` branches now honour
+`if:` / `unless:`: a guarded-out branch does nothing, silently, where the guard
+used to be ignored. `Actionable::RBS` generates valid class names for `?` / `!`
+codes and raises on colliding ones. The first-run verb check sees through
+`alias_method`, so it can raise on an aliased step it used to skip.
 
 ### Fixed
 
