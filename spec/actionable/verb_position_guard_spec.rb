@@ -48,6 +48,20 @@ RSpec.describe 'the recording-verb position check' do
     expect { action.run }.to raise_error(Actionable::DefinitionError, /#one .*`skip`.*\n.*#two .*`succeed`/)
   end
 
+  it 'checks fail_with like fail (owner ruling R10)' do
+    action = Class.new(Actionable::Action) do
+      step :validate
+      def validate
+        fail_with(Struct.new(:errors).new([]), code: :bad_shape)
+        work
+      end
+
+      def work = nil
+    end
+
+    expect { action.run }.to raise_error(Actionable::DefinitionError, /#validate .*`fail_with`.*use fail_with! to stop here/)
+  end
+
   it 'runs an action whose verbs are all in tail position' do
     action = Class.new(Actionable::Action) do
       step :check

@@ -183,9 +183,9 @@ result.existing_id # => 42
 
 ### Where a plain verb may go
 
-`fail`, `skip` and `succeed` record an outcome **and keep running**, so in
-`fail :card_expired if card.expired?` followed by `notify`, the `notify` still
-runs (`fail!` was meant). The rule: **in a step or hook method, a plain
+`fail`, `fail_with`, `skip` and `succeed` record an outcome **and keep
+running**, so in `fail :card_expired if card.expired?` followed by `notify`,
+the `notify` still runs (`fail!` was meant). The rule: **in a step or hook method, a plain
 recording verb must be the method's last expression, or explicitly end it.**
 Bang verbs (`fail!`, `skip!`, `succeed!`, `fail_with!`) can go anywhere.
 
@@ -200,7 +200,7 @@ skipped where it can't be done: no Prism (Ruby 3.2 without the `prism` gem; it
 is a default gem from 3.3), or no readable source (a method from `eval` or
 `define_method`).
 
-| The verb call (`fail`, `skip`, `succeed`, or `self.fail` …) | |
+| The verb call (`fail`, `fail_with`, `skip`, `succeed`, or `self.fail` …) | |
 |---|---|
 | is the method's last statement (a modifier `fail :x if bad?` counts as the statement) | OK |
 | is the last statement of an `if` / `elsif` / `else` / `unless` / ternary / `case`-`when` / `case`-`in` / `rescue` / `ensure` branch, or the right side of `&&` / `and` / `\|\|` / `or`, whose construct is itself last | OK |
@@ -808,8 +808,8 @@ cryptic `NoMethodError`:
   steps, case value sources and method branch targets, hook steps) must be
   implemented, or the run raises a `DefinitionError` naming the action and the
   missing method.
-- **A plain verb with code after it (at first run):** a `fail` / `skip` /
-  `succeed` that isn't its step or hook method's last expression raises a
+- **A plain verb with code after it (at first run):** a `fail` / `fail_with` /
+  `skip` / `succeed` that isn't its step or hook method's last expression raises a
   `DefinitionError` naming the action, method, `file:line` and verb. See
   [Where a plain verb may go](#where-a-plain-verb-may-go).
 - **Sentence codes (at the `fail` / `skip` call):** a code that isn't an

@@ -4,14 +4,14 @@
 
 ### Added
 
-- **A plain recording verb must end its step or hook method (owner ruling
-  R5).** `fail :card_expired if card.expired?` followed by more code keeps
+- **A plain recording verb must end its step or hook method (owner rulings
+  R5, R10).** `fail :card_expired if card.expired?` followed by more code keeps
   running — almost always a `fail!` missing its bang. On an action's first
   run, every step method (case-step branch targets included) and lifecycle
   hook method (`on_success` / `on_failure` / `on_skip` / `always`, and
   `after_commit` with the Rails adapter) is parsed with Prism, and a plain
-  `fail` / `skip` / `succeed` (or `self.fail` …) that isn't the method's last
-  expression raises `DefinitionError` naming the action, method, `file:line`,
+  `fail` / `fail_with` / `skip` / `succeed` (or `self.fail` …) that isn't the
+  method's last expression raises `DefinitionError` naming the action, method, `file:line`,
   verb and fix. Branches, `return fail(...)`, a verb followed by `return`,
   and blocks whose call is last are allowed; USAGE (Control flow, "Where a
   plain verb may go") has the full table. Checked once per class: later runs

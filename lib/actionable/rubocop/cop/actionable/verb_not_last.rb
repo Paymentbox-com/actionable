@@ -3,9 +3,10 @@
 module RuboCop
   module Cop
     module Actionable
-      # A plain recording verb (+fail+ / +skip+ / +succeed+) must be the last
-      # expression of its step or hook method: it records the outcome and
-      # keeps running, so code after it still runs (owner ruling R5). The
+      # A plain recording verb (+fail+ / +fail_with+ / +skip+ / +succeed+) must
+      # be the last expression of its step or hook method: it records the
+      # outcome and keeps running, so code after it still runs (owner rulings
+      # R5, R10). The
       # same rules as the gem's first-run check, from the same analyzer
       # (+Actionable::VerbPosition+); USAGE (Control flow) has the table.
       #

@@ -12,7 +12,7 @@ module Actionable
     def about
       LintRoller::About.new(
         name: 'actionable', version: VERSION, homepage: 'https://github.com/Paymentbox-com/actionable',
-        description: 'Actionable/VerbNotLast: a plain fail/skip/succeed must end its step or hook method.'
+        description: 'Actionable/VerbNotLast: a plain fail/fail_with/skip/succeed must end its step or hook method.'
       )
     end
 

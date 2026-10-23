@@ -737,7 +737,7 @@ module Actionable
       end
 
       # First-run guard (owner ruling R5): in every step and hook method, a
-      # non-bang recording verb (+fail+ / +skip+ / +succeed+) must be the
+      # non-bang recording verb (+fail+ / +fail_with+ / +skip+ / +succeed+) must be the
       # method's last expression, or explicitly end it, since anything after
       # it still runs (+VerbPosition+ has the rules). Checked once per class,
       # by parsing each method's source with Prism; skipped where that can't

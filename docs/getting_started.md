@@ -423,7 +423,7 @@ failed.errors.full_messages # => ["First name is required"]
 7. **`fail` is not `raise` inside an action.** The gem's `fail` verb replaces
    `Kernel#fail` there, so `fail 'boom'` records a `Failure` with code
    `:boom` and the run continues (a sentence code raises `ArgumentError`). Use
-   `raise` to signal a bug. And a plain `fail` / `skip` / `succeed` must be
+   `raise` to signal a bug. And a plain `fail` / `fail_with` / `skip` / `succeed` must be
    the last expression of its step or hook method, or the action raises
    `DefinitionError` on its first run; see
    [USAGE, Control flow](../USAGE.md#where-a-plain-verb-may-go).

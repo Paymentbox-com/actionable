@@ -72,7 +72,7 @@ so an idempotent hit can return the existing record's data.
 
 Inside an action, `fail` is this verb, not Ruby's `Kernel#fail`: it never
 raises, and a sentence code (`fail 'card expired'`) raises `ArgumentError`. Use
-`raise` for exceptions. A plain `fail` / `skip` / `succeed` must be the last
+`raise` for exceptions. A plain `fail` / `fail_with` / `skip` / `succeed` must be the last
 expression of its step or hook method (`fail :x if bad?` followed by more code
 is a `fail!` missing its bang): an action that breaks this raises
 `DefinitionError` on its first run, and the opt-in `Actionable/VerbNotLast`

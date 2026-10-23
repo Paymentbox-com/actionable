@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
 module Actionable
-  # Where a non-bang recording verb (+fail+ / +skip+ / +succeed+) may sit in a
-  # step or hook method (owner ruling R5). Those verbs record an outcome and
+  # Where a non-bang recording verb (+fail+ / +fail_with+ / +skip+ /
+  # +succeed+) may sit in a step or hook method (owner rulings R5, R10). Those verbs record an outcome and
   # keep running, so +fail :card_expired if card.expired?+ followed by more
   # code is almost always a +fail!+ that forgot its bang. The rule: the verb
   # must be the method's last expression, or explicitly end it.
@@ -27,9 +27,11 @@ module Actionable
   #
   # @api private
   module VerbPosition
-    # The non-bang verbs that record an outcome without halting.
+    # The non-bang verbs that record an outcome without halting: every
+    # +Action+ verb that writes the result and returns. +adopt_failure!+ (the
+    # runner's nested-failure hand-off) halts, so it is not one.
     # @return [Array<Symbol>]
-    VERBS = %i[fail skip succeed].freeze
+    VERBS = %i[fail fail_with skip succeed].freeze
 
     # The class-body declarations whose named methods run as steps or hooks.
     # @return [Array<Symbol>]
@@ -46,7 +48,7 @@ module Actionable
 
     # One misplaced verb call.
     class Offense
-      # @return [Symbol] the verb (+:fail+, +:skip+ or +:succeed+)
+      # @return [Symbol] the verb (one of {VERBS})
       attr_reader :verb
       # @return [Integer] the 1-based line of the call
       attr_reader :line

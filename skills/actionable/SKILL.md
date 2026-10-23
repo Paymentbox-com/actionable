@@ -83,8 +83,8 @@ When asked to build one:
   skipping with an undeclared one raises `DefinitionError`, the default
   `:skipped` included (nothing is exempt).
 - Plain verbs don't halt; last write wins. Bang verbs halt.
-- **A plain `fail` / `skip` / `succeed` must be the last expression of its step
-  or hook method** (or `return fail(...)`). `fail :x if bad?` followed by more
+- **A plain `fail` / `fail_with` / `skip` / `succeed` must be the last
+  expression of its step or hook method** (or `return fail(...)`). `fail :x if bad?` followed by more
   code raises `DefinitionError` on the action's first run — that's a `fail!`
   missing its bang. The opt-in RuboCop cop `Actionable/VerbNotLast`
   (`plugins: [{actionable: {require_path: actionable/rubocop}}]`) flags it.
