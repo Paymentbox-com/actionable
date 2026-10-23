@@ -17,6 +17,8 @@ gem 'field_struct', git: 'https://github.com/Paymentbox-com/field_struct', tag: 
 
 gem 'rake', '~> 13.0'
 gem 'rspec', '~> 3.0'
+# The Actionable/VerbNotLast cop specs load RuboCop (same pin as the main Gemfile).
+gem 'rubocop', '~> 1.21', require: false
 
 gem 'activemodel', '~> 7.1.0', require: false
 gem 'activerecord', '~> 7.1.0', require: false
