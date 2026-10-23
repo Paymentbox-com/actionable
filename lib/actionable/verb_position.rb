@@ -114,7 +114,12 @@ module Actionable
       # file (parsed once per path and mtime). Empty when Prism is missing,
       # the method has no readable source (+eval+, a C method), the file does
       # not parse cleanly, or no +def+ by that name starts on that line (a
-      # +define_method+).
+      # +define_method+). The def is looked up by +original_name+, so a step
+      # naming an +alias_method+ of it is checked too.
+      #
+      # Known limit: for a module prepended over the class's def, the method
+      # resolved is the wrapper, so only the wrapper's body is checked, not
+      # the class's own def it calls through +super+.
       #
       # @param method [UnboundMethod]
       # @return [Array<Offense>]
@@ -122,7 +127,7 @@ module Actionable
         path, line = method.source_location
         return [] unless path && prism? && File.file?(path) && File.readable?(path)
 
-        file_offenses(path).fetch([method.name, line], [])
+        file_offenses(path).fetch([method.original_name, line], [])
       end
 
       # The step and hook methods an action class body declares, with their

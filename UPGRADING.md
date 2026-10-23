@@ -95,6 +95,7 @@ run:
 | `ArgumentError: … code "…" is not an identifier …` | 1.8.0 | [Identifier codes](#fail--skip-codes-must-be-identifiers) |
 | A guarded `case_step` branch no longer runs | 1.8.2 | [Branch guards](#case_step-branch-guards-are-honoured) |
 | `ArgumentError: … both name …Output in the generated RBS` | 1.8.2 | [Output class names](#actionablerbs-refuses-codes-that-share-an-output-class-name) |
+| ``DefinitionError: … calls `fail` …`` for an aliased step | 1.8.2 | [Aliased step](#the-verb-check-reads-an-aliased-steps-original-def) |
 
 ## 1.5.x → 1.5.2
 
@@ -744,6 +745,44 @@ skips(:ready_later) { required :id, :integer }
 ```
 
 **Why.** Both schemas went into one RBS class, so one of them typed wrong.
+
+### The verb check reads an aliased step's original `def`
+<!-- upgrading: verb-check-alias -->
+
+**Symptom.** On first run, the same `DefinitionError` as for any
+[verb-position offense](#a-plain-verb-must-end-its-step-or-hook-method),
+naming the step (`Charge#charge`) and the `file:line` of the aliased `def`:
+```
+Actionable::DefinitionError: Charge#charge (app/actions/charge.rb:4) calls `fail` with more code after it, which still runs: use fail! to stop here, or make it the method's last expression
+```
+
+**Find.** Aliases in action classes; read the `def` each step alias points
+at. The `Actionable/VerbNotLast` cop doesn't follow aliases, so it won't list
+these:
+```sh
+rg -n '^\s*(alias_method\b|alias\s)' app lib
+```
+
+**Fix.** As for any offense: a bang verb, or make the verb the last
+expression:
+```ruby
+# before
+step :charge
+def do_charge
+  fail :late if late?
+  @charged = true
+end
+alias_method :charge, :do_charge
+
+# after
+def do_charge
+  fail! :late if late?
+  @charged = true
+end
+```
+
+**Why.** The check looked the `def` up by the alias's name, found none, and
+skipped the step.
 
 ## New, opt-in: worth adopting
 

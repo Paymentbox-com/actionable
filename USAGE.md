@@ -198,7 +198,10 @@ the method's last expression"). The check runs once per class (a later run pays
 nothing for it), and a failing check raises on every run until fixed. It is
 skipped where it can't be done: no Prism (Ruby 3.2 without the `prism` gem; it
 is a default gem from 3.3), or no readable source (a method from `eval` or
-`define_method`).
+`define_method`). A step naming an `alias_method` is checked against the
+original `def` (the cop doesn't follow aliases). A module `prepend`ed over a step method hides the class's own
+`def` from the check: the wrapper is what runs first, so only its body is read
+(the cop still reads the class's `def`).
 
 | The verb call (`fail`, `fail_with`, `skip`, `succeed`, or `self.fail` …) | |
 |---|---|

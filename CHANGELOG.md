@@ -20,6 +20,14 @@
   name (`:ready` / `:ready_`), which silently emitted one class for two
   schemas, or when a code can't start a class name. **Upgrade note:** rename
   one of two clashing codes. <!-- upgrading: rbs-outcome-class-names -->
+- **The first-run verb check sees through `alias_method`.** A step naming an
+  alias (`step :charge` with `alias_method :charge, :do_charge`) looked up
+  the def by the alias name, found none, and skipped the check; it now reads
+  the original `def`, so a misplaced verb there raises `DefinitionError` like
+  any other step. Documented limit: a module `prepend`ed over a step method
+  hides the class's own `def` from the check. **Upgrade note:** fix the
+  reported verb, as for any verb-position offense.
+  <!-- upgrading: verb-check-alias -->
 
 ## [1.8.1] - 2026-10-23
 

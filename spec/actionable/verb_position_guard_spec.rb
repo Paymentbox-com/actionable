@@ -182,6 +182,19 @@ RSpec.describe 'the recording-verb position check' do
     end
   end
 
+  it 'checks a step that names an alias_method of the offending def' do
+    action = Class.new(Actionable::Action) do
+      step :charge
+      def do_charge
+        fail :late
+        @charged = true
+      end
+      alias_method :charge, :do_charge
+    end
+
+    expect { action.run }.to raise_error(Actionable::DefinitionError, /#charge .*`fail`/)
+  end
+
   it 'skips a method defined with define_method' do
     action = Class.new(Actionable::Action) do
       step :work
