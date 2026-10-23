@@ -7,6 +7,10 @@
 #   in [Unreleased] and every version >= 1.5.2 holds an invisible
 #   `<!-- upgrading: some-slug -->` marker in the same bullet or paragraph.
 #   Any other entry a caller can observe may opt in with a marker.
+# - Every bullet under a "### Changed", "### Removed" or "### Breaking…"
+#   heading in [Unreleased] records a decision: `<!-- upgrading: some-slug -->`
+#   (with its guide entry, as above) or `<!-- upgrading: none -->` (no caller
+#   action). Released sections are not retro-checked.
 # - UPGRADING.md carries the same marker under the entry that explains it, in
 #   the "## X → Y" section of the version that shipped it ([Unreleased] ships
 #   as the range's TO). Every guide marker exists in the CHANGELOG.
@@ -17,7 +21,9 @@
 #
 # The slug is the key, not the wording, so either file can be reworded freely.
 module UpgradingGuide
-  MARKER = /<!--\s*upgrading:\s*([a-z0-9][a-z0-9-]*)\s*-->/
+  MARKER = /<!--\s*upgrading:\s*(?!none\s*-->)([a-z0-9][a-z0-9-]*)\s*-->/
+  NONE = /<!--\s*upgrading:\s*none\s*-->/
+  DECIDED = /\A#+\s+(?:Changed|Removed|Breaking)/i
   RANGE = /<!--\s*upgrading-range:\s*(\d+\.\d+\.\d+)\.\.(\d+\.\d+\.\d+)\s*-->/
   NOTE = /\*\*Upgrad(?:e note|ing):\*\*/
   FIRST_GUARDED = Gem::Version.new('1.5.2')
@@ -39,6 +45,18 @@ module UpgradingGuide
   def blocks(text)
     text.each_line.slice_before { |line| line.start_with?('- ', '#') }
       .flat_map { |chunk| chunk.join.split(/\n\s*\n/) }
+  end
+
+  # The bullets under a Changed / Removed / Breaking heading that carry
+  # neither marker, as [heading, block] pairs.
+  def undecided(text)
+    heading = nil
+    blocks(text).filter_map do |block|
+      heading = block.lines.first.strip if block.start_with?('#')
+      next unless block.start_with?('- ') && heading&.match?(DECIDED)
+
+      [heading, block] unless block.match?(MARKER) || block.match?(NONE)
+    end
   end
 
   # UPGRADING.md "## A → B" sections as { "B" => text }.
@@ -71,6 +89,11 @@ module UpgradingGuide
     by_version = guide_versions(upgrading)
     (dated.select { |v| v <= target }.map(&:to_s) | [target.to_s]).each do |v|
       found << "UPGRADING.md has no `## … → #{v}` section" unless by_version.key?(v)
+    end
+
+    undecided(guarded['Unreleased'].to_s).each do |heading, block|
+      found << "CHANGELOG [Unreleased] #{heading} entry needs `<!-- upgrading: slug -->` (with an UPGRADING.md " \
+               "entry) or `<!-- upgrading: none -->`: #{block.strip.lines.first.strip[0, 90]}"
     end
 
     changelog_slugs = []
@@ -232,6 +255,41 @@ RSpec.describe 'UPGRADING.md' do
     it 'fails when a dated version in the range has no section' do
       expect(problems(upgrading: upgrading.sub('## 1.9.0 → 2.0.0', '## Alpha notes')))
         .to include('UPGRADING.md has no `## … → 2.0.0` section')
+    end
+
+    describe 'every [Unreleased] Changed / Removed / Breaking bullet records a decision' do
+      def unreleased(heading, bullet)
+        changelog.sub("## [Unreleased]\n", "## [Unreleased]\n\n#{heading}\n\n#{bullet}\n")
+      end
+
+      it 'fails on an unmarked bullet under each of those headings' do
+        ['### Changed', '### Removed', '### Breaking changes'].each do |heading|
+          expect(problems(changelog: unreleased(heading, "- **Renamed.** `a` is now `b`.\n  More detail.")))
+            .to eq(["CHANGELOG [Unreleased] #{heading} entry needs `<!-- upgrading: slug -->` (with an " \
+                    'UPGRADING.md entry) or `<!-- upgrading: none -->`: - **Renamed.** `a` is now `b`.'])
+        end
+      end
+
+      it 'passes a bullet marked `none`, without a guide entry or a range bump' do
+        expect(problems(changelog: unreleased('### Changed', "- **Faster.** No caller action.\n  <!-- upgrading: none -->")))
+          .to eq([])
+      end
+
+      it 'fails a slug with no guide entry' do
+        expect(problems(changelog: unreleased('### Removed', '- **Gone.** `c` is removed. <!-- upgrading: gone-c -->')))
+          .to include(a_string_including('marks `gone-c` but UPGRADING.md has no'))
+      end
+
+      it 'does not take `none` as a slug for an upgrade note' do
+        expect(problems(changelog: unreleased('### Changed', '- **X.** **Upgrade note:** act. <!-- upgrading: none -->')))
+          .to include(a_string_including('[Unreleased] upgrade note has no'))
+      end
+
+      it 'leaves other headings and released sections alone' do
+        added = unreleased('### Added', '- **New.** A method.')
+        expect(problems(changelog: added.sub("## [2.0.0] - 2026-01-01\n\n### Changed\n\n",
+          "## [2.0.0] - 2026-01-01\n\n### Changed\n\n- **Old.** Unmarked.\n\n"))).to eq([])
+      end
     end
 
     it 'fails when [Unreleased] has upgrade entries the range does not reach' do

@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Tests / CI
+
+- **The UPGRADING.md drift guard asks for a decision on every visible
+  change.** Each `[Unreleased]` bullet under `### Changed`, `### Removed` or
+  `### Breaking…` must carry an `upgrading: <slug>` marker comment (with its
+  guide entry, as before) or `upgrading: none`, so a change filed there
+  without an upgrade note no longer slips past it. Released sections are not
+  re-checked. The guard's own examples now run on fixtures, so they hold in
+  any release state; one example still checks the live files.
+
 ## [1.8.0] - 2026-10-22
 
 A guard against silently continuing runs, plus upgrade guidance. A plain
