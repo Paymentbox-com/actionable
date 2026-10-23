@@ -43,6 +43,13 @@
   pass the sentence as the message (`fail(:card_expired, 'card expired')`),
   or `raise` if you meant an exception.
 
+### Documentation
+
+- README "Types (RBS)" says the adapter signatures (`transactional`,
+  `after_commit`, the RSpec helpers, `Job`) are declared on `Actionable::Action`
+  even when `actionable/rails` isn't required: RBS can't make a signature
+  conditional and `rbs` loads a gem's whole `sig/`.
+
 ## [1.7.0] - 2026-10-22
 
 Lifecycle and adapter hardening. `always` hooks now run even after an outcome
