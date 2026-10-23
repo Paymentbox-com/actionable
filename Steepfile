@@ -10,8 +10,10 @@
 # scope: sord generates their sigs from YARD like the core's. Their bodies call
 # ActiveRecord and rspec-mocks, which have no sigs in this lane, so they add
 # report-only problems. Still out of scope, as they have no sigs (.yardopts
-# excludes them): ProxyValidator (ActiveModel-typed), the Railtie, and
-# actionable/rspec/coverage.
+# excludes them): ProxyValidator (ActiveModel-typed), the Railtie,
+# actionable/rspec/coverage, and the recording-verb analyzer and its RuboCop
+# cop (Prism / RuboCop / lint_roller types a host may not have: Prism isn't
+# in Ruby 3.2, and RuboCop is a dev tool).
 #
 # The stdlib libraries match rbs_collection.yaml so ::Date / ::Time /
 # ::DateTime / ::BigDecimal references in sig/actionable.rbs resolve.
@@ -20,7 +22,8 @@ target :lib do
 
   check 'lib'
   ignore 'lib/actionable/rails/proxy_validator.rb', 'lib/actionable/railtie.rb',
-    'lib/actionable/rspec/coverage', 'lib/actionable/rspec/coverage.rb'
+    'lib/actionable/rspec/coverage', 'lib/actionable/rspec/coverage.rb',
+    'lib/actionable/verb_position.rb', 'lib/actionable/rubocop.rb', 'lib/actionable/rubocop'
 
   library 'date', 'time', 'bigdecimal'
 end

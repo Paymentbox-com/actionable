@@ -84,6 +84,14 @@ module Actionable
           'but does not implement them'
       end
 
+      # Extend the recording-verb position check (owner ruling R5) to the
+      # +after_commit+ hooks.
+      #
+      # @return [Array<Steps::Base>]
+      def verb_checked_steps
+        super + after_commit_hooks.to_a
+      end
+
       # @raise [DefinitionError] when +after_all_transactions_commit+ is unavailable
       # @return [void]
       def ensure_after_commit_supported!

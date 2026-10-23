@@ -114,25 +114,25 @@ caller (assert on it with the RSpec matcher's `and_raise`).
 
 **`fail` is not `raise` inside an action.** `Actionable::Action#fail` replaces
 Ruby's `Kernel#fail` (the alias of `raise`) in steps, hooks and any instance
-method of the action. A habitual `fail 'something broke'` therefore raises
-nothing: it records a `Failure` whose *code* is the message, as a Symbol, and
-the run keeps going, so a later `succeed` (or the auto-success) can erase it.
-`fail SomeError, 'msg'` raises a confusing `NoMethodError` (`to_sym` for the
-class), not `SomeError`. To signal a bug, use `raise`; to stop with a failure,
-use `fail!(:code, 'message')`:
+method of the action, so `fail 'something broke'` cannot raise. A `fail` /
+`skip` code must be an identifier: letters, digits and underscores, not
+starting with a digit, optionally ending in `?` or `!` (`:card_expired`,
+`:ok?`, `'NotFound'`). A sentence, a dashed or dotted string, or a class
+raises `ArgumentError` at the call, naming the action and suggesting `raise`.
+To signal a bug, use `raise`; to stop with a failure, use
+`fail!(:code, 'message')`:
 
-<!-- doctest -->
 ```ruby
 class Habit < Actionable::Action
   step :check
-  step :finish
-  def check = fail('card expired') # meant: raise. Records a failure and continues
-  def finish = succeed
+  def check = fail('card expired') # meant: raise
 end
 
-# The "error" was overwritten by the later succeed:
-Habit.run.success? # => true
+Habit.run # ArgumentError: Habit: failure code "card expired" is not an identifier; ...
+```
 
+<!-- doctest -->
+```ruby
 class Fixed < Actionable::Action
   step :check
   step :finish
@@ -143,10 +143,9 @@ end
 Fixed.run.code # => :card_expired
 ```
 
-An action that declares its failure codes (`fails`, below) catches the
-string-code case: `fail 'card expired'` raises `DefinitionError` for the
-undeclared code. Code outside the action (a plain helper object, a model) still
-gets `Kernel#fail`.
+A one-word string (`fail 'boom'`) is a valid code, so it still records a
+failure `:boom` instead of raising. Code outside the action (a plain helper
+object, a model) still gets `Kernel#fail`.
 
 `fail_with` absorbs an arbitrary FieldStruct's validation errors into the failure
 — the same machinery `:invalid_input` / `:invalid_output` use internally, exposed
@@ -181,6 +180,54 @@ result = Dedup.run
 result.skipped?    # => true
 result.existing_id # => 42
 ```
+
+### Where a plain verb may go
+
+`fail`, `skip` and `succeed` record an outcome **and keep running**, so in
+`fail :card_expired if card.expired?` followed by `notify`, the `notify` still
+runs (`fail!` was meant). The rule: **in a step or hook method, a plain
+recording verb must be the method's last expression, or explicitly end it.**
+Bang verbs (`fail!`, `skip!`, `succeed!`, `fail_with!`) can go anywhere.
+
+On an action's first run, every step method (case-step branch targets
+included), lifecycle hook method (`on_success` / `on_failure` / `on_skip` /
+`always`, and `after_commit` with the Rails adapter) is checked by parsing its
+source with Prism. A misplaced verb raises `DefinitionError` naming the action,
+method, `file:line` and verb, with the fix ("use fail! to stop here, or make it
+the method's last expression"). The check runs once per class (a later run pays
+nothing for it), and a failing check raises on every run until fixed. It is
+skipped where it can't be done: no Prism (Ruby 3.2 without the `prism` gem; it
+is a default gem from 3.3), or no readable source (a method from `eval` or
+`define_method`).
+
+| The verb call (`fail`, `skip`, `succeed`, or `self.fail` …) | |
+|---|---|
+| is the method's last statement (a modifier `fail :x if bad?` counts as the statement) | OK |
+| is the last statement of an `if` / `elsif` / `else` / `unless` / ternary / `case`-`when` / `case`-`in` / `rescue` / `ensure` branch, or the right side of `&&` / `and` / `\|\|` / `or`, whose construct is itself last | OK |
+| is returned: `return fail(:x) if bad?`, or followed directly by `return` | OK |
+| is the last statement of a block or loop body (or followed directly by `next` / `break` there), and the block's call is itself last: `items.each { \|i\| fail :bad if i.bad? }` | OK |
+| is followed by an `ensure` (cleanup runs even after a bang verb) | OK |
+| has another receiver (`gateway.fail`, `items.skip(1)`) | not checked |
+| is followed by more code in the method, a branch whose construct is followed by more code, or a begin body that has an `else` | **offense** |
+| is the end of a block or loop body whose call is followed by more code: `items.each { … fail :bad … }; save` | **offense** |
+| is the left side of `and` / `or`: `fail(:x) and return` never returns (`fail` returns `false`); write `return fail(:x)` | **offense** |
+| is nested in a larger expression: `log(fail(:x))`, `@ok = fail(:x)` | **offense** |
+
+Methods that aren't steps or hooks (helpers they call) are not checked.
+
+**The RuboCop cop.** The gem ships `Actionable/VerbNotLast`, the same rules as
+a lint, *not* loaded by `require 'actionable'`. Opt in from `.rubocop.yml`:
+
+```yaml
+plugins:
+  - actionable:
+      require_path: actionable/rubocop
+```
+
+(or `require: [actionable/rubocop]` on RuboCop < 1.72). The cop only sees one
+file: it checks a class that declares `step` / `case_step`, and the methods
+that class names in a step, case-step branch or hook declaration. Methods a
+parent class declares as steps are left to the first-run check.
 
 ## Declared failures
 
@@ -761,6 +808,12 @@ cryptic `NoMethodError`:
   steps, case value sources and method branch targets, hook steps) must be
   implemented, or the run raises a `DefinitionError` naming the action and the
   missing method.
+- **A plain verb with code after it (at first run):** a `fail` / `skip` /
+  `succeed` that isn't its step or hook method's last expression raises a
+  `DefinitionError` naming the action, method, `file:line` and verb. See
+  [Where a plain verb may go](#where-a-plain-verb-may-go).
+- **Sentence codes (at the `fail` / `skip` call):** a code that isn't an
+  identifier raises `ArgumentError`. See [Control flow](#control-flow).
 
 ## Rails adapter
 

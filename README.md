@@ -70,9 +70,14 @@ exceptions are never swallowed — they propagate to the caller.
 — handy for validating a side struct in a step. `skip` takes output kwargs too,
 so an idempotent hit can return the existing record's data.
 
-Inside an action, `fail` is this verb, not Ruby's `Kernel#fail`: `fail 'boom'`
-records a failure with code `:"boom"` and keeps running instead of raising. Use
-`raise` for exceptions (see [USAGE](USAGE.md#control-flow)).
+Inside an action, `fail` is this verb, not Ruby's `Kernel#fail`: it never
+raises, and a sentence code (`fail 'card expired'`) raises `ArgumentError`. Use
+`raise` for exceptions. A plain `fail` / `skip` / `succeed` must be the last
+expression of its step or hook method (`fail :x if bad?` followed by more code
+is a `fail!` missing its bang): an action that breaks this raises
+`DefinitionError` on its first run, and the opt-in `Actionable/VerbNotLast`
+RuboCop cop flags it in your editor. See
+[USAGE, Control flow](USAGE.md#where-a-plain-verb-may-go).
 
 <!-- doctest -->
 ```ruby

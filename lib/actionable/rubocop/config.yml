@@ -1,0 +1,3 @@
+Actionable/VerbNotLast:
+  Description: 'A plain fail/skip/succeed must be the last expression of its step or hook method.'
+  Enabled: true

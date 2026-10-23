@@ -238,6 +238,21 @@ RSpec.describe 'Actionable::Rails after_commit hooks on ActiveRecord',
     expect { klass.run }.to raise_error(Actionable::DefinitionError, /:not_there/)
   end
 
+  it 'raises a DefinitionError at run start when a hook calls a recording verb before more code' do
+    klass = Class.new(Actionable::Action) do
+      define_method(:work) { nil }
+      step :work
+      after_commit :notify
+
+      def notify
+        skip :quiet_hours # rubocop:disable Actionable/VerbNotLast -- the offense under test
+        nil
+      end
+    end
+
+    expect { klass.run }.to raise_error(Actionable::DefinitionError, /#notify .*`skip`/)
+  end
+
   it 'raises at declaration on an ActiveRecord without after_all_transactions_commit' do
     allow(ActiveRecord).to receive(:respond_to?).and_call_original
     allow(ActiveRecord).to receive(:respond_to?).with(:after_all_transactions_commit).and_return(false)
