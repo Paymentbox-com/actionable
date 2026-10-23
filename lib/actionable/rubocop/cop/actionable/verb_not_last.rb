@@ -10,9 +10,15 @@ module RuboCop
       # same rules as the gem's first-run check, from the same analyzer
       # (+Actionable::VerbPosition+); USAGE (Control flow) has the table.
       #
-      # It sees one file: a class that declares +step+ / +case_step+, and the
+      # It sees one file: a class whose superclass is an action base (see
+      # +ActionBaseClasses+) and that declares +step+ / +case_step+, and the
       # methods that class names in a step, case-step branch or hook
-      # declaration.
+      # declaration. A class with another +step+ DSL (dry-transaction) is
+      # left alone.
+      #
+      # +ActionBaseClasses+ (default +Actionable::Action+, +ApplicationAction+)
+      # lists the base classes; a class defined in the same file whose
+      # superclass chain reaches one counts too.
       #
       # @example
       #   # bad
@@ -42,7 +48,8 @@ module RuboCop
           result = ::Prism.parse(processed_source.raw_source)
           return unless result.errors.empty?
 
-          ::Actionable::VerbPosition.declared_step_offenses(result.value).each do |offense|
+          base_classes = Array(cop_config.fetch('ActionBaseClasses', ::Actionable::VerbPosition::ACTION_BASE_CLASSES))
+          ::Actionable::VerbPosition.declared_step_offenses(result.value, base_classes: base_classes).each do |offense|
             range = Parser::Source::Range.new(processed_source.buffer, offense.start_character, offense.end_character)
             add_offense(range, message: format(MSG, verb: offense.verb))
           end

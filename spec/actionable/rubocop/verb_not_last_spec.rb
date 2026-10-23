@@ -84,6 +84,130 @@ RSpec.describe RuboCop::Cop::Actionable::VerbNotLast, :config do
     RUBY
   end
 
+  describe 'which classes it checks (owner ruling R10)' do
+    it 'ignores a class with another step DSL (dry-transaction)' do
+      expect_no_offenses(<<~RUBY)
+        class X
+          include Dry::Transaction
+          step :a
+
+          def a
+            fail :x
+            log
+          end
+        end
+      RUBY
+    end
+
+    it 'ignores a step-declaring class whose superclass is not an action' do
+      expect_no_offenses(<<~RUBY)
+        class Pipeline < Workflow::Base
+          step :a
+
+          def a
+            fail :x
+            log
+          end
+        end
+
+        Class.new(Workflow::Base) do
+          step :a
+
+          def a
+            fail :x
+            log
+          end
+        end
+      RUBY
+    end
+
+    it 'checks an ApplicationAction subclass, and a top-level ::Actionable::Action one' do
+      expect_offense(<<~RUBY)
+        class Charge < ApplicationAction
+          step :a
+
+          def a
+            fail :x
+            ^^^^^^^ `fail` records [...]
+            log
+          end
+        end
+
+        class Refund < ::Actionable::Action
+          step :a
+
+          def a
+            skip :x
+            ^^^^^^^ `skip` records [...]
+            log
+          end
+        end
+      RUBY
+    end
+
+    it 'follows a superclass chain through classes defined in the same file' do
+      expect_offense(<<~RUBY)
+        module Billing
+          Base = Class.new(Actionable::Action)
+
+          class Charge < Base; end
+
+          class Refund < Billing::Charge
+            step :a
+
+            def a
+              fail :x
+              ^^^^^^^ `fail` records [...]
+              log
+            end
+          end
+        end
+      RUBY
+    end
+
+    it 'survives a superclass cycle' do
+      expect_no_offenses(<<~RUBY)
+        class A < B; end
+
+        class B < A
+          step :a
+
+          def a
+            fail :x
+            log
+          end
+        end
+      RUBY
+    end
+
+    context 'with ActionBaseClasses configured' do
+      let(:cop_config) { {'ActionBaseClasses' => ['::Ops::BaseAction']} }
+
+      it 'checks subclasses of the listed classes only (a leading :: is ignored)' do
+        expect_offense(<<~RUBY)
+          class Charge < Ops::BaseAction
+            step :a
+
+            def a
+              fail :x
+              ^^^^^^^ `fail` records [...]
+              log
+            end
+          end
+
+          class Refund < ApplicationAction
+            step :a
+
+            def a
+              fail :x
+              log
+            end
+          end
+        RUBY
+      end
+    end
+  end
+
   it 'honours an inline disable' do
     expect_no_offenses(<<~RUBY)
       class A < Actionable::Action
@@ -105,6 +229,13 @@ RSpec.describe Actionable::RubocopPlugin do
     rules = plugin.rules(LintRoller::Context.new(engine: :rubocop))
 
     expect(YAML.safe_load_file(rules.value)).to include('Actionable/VerbNotLast' => include('Enabled' => true))
+  end
+
+  it 'defaults ActionBaseClasses to the list the cop falls back to without it' do
+    rules = plugin.rules(LintRoller::Context.new(engine: :rubocop))
+
+    expect(YAML.safe_load_file(rules.value).dig('Actionable/VerbNotLast', 'ActionBaseClasses'))
+      .to eq(Actionable::VerbPosition::ACTION_BASE_CLASSES)
   end
 
   it 'supports RuboCop only' do

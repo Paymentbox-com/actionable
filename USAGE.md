@@ -241,9 +241,29 @@ plugins:
 ```
 
 (or `require: [actionable/rubocop]` on RuboCop < 1.72). The cop only sees one
-file: it checks a class that declares `step` / `case_step`, and the methods
-that class names in a step, case-step branch or hook declaration. Methods a
-parent class declares as steps are left to the first-run check.
+file: it checks a class that is an action and declares `step` / `case_step`,
+and the methods that class names in a step, case-step branch or hook
+declaration. Methods a parent class declares as steps are left to the
+first-run check.
+
+A class counts as an action when its superclass, as written, is in
+`ActionBaseClasses` (default `Actionable::Action` and `ApplicationAction`; a
+leading `::` is ignored), or is a class defined in the same file (`class Base
+< …` or `Base = Class.new(…)`, matched by its last name segment, any depth)
+whose own superclass does. Any other class is left alone, so a dry-transaction
+(`include Dry::Transaction` with its own `step`) gets no false positives, and
+neither does a class that reopens an action without naming its superclass
+(the first-run check still covers it). Name your app's own base classes:
+
+```yaml
+Actionable/VerbNotLast:
+  ActionBaseClasses:
+    - Actionable::Action
+    - ApplicationAction
+    - Billing::BaseAction
+```
+
+The list replaces the default, so keep the two defaults in it if you need them.
 
 ## Declared failures
 

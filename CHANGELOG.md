@@ -27,8 +27,12 @@
   (one shared analyzer). Not loaded by `require 'actionable'`; enable it with
   `plugins: [{actionable: {require_path: actionable/rubocop}}]` (RuboCop >=
   1.72, via the gem's lint_roller plugin) or `require: [actionable/rubocop]`.
-  It checks a class that declares `step` / `case_step`, and the methods that
-  class names in its declarations.
+  It checks a class whose superclass is an action base and that declares
+  `step` / `case_step`, and the methods that class names in its declarations.
+  An action base is one of the cop's `ActionBaseClasses` (default
+  `Actionable::Action`, `ApplicationAction`) or a class defined in the same
+  file whose superclass chain reaches one, so a dry-transaction class with
+  its own `step` gets no false positives (owner ruling R10).
 - `rake bench` gains `fail! action` and `skip! action` scenarios.
 
 ### Changed
