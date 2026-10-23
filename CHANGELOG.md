@@ -43,7 +43,7 @@
   `ArgumentError` at the call, suggesting `raise` for `Kernel#fail` habit.
   Applies to `fail` / `fail!` / `fail_with` / `fail_with!` / `skip` / `skip!`.
 
-**Upgrading:** both checks raise on code that used to run.
+**Upgrading:** both checks raise on code that used to run. <!-- upgrading: verb-position-guard --> <!-- upgrading: identifier-codes -->
 - `DefinitionError` "… calls `fail` with more code after it …" on an action's
   first run: if the code after the verb should not run, use the bang verb
   (`fail!`); if it should, move the verb to the end of the method (or
@@ -70,6 +70,17 @@
 
 ### Documentation
 
+- **`UPGRADING.md`: how to move an app from 1.5.x to 1.8.0** (owner ruling
+  R9). A TL;DR with the order of work (field_struct first, then actionable,
+  the cop, RBS), a straight 1.5-to-1.8 path, a symptom index, and a Symptom /
+  Find / Fix / Why entry for every change a caller can see, each Find an `rg`
+  pattern checked against its "before" code or the tool that finds it. AGENTS.md
+  and the skill gain a numbered upgrade procedure for agents; README and
+  getting_started link to it, and the gem ships it. `spec/upgrading_spec.rb`
+  keeps it honest: every CHANGELOG upgrade note since 1.5.2 carries an
+  invisible `upgrading:` slug comment that the guide must carry in that
+  version's section, and the guide's declared range must reach the next
+  release. Its runnable examples are doctested.
 - README "Types (RBS)" says the adapter signatures (`transactional`,
   `after_commit`, the RSpec helpers, `Job`) are declared on `Actionable::Action`
   even when `actionable/rails` isn't required: RBS can't make a signature
@@ -108,7 +119,7 @@ field_struct >= 0.12.
   wins), `always` hooks running after a hook halt, `after_commit`, and
   `honor_retry_metadata`, each linking to USAGE.
 
-- **RBS for the adapters' public surface (owner ruling P11).** `sig/` now
+- **RBS for the adapters' public surface (owner ruling P11).** `sig/` now <!-- upgrading: adapter-rbs -->
   declares what clients call from the adapters: `transactional` /
   `transaction_config` and `after_commit` / `after_commit_hooks` on
   `Actionable::Action` (Rails adapter), and the RSpec matchers
@@ -121,7 +132,7 @@ field_struct >= 0.12.
   methods, by reflection, with its RBS so neither can drift. `Actionable::Job`
   was already generated. The report-only Steep lane now checks the adapters
   too.
-- **`describe` / `describe_text` list `after_commit` hooks.** With the Rails
+- **`describe` / `describe_text` list `after_commit` hooks.** With the Rails <!-- upgrading: describe-after-commit -->
   adapter loaded, `describe[:hooks][:after_commit]` names them, and
   `describe_text` adds an `after_commit:` hooks line when there are any.
 
@@ -154,7 +165,7 @@ field_struct >= 0.12.
 
 ### Changed
 
-- **Redeclaring a step or hook now overrides it.** A second `step :x`,
+- **Redeclaring a step or hook now overrides it.** A second `step :x`, <!-- upgrading: step-redeclaration -->
   `case_step :x`, nested `step SomeAction`, or `on_success` / `on_failure` /
   `on_skip` / `always :x` with the same type and name, in the same class or a
   subclass, replaces the earlier declaration's options (guards, `:input` /
@@ -164,7 +175,7 @@ field_struct >= 0.12.
   A subclass's override never changes the parent. **Upgrade note:** an action
   that redeclares a step with different options now runs the last options.
 
-- **`always` hooks now run even after an outcome hook halts.** A bang verb
+- **`always` hooks now run even after an outcome hook halts.** A bang verb <!-- upgrading: always-after-halt -->
   (`fail!` / `skip!` / `succeed!`), `halt!`, or a failing nested action inside
   an `on_success` / `on_failure` / `on_skip` hook still has its result adopted
   and still stops the remaining hooks of that category, but it no longer skips
@@ -188,7 +199,7 @@ field_struct >= 0.12. No runtime behaviour changes.
 
 ### Added
 
-- **`Actionable::RBS.generate` types an action's input and output instance
+- **`Actionable::RBS.generate` types an action's input and output instance <!-- upgrading: rbs-output-ivars --> <!-- upgrading: rbs-input-schema -->
   variables** (generated RBS only; no runtime change). For an action with a
   fixed `input` schema it emits a nested `class InputSchema < ::FieldStruct::Base`
   with a typed reader and writer per input field, `def input: () -> InputSchema`,
@@ -204,7 +215,7 @@ field_struct >= 0.12. No runtime behaviour changes.
 
 ### Fixed
 
-- **`Actionable::RBS.generate` declares the real superclass chain.** An action
+- **`Actionable::RBS.generate` declares the real superclass chain.** An action <!-- upgrading: rbs-superclass-chain -->
   under an intermediate base (`class Codes::DecideMapping < ApplicationAction`)
   was declared `< ::Actionable::Action`, hiding its bases from the type
   checker, and a host that declared the real superclass got
@@ -224,7 +235,7 @@ field_struct >= 0.12. No runtime behaviour changes.
 
 - **Optional `.run` keywords are nullable in generated RBS** (`?note: ::String?`): an optional field may be passed `nil` explicitly, and the run succeeds.
 - **A required input field with a default is an optional `.run` keyword** (`?amount: ::Integer`), since `run` succeeds without it. An action whose input is chosen by an `input_for` dispatch (including one inherited under a fixed `input`) gets `.run: (*untyped)`, since the dispatch decides the keywords at run time.
-- **Requires field_struct >= 0.12.** The generator now takes every field type
+- **Requires field_struct >= 0.12.** The generator now takes every field type <!-- upgrading: field-struct-0-12 --> <!-- upgrading: rbs-stricter-types -->
   from `FieldStruct::RBS.type_for` instead of its own copy of the mapping, so
   generated action RBS matches `FieldStruct::RBS.generate`. Consumer-visible
   changes to generated RBS: writers on `Output` and the per-code output
@@ -267,7 +278,7 @@ Requires field_struct 0.11.0 or later.
 
 ### Changed
 
-- **Requires field_struct >= 0.11.** It is the release whose numeric and input
+- **Requires field_struct >= 0.11.** It is the release whose numeric and input <!-- upgrading: field-struct-0-11 -->
   fixes this one is tested against; CI now pins it by tag.
 - **CI runs Ruby 3.2, 3.3, 3.4 and 4.0** (was 3.3.6 only), plus the docs guard,
   behind one aggregate `ci` check that `main` requires.
@@ -277,42 +288,42 @@ Requires field_struct 0.11.0 or later.
 
 ### Fixed
 
-- **A failed `transactional` action inside an outer transaction no longer
+- **A failed `transactional` action inside an outer transaction no longer <!-- upgrading: transactional-savepoint -->
   commits its writes.** It joined the outer transaction, whose commit ignored
   the action's rollback, so a recorded `Failure` still committed its rows
   (measured on ActiveRecord 8.1 + SQLite). Inside an open transaction the action
   now takes its own savepoint (`requires_new: true`) unless `requires_new:` is
   given; `requires_new: false` keeps the old joining behaviour.
-- **A nested action no longer wipes parent ivars it never set.** Absorbing a
+- **A nested action no longer wipes parent ivars it never set.** Absorbing a <!-- upgrading: nested-absorb-set-fields --> <!-- upgrading: stub-set-fields -->
   successful or skipped child copied every declared output field, so a field
   the child left nil (or at its default) overwrote the parent's value. Only
   fields the child actually set are absorbed now; `expose:` still narrows them.
-- **Private step, hook and `case_step` methods work.** The definition check
+- **Private step, hook and `case_step` methods work.** The definition check <!-- upgrading: core-method-steps -->
   already accepted them, but the step then raised `NoMethodError`; they are
   now called like guards are. A step or hook named after a method the action
   only inherits from Ruby's core (`step :puts`, `always :exit`) raises
   `DefinitionError` up front instead of calling `Kernel`.
 - **`Action.input` without a block reads the schema** instead of replacing it
   with an empty one, matching `output`.
-- **A step that assigns `@result`** gets a clear `DefinitionError` instead of a
+- **A step that assigns `@result`** gets a clear `DefinitionError` instead of a <!-- upgrading: result-ivar -->
   `NoMethodError` deep in the runner.
 - **`History#to_json` requires Oj itself** rather than relying on another file
   having loaded it.
 
-- **A bang verb inside a lifecycle hook now sets the result.** `fail!`,
+- **A bang verb inside a lifecycle hook now sets the result.** `fail!`, <!-- upgrading: hook-bang-verb -->
   `skip!` or `succeed!` in a hook used to be dropped: `fail!` in `on_success`
   returned `Success`, committed a `transactional` action and acked the job.
   The hook's result is now adopted before the halt stops the remaining hooks,
   as the docs always said. This includes a nested action used as a hook
   (`on_success ChildAction`): a failing child now fails the run and stops the
   remaining hooks.
-- **`succeed`/`skip` kwargs survive lifecycle hooks.** After any hook
+- **`succeed`/`skip` kwargs survive lifecycle hooks.** After any hook <!-- upgrading: hook-kwargs -->
   refreshed the output, the kwargs were lost: a required field set only by
   kwarg turned the run into `Failure(:invalid_output)`, and a kwarg that
   overrode an ivar silently reverted to the ivar's value. Present since 1.0.0.
   A `Failure(:invalid_output)` also keeps the output that failed validation
   across hooks instead of having it rebuilt from ivars.
-- **No spurious `errors[:output]` on a failure or skip.** The best-effort,
+- **No spurious `errors[:output]` on a failure or skip.** The best-effort, <!-- upgrading: no-spurious-output-error -->
   unvalidated output of a non-typed failure or skip added
   `output: ["is invalid"]` to the result's errors. It no longer does; errors
   the failure recorded itself are kept.

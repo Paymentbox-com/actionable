@@ -115,3 +115,31 @@ result.invoice        # => same, via convenience delegation
   fail on a new gap or a stale entry (see USAGE, "Outcome coverage").
 - Profile a run: declare `measure :all` (or `:sampled, rate: 0.1` in prod), then
   read `result.history.to_json`.
+
+## Upgrading
+
+Bumping actionable in a host app? Work from [`UPGRADING.md`](UPGRADING.md), not
+from memory: it has a Symptom / Find / Fix / Why entry for every change a caller
+can see since 1.5.x. Procedure:
+
+1. **From / to.** Read the current version from `Gemfile.lock` (`actionable
+   (x.y.z)`) and pick the target tag. Read UPGRADING.md's TL;DR and only the
+   `## A → B` sections between the two.
+2. **field_struct first.** If the target needs a newer one (>= 0.11 for 1.5.2,
+   >= 0.12 from 1.6.0), bump it, follow its own UPGRADING.md, and get the suite
+   green before touching actionable.
+3. **Bump actionable**, then run every entry's **Find** in those sections, even
+   for entries nothing failed on. Keep the hits per entry.
+4. **Enable the cop** (`plugins: [{actionable: {require_path: actionable/rubocop}}]`
+   in `.rubocop.yml`, the app's own base classes in `ActionBaseClasses`) and run
+   `bundle exec rubocop --only Actionable/VerbNotLast`.
+5. **Apply each entry's Fix.** `Actionable.verb_position_check = false` is only
+   for a temporary green baseline; remove it before you finish. The identifier
+   code check has no switch.
+6. **Regenerate RBS** the app owns with `Actionable::RBS.generate`, then run
+   `rbs validate` / Steep if the app uses them.
+7. **Run the full suite with the check on.**
+8. **Report** the entries applied, hits left unchanged and why, the entries
+   whose Find says no reliable pattern exists (say what you reviewed by hand),
+   and the residual risk: behaviour changes the suite may not exercise
+   (savepoints, bang verbs in hooks, `always` after a halt, redeclared steps).

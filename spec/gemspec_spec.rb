@@ -5,7 +5,7 @@ RSpec.describe 'the packaged gem' do
 
   it 'ships the library, signatures and user-facing docs' do
     expect(files).to include('lib/actionable.rb', 'sig/actionable.rbs', 'README.md', 'USAGE.md',
-      'CHANGELOG.md', 'AGENTS.md', 'docs/getting_started.md',
+      'CHANGELOG.md', 'UPGRADING.md', 'AGENTS.md', 'docs/getting_started.md',
       'skills/actionable/SKILL.md')
   end
 

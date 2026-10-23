@@ -1,0 +1,706 @@
+# Upgrading Actionable
+
+<!-- upgrading-range: 1.5.0..1.8.0 -->
+
+This guide takes an app from any **1.5.x** release to **1.8.0**, one version at
+a time or [straight through](#straight-from-15-to-18). It lists every change a
+caller can see, not just the breaking ones. Each entry has the same four parts:
+
+- **Symptom**: the exception and message shape, or the spec that fails.
+- **Find**: a copy-pasteable search, or the tool that finds it when no
+  search is reliable.
+- **Fix**: before and after.
+- **Why**: one line.
+
+The `rg` patterns search `app lib` (code), `spec` and `sig`; point them at your
+own directories and drop any that don't exist. Patterns with `-P` need ripgrep
+built with PCRE2 (`rg --pcre2-version`). A pattern finds *candidates*; read
+each hit. Every pattern has been checked against the "before" snippet it
+targets. [CHANGELOG.md](CHANGELOG.md) has the
+full list of changes, including internal ones.
+
+Agents: follow the numbered procedure in [AGENTS.md](AGENTS.md#upgrading)
+(or the bundled skill), which runs this guide step by step.
+
+## TL;DR
+
+**Who must act:** every app moving to 1.8.0 (two new checks raise on code that
+used to run), anyone who keeps hand-written RBS next to `Actionable::RBS`
+output, and Rails apps that nest `transactional` actions.
+
+1. **Bump field_struct first.** actionable >= 1.6 requires `field_struct >=
+   0.12` (1.5.2 needs `>= 0.11`). Upgrade it and follow field_struct's
+   [UPGRADING.md](https://github.com/Paymentbox-com/field_struct/blob/main/UPGRADING.md)
+   until your suite is green.
+2. **Bump actionable** to `v1.8.0` in the Gemfile.
+3. **Fix verb-position offenses.** If you need a green baseline first, run the
+   suite once with `Actionable.verb_position_check = false`, then turn it back
+   on. Enable the [`Actionable/VerbNotLast` cop](#a-plain-verb-must-end-its-step-or-hook-method)
+   in `.rubocop.yml` to list every offense up front. Fix
+   [non-identifier codes](#fail--skip-codes-must-be-identifiers) at the same
+   time: that check has no switch.
+4. **Regenerate the RBS you own** with `Actionable::RBS.generate`, then delete
+   hand-written declarations it now covers (see the [1.6.0 entries](#152--160)).
+5. **Opting in to job retries** (`honor_retry_metadata`)? Under ActiveJob, also
+   declare `retry_on Actionable::Job::RetryableFailure`.
+6. **Using `after_commit`?** It needs ActiveRecord >= 7.2. The rest of the
+   Rails adapter is tested on 7.1.
+
+**Expected effort:** minutes for the version bumps; under an hour for most apps
+to fix what the cop and the code check report; longer only if you keep
+hand-written RBS for your actions or nest `transactional` actions inside your
+own transactions.
+
+## Straight from 1.5 to 1.8
+
+You can jump in one bump. Work in this order, so each step starts from a green
+run:
+
+1. Bump field_struct to >= 0.12 (step 1 above). Bundler refuses the actionable
+   bump until you do: `Bundler could not find compatible versions for gem
+   "field_struct"`.
+2. Bump actionable to `v1.8.0`. Set `Actionable.verb_position_check = false`
+   in an initializer or `spec_helper` for now.
+3. Run the suite. Work through the [1.5.2](#15x--152) and
+   [1.7.0](#160--170) entries: they change runtime behaviour (savepoints,
+   hook halts, nested output, redeclared steps, `always` hooks).
+4. Enable the cop, fix every offense, and remove the
+   `verb_position_check = false` line. Fix the
+   [identifier codes](#fail--skip-codes-must-be-identifiers).
+5. Regenerate your RBS and work through the [1.6.0](#152--160) entries and
+   [adapter signatures](#adapter-signatures-now-ship-in-sig).
+6. Run the suite with the check on. Anything still failing:
+   [bisect by version](#if-something-else-breaks).
+
+## Symptom index
+
+| You see | Version | Entry |
+|---|---|---|
+| Bundler: `could not find compatible versions for gem "field_struct"` | 1.5.2, 1.6.0 | [>= 0.11](#requires-field_struct--011), [>= 0.12](#requires-field_struct--012) |
+| A failed nested `transactional` action's rows are gone | 1.5.2 | [Savepoint](#a-nested-transactional-action-takes-its-own-savepoint) |
+| `fail!` in `on_success` now fails the run / rolls back / retries the job | 1.5.2 | [Bang verb in a hook](#a-bang-verb-inside-a-lifecycle-hook-sets-the-result) |
+| A parent field keeps its value after `step Child` | 1.5.2 | [Nested absorb](#a-nested-action-no-longer-overwrites-parent-fields-it-didnt-set), [stubs](#rspec-stubs-absorb-only-the-fields-you-give-them) |
+| `DefinitionError: … declares step(s) calling :print but does not implement them` | 1.5.2 | [Core method names](#a-step-or-hook-named-after-a-core-ruby-method-is-refused) |
+| `DefinitionError: … set @result to a …` | 1.5.2 | [`@result`](#assigning-result-in-a-step-raises-a-clear-error) |
+| `errors[:output]` gone from a failure or skip | 1.5.2 | [Spurious output error](#failures-and-skips-no-longer-carry-a-spurious-errorsoutput) |
+| `RBS::InstanceVariableDuplicationError` | 1.6.0 | [Output ivars](#generated-rbs-owns-the-output-instance-variables) |
+| `RBS::SuperclassMismatchError` | 1.6.0 | [Superclass chain](#generated-rbs-declares-the-real-superclass-chain) |
+| `ArgumentError: X::InputSchema is already defined …` | 1.6.0 | [`InputSchema`](#inputschema-is-a-reserved-name-on-actions-with-a-fixed-input) |
+| New Steep errors at call sites | 1.6.0 | [Stricter types](#generated-types-are-stricter) |
+| A redeclared step runs different options | 1.7.0 | [Redeclaration](#redeclaring-a-step-or-hook-overrides-it-last-wins) |
+| An `always` hook runs after a hook's `fail!` | 1.7.0 | [`always` after halt](#always-hooks-run-even-after-an-outcome-hook-halts) |
+| `RBS::DuplicatedMethodDefinitionError` for `transactional`, `perform_actionable` … | 1.7.0 | [Adapter signatures](#adapter-signatures-now-ship-in-sig) |
+| `describe[:hooks]` has an extra `after_commit:` key | 1.7.0 | [`describe`](#describe-lists-after_commit-hooks-under-the-rails-adapter) |
+| ``DefinitionError: … calls `fail` with more code after it …`` | 1.8.0 | [Verb position](#a-plain-verb-must-end-its-step-or-hook-method) |
+| `ArgumentError: … code "…" is not an identifier …` | 1.8.0 | [Identifier codes](#fail--skip-codes-must-be-identifiers) |
+
+## 1.5.x → 1.5.2
+
+### Requires field_struct >= 0.11
+<!-- upgrading: field-struct-0-11 -->
+
+**Symptom.** `bundle update actionable` fails: `Bundler could not find
+compatible versions for gem "field_struct"`.
+
+**Find.**
+```sh
+rg -n "gem ['\"](field_struct|actionable)['\"]" Gemfile
+```
+
+**Fix.** Raise the field_struct pin in the same change:
+```ruby
+# before
+gem 'field_struct', git: 'https://github.com/Paymentbox-com/field_struct', tag: 'v0.10.0'
+# after (0.12.0 if you are going on to 1.6+)
+gem 'field_struct', git: 'https://github.com/Paymentbox-com/field_struct', tag: 'v0.12.0'
+```
+
+**Why.** 1.5.2 is tested against field_struct 0.11's numeric and input fixes.
+
+### A nested `transactional` action takes its own savepoint
+<!-- upgrading: transactional-savepoint -->
+
+**Symptom.** Inside an open transaction (your own `Model.transaction do`, or a
+transactional parent action), a `transactional` action that ends in a
+`Failure` now rolls back its own writes. A spec that expected those rows to
+exist after the outer block commits now finds them missing.
+
+**Find.** List the transactional actions, then check which run inside another
+transaction:
+```sh
+rg -n '^\s*transactional\b' app lib
+```
+
+**Fix.** Usually nothing: the new behaviour is the correct one. To keep the old
+joining behaviour for one action:
+```ruby
+# before (1.5.1 joined the outer transaction)
+transactional model: :invoice
+# after, only if you really want a failed run's writes to commit with the outer transaction
+transactional model: :invoice, requires_new: false
+```
+
+**Why.** A recorded `Failure` committed its rows through the outer transaction,
+which ignored the action's rollback.
+
+### A bang verb inside a lifecycle hook sets the result
+<!-- upgrading: hook-bang-verb -->
+
+**Symptom.** `fail!` / `skip!` / `succeed!` in `on_success` / `on_failure` /
+`on_skip` / `always` used to be dropped. Now the run ends with that hook's
+result: a spec expecting `Success` gets the `Failure`, a `transactional`
+action rolls back, and a job retries or discards. A nested action used as a
+hook (`on_success AuditPayment`) that fails now fails the run.
+
+**Find.** No single pattern. List the hook declarations, then read those
+methods for a bang verb:
+```sh
+rg -n '^\s*(on_success|on_failure|on_skip|always)\s+:' app lib   # hook methods
+rg -n '^\s*(on_success|on_failure|on_skip|always)\s+[A-Z]' app lib # nested actions as hooks
+```
+
+**Fix.** Keep the bang verb if the hook's failure should fail the run (that is
+what the docs always said). If it shouldn't, record nothing: log, or `halt!`
+to stop the remaining hooks and keep the result.
+```ruby
+# before: silently ignored, the run stayed a Success
+def notify
+  fail!(:notify_failed) unless mailer.ok?
+end
+# after, when a mailer problem must not fail the payment
+def notify
+  logger.warn('receipt not sent') unless mailer.ok?
+end
+```
+
+**Why.** A hook's `fail!` must not commit a transaction or ack a job as a success.
+
+### A nested action no longer overwrites parent fields it didn't set
+<!-- upgrading: nested-absorb-set-fields -->
+
+**Symptom.** After `step Child`, a parent field the child left nil (or at its
+default) keeps the parent's value instead of being reset. A spec expecting the
+nil now sees the old value.
+
+**Find.** No reliable pattern; review nested steps without `expose:` whose child
+shares output field names with the parent:
+```sh
+rg -n '^\s*step\s+[A-Z]' app lib
+```
+
+**Fix.** Have the child set the field explicitly; an assigned ivar (even `nil`)
+counts as set:
+
+<!-- doctest -->
+```ruby
+class ClearNote < Actionable::Action
+  output { optional :note, :string }
+  step :clear
+  def clear = @note = nil # assigned, so the parent absorbs the nil
+end
+
+class Edit < Actionable::Action
+  output { optional :note, :string }
+  step :draft
+  step ClearNote
+  def draft = @note = 'draft'
+end
+
+Edit.run.note # => nil
+```
+
+**Why.** Copying every declared field wiped parent values the child never touched.
+
+### RSpec stubs absorb only the fields you give them
+<!-- upgrading: stub-set-fields -->
+
+**Symptom.** A parent spec that stubs a child with partial output
+(`allow_actionable_success(Child, total: 5)`) no longer gets the child's other
+fields reset to nil; it keeps the parent's values, as a real run does.
+
+**Find.**
+```sh
+rg -nP '\b(?:allow|stub)_actionable_(?:success|skip)\b' spec
+```
+
+**Fix.** Pass every field the parent should receive, `nil` included:
+```ruby
+# before: relied on the stub resetting :note
+allow_actionable_success(Child, total: 5)
+# after
+allow_actionable_success(Child, total: 5, note: nil)
+```
+
+**Why.** Stubs now behave like the real runs they stand in for.
+
+### A step or hook named after a core Ruby method is refused
+<!-- upgrading: core-method-steps -->
+
+**Symptom.** First run raises
+`Actionable::DefinitionError: Report declares step(s) calling :print but does not implement them`.
+
+**Find.** The runtime check is authoritative; this lists the common names:
+```sh
+rg -nP '^\s*(?:step|case_step|on_success|on_failure|on_skip|always)\s+:(?:puts|print|p|pp|exit|exit!|abort|sleep|format|sprintf|printf|warn|raise|system|exec|spawn|fork|open|select|test|loop|rand|srand|gets|require|load|eval|binding|caller|catch|throw|trap|display|hash|freeze|dup|clone|inspect|tap|then|itself|send|method|methods|class|name|object_id)\b' app lib
+```
+
+**Fix.** Implement the method on the action, or rename the step:
+```ruby
+# before: called Kernel#print (or Kernel#exit, which ended the process)
+step :print
+# after
+step :print_report
+def print_report = ...
+```
+
+**Why.** Steps are called with `__send__`, so `always :exit` could reach `Kernel#exit`.
+
+### Assigning `@result` in a step raises a clear error
+<!-- upgrading: result-ivar -->
+
+**Symptom.** `Actionable::DefinitionError: Lookup set @result to a Account; @result is reserved for the run's result, so rename the instance variable`
+(before: a `NoMethodError` deep in the runner).
+
+**Find.**
+```sh
+rg -n '@result\s*(\|\|)?=' app lib
+```
+
+**Fix.**
+```ruby
+# before
+def find = @result = Account.find(input.id)
+# after
+def find = @account = Account.find(input.id)
+```
+
+**Why.** `@result` holds the run's result.
+
+### Failures and skips no longer carry a spurious `errors[:output]`
+<!-- upgrading: no-spurious-output-error -->
+
+**Symptom.** A spec asserting `errors[:output] == ["is invalid"]` on a failure
+or skip of an untyped action fails: the key is gone.
+
+**Find.**
+```sh
+rg -nP "errors\[:output\]|output:\s*\[\s*['\"]is invalid" spec
+```
+
+**Fix.** Delete the assertion; errors the failure recorded itself are still there.
+```ruby
+# before
+expect(result.errors).to include(output: ['is invalid'])
+# after: assert on the errors your fail call recorded
+expect(result.errors).to include(card: ['expired'])
+```
+
+**Why.** Best-effort output on a failure or skip is unvalidated by design.
+
+### Also fixed in 1.5.2 (no action expected)
+
+- `succeed` / `skip` kwargs survive lifecycle hooks: a run that used to end as
+  `Failure(:invalid_output)` because a hook dropped a kwarg now succeeds.
+  <!-- upgrading: hook-kwargs -->
+- Private step, hook and `case_step` methods work (they raised `NoMethodError`).
+- `Action.input` without a block reads the schema instead of replacing it.
+
+## 1.5.2 → 1.6.0
+
+No runtime behaviour changes. Everything here is about **generated RBS** and
+the hand-written sig files that sit next to it. Regenerate first
+(`Actionable::RBS.generate(YourAction)`, one file per action), then run
+`rbs validate` (or Steep) and work through what it reports.
+
+### Requires field_struct >= 0.12
+<!-- upgrading: field-struct-0-12 -->
+
+**Symptom.** `Bundler could not find compatible versions for gem "field_struct"`.
+
+**Find.**
+```sh
+rg -n "gem ['\"](field_struct|actionable)['\"]" Gemfile
+```
+
+**Fix.** Pin `tag: 'v0.12.0'` (or later) and follow field_struct's
+[UPGRADING.md](https://github.com/Paymentbox-com/field_struct/blob/main/UPGRADING.md)
+before bumping actionable.
+
+**Why.** Generated action RBS takes every field type from
+`FieldStruct::RBS.type_for` (0.12).
+
+### Generated RBS owns the output instance variables
+<!-- upgrading: rbs-output-ivars -->
+
+**Symptom.** `rbs validate`:
+``Duplicated instance variable name `@total` in `::Total` (RBS::InstanceVariableDuplicationError)``.
+
+**Find.** Your hand-written ivar declarations; delete those named after an
+output field:
+```sh
+rg -n '^\s*@\w+\s*:' sig
+```
+
+**Fix.**
+```rbs
+# before (your sig/total.rbs)
+class Total < ::ApplicationAction
+  @total: ::Integer
+end
+# after: delete the declaration; the generated file has `@total: ::Integer?`
+```
+
+**Why.** A step that assigns `@total = ...` now type-checks without hand-written sigs.
+
+### Generated RBS declares the real superclass chain
+<!-- upgrading: rbs-superclass-chain -->
+
+**Symptom.** `rbs validate`:
+`Superclass mismatch: ::Billing::BaseAction (RBS::SuperclassMismatchError)`,
+or a duplicate declaration error for a namespace you declared as `module`
+that Ruby defines as a class.
+
+**Find.** Your hand-written bases declared straight under
+`Actionable::Action`; compare each with Ruby's `superclass`:
+```sh
+rg -nP '^\s*class\s+[\w:]+\s*<\s*(?:::)?Actionable::Action\b' sig
+```
+
+**Fix.** Match Ruby's ancestry, or delete the declaration (the generated file
+declares every named ancestor up to `Actionable::Action`):
+```rbs
+# before (Ruby says: class Billing::BaseAction < ApplicationAction)
+class Billing::BaseAction < ::Actionable::Action
+end
+# after
+class Billing::BaseAction < ::ApplicationAction
+end
+```
+
+**Why.** Actions under an intermediate base were declared `< ::Actionable::Action`,
+hiding their bases from the type checker. See
+[USAGE, Base actions](USAGE.md#base-actions).
+
+### `InputSchema` is a reserved name on actions with a fixed input
+<!-- upgrading: rbs-input-schema -->
+
+**Symptom.** `Actionable::RBS.generate` raises
+`ArgumentError: Import::InputSchema is already defined (in Import); Actionable::RBS.generate names the generated input type InputSchema, so rename that constant`.
+
+**Find.**
+```sh
+rg -nw InputSchema app lib
+```
+
+**Fix.**
+```ruby
+# before
+class Import < ApplicationAction
+  InputSchema = Struct.new(:rows)
+end
+# after
+class Import < ApplicationAction
+  RowSet = Struct.new(:rows)
+end
+```
+
+**Why.** Generated RBS declares a typed `InputSchema` class; Ruby's anonymous
+runtime schema has no name to clash with.
+
+### Generated types are stricter
+<!-- upgrading: rbs-stricter-types -->
+
+**Symptom.** Steep reports new errors in code that calls your actions. Typed
+`.run` keywords (optional ones accept `nil`; a defaulted required field is an
+optional keyword), `def input: () -> InputSchema`, writers typed
+`(T? value) -> T?`, nullable scalar array elements (`::Array[::String?]`), and
+type arguments on bare generics replace `untyped`. A field typed by an
+anonymous nested struct class now raises `ArgumentError` at generation.
+
+**Find.** No pattern: Steep (or `rbs validate`) is the finder.
+
+**Fix.** Fix the call sites Steep reports, or give the field an `rbs_type:`
+override (honoured since 1.6). Name anonymous nested struct classes:
+```ruby
+# before
+required :address, Class.new(FieldStruct::Base) { required :zip, :string }
+# after
+Address = Class.new(FieldStruct::Base) { required :zip, :string }
+required :address, Address
+```
+
+**Why.** The types now describe what `run` really accepts and returns.
+
+## 1.6.0 → 1.7.0
+
+### Redeclaring a step or hook overrides it (last wins)
+<!-- upgrading: step-redeclaration -->
+
+**Symptom.** An action (or subclass) that declares the same `step :x`,
+`case_step :x`, `step Child` or hook twice with different options now runs the
+**last** options. Before, the second declaration was silently dropped. A
+subclass's override now takes effect, so behaviour you thought was overridden
+(and wasn't) changes.
+
+**Find.** Same-file duplicates (two classes in one file sharing a step name
+show up too):
+```sh
+rg -no --no-heading '^\s*(step|case_step|on_success|on_failure|on_skip|always)\s+:?[A-Za-z_][\w:]*' app lib | sed -E 's/^([^:]+):[0-9]+:[[:space:]]*/\1 /' | sort | uniq -d
+```
+A subclass redeclaring a parent's step lives in another file: no reliable
+pattern. Grep the step names of each base class you subclass.
+
+**Fix.** Keep one declaration with the options you mean:
+
+<!-- doctest -->
+```ruby
+class Ship < Actionable::Action
+  output { optional :packed, :boolean }
+  step :pack, if: :ready?
+  def pack = @packed = true
+  def ready? = true
+end
+
+class ShipFragile < Ship
+  step :pack, unless: :fragile? # replaces the parent's options, keeps its position
+  def fragile? = true
+end
+
+Ship.run.packed        # => true
+ShipFragile.run.packed # => nil
+```
+
+**Why.** Invariant 5 promises a subclass can override inherited steps.
+
+### `always` hooks run even after an outcome hook halts
+<!-- upgrading: always-after-halt -->
+
+**Symptom.** An `always` hook that never ran after a `fail!` in `on_success`
+now runs, and sees the adopted `Failure`. Under `transactional` it runs inside
+the transaction, so its writes roll back with the failed run. Specs that
+counted `always` calls, or expected its side effect to be absent, fail.
+
+**Find.**
+```sh
+rg -n '^\s*always\b' app lib
+```
+
+**Fix.** Make each `always` hook correct for every outcome; check `result` when
+the outcome matters:
+
+<!-- doctest -->
+```ruby
+class Sync < Actionable::Action
+  output { optional :audited, :string }
+  step :work
+  on_success :publish
+  always :audit
+  def work = nil
+  def publish = fail!(:publish_failed)
+  def audit = @audited = result.failure? ? 'failed' : 'ok'
+end
+
+result = Sync.run
+result.code # => :publish_failed
+```
+
+**Why.** One hook's halt silently skipped cleanup and audit hooks.
+
+### Adapter signatures now ship in `sig/`
+<!-- upgrading: adapter-rbs -->
+
+**Symptom.** `rbs validate`:
+`::Actionable::Action.transactional has duplicated definitions in sig/mine.rbs:3:4...3:52 (RBS::DuplicatedMethodDefinitionError)`
+when your own sig files declare the Rails, RSpec or Job surface.
+
+**Find.**
+```sh
+rg -nP 'def (?:self\.)?(?:transactional|transaction_config|after_commit|after_commit_hooks|perform_actionable|(?:allow|stub)_actionable_\w+|actionable_\w+_result)\b' sig
+```
+
+**Fix.** Delete your declarations of those methods; the gem's are generated from
+its YARD. They are declared on `Actionable::Action` even when
+`actionable/rails` isn't required (RBS can't make a signature conditional).
+
+**Why.** The adapters' public surface is now typed by the gem itself.
+
+### `describe` lists `after_commit` hooks under the Rails adapter
+<!-- upgrading: describe-after-commit -->
+
+**Symptom.** With `actionable/rails` loaded, `describe[:hooks]` gains an
+`after_commit:` key (an empty Array when there are none), so a spec comparing
+the whole hash with `eq` fails.
+
+**Find.**
+```sh
+rg -nP '\.describe\b(?!_text)' spec
+```
+
+**Fix.**
+```ruby
+# before
+expect(Pay.describe[:hooks]).to eq(on_success: [:notify], always: [])
+# after
+expect(Pay.describe[:hooks]).to include(on_success: [:notify], always: [])
+```
+
+**Why.** `describe` is the contract summary; `after_commit` hooks are part of it.
+
+## 1.7.0 → 1.8.0
+
+Both checks below raise on code that used to run. `Actionable.verb_position_check`
+switches off the first; nothing switches off the second.
+
+### A plain verb must end its step or hook method
+<!-- upgrading: verb-position-guard -->
+
+**Symptom.** An action's first run raises:
+```
+Actionable::DefinitionError: Charge#check (app/actions/charge.rb:5) calls `fail` with more code after it, which still runs: use fail! to stop here, or make it the method's last expression
+(see USAGE, Control flow)
+```
+It covers `fail`, `fail_with`, `skip` and `succeed` (and `self.fail` …) in every
+step, case-step branch target and lifecycle hook method (`after_commit`
+included). It is checked once per class, on the first run.
+
+**Find.** The cop is the finder; it applies the same rules. Add it to
+`.rubocop.yml` (RuboCop >= 1.72; `require: [actionable/rubocop]` on older):
+```yaml
+plugins:
+  - actionable:
+      require_path: actionable/rubocop
+
+Actionable/VerbNotLast:
+  ActionBaseClasses: # replaces the default, so keep the two defaults
+    - Actionable::Action
+    - ApplicationAction
+    - Billing::BaseAction # your own bases defined in other files
+```
+then `bundle exec rubocop --only Actionable/VerbNotLast`. The cop sees one file
+at a time, so steps a parent class declares are left to the runtime check.
+Running the suite with the check on finds the rest. For a quick look before
+enabling the cop, these list the two commonest shapes (not definitive):
+```sh
+rg -nP '^\s*(?:self\.)?(?:fail|fail_with|skip|succeed)\b(?!!).*\b(?:if|unless)\b' app lib
+rg -nP '\b(?:fail|fail_with|skip|succeed)\b(?!!)[^#\n]*\b(?:and|or)\s+(?:return|next|break)\b' app lib
+```
+
+**Fix.** If the code after the verb should not run, add the bang; if it
+should, make the verb last (or `return` it):
+```ruby
+# before
+def check
+  fail :card_expired if card.expired?
+  charge_card
+end
+```
+
+<!-- doctest -->
+```ruby
+class Charge < Actionable::Action
+  step :check
+  step :charge_card
+  def check
+    fail!(:card_expired) if expired? # stops here
+  end
+
+  def charge_card = nil
+  def expired? = true
+end
+
+Charge.run.code # => :card_expired
+```
+
+`fail(:x) and return` never returns (`fail` returns `false`): write
+`return fail(:x)`. [USAGE, Where a plain verb may go](USAGE.md#where-a-plain-verb-may-go)
+has the full table. If you can't fix every offense before deploying, set
+`Actionable.verb_position_check = false` in an initializer and keep the cop in
+CI until you can turn it back on. The check is skipped on Ruby 3.2 without the
+`prism` gem, and for methods from `eval` / `define_method`; the cop still
+covers those.
+
+**Why.** `fail :x if bad?` followed by more code keeps running: almost always
+a `fail!` missing its bang.
+
+### `fail` / `skip` codes must be identifiers
+<!-- upgrading: identifier-codes -->
+
+**Symptom.** At the call:
+```
+ArgumentError: Codes: failure code "card expired" is not an identifier; use a Symbol like :card_expired. Inside an action, fail records a failure, it is not Kernel#fail: to raise an exception, use raise
+```
+(`skip code ...` for a skip). A code must be a Symbol or String matching
+`/\A[[:alpha:]_][[:alnum:]_]*[?!]?\z/`. Sentences, dotted (`'payment.declined'`)
+and dashed (`:"not-found"`) codes, codes starting with a digit (`'404'`) and
+classes (`fail GatewayError, 'down'`) all raise. Applies to `fail`, `fail!`,
+`fail_with`, `fail_with!` (its `code:`), `skip` and `skip!`. **No opt-out:**
+`verb_position_check = false` doesn't cover it.
+
+**Find.** Three patterns: quoted codes, `code:` keywords, and class codes.
+Matches outside action classes (`Kernel#fail` in a model) are fine to leave:
+```sh
+rg -nP "\b(?:fail|skip)!?[ (]\s*(?:'[^']*[^\w'?!][^']*'|\"[^\"]*[^\w\"?!][^\"]*\"|['\"]\d|:['\"])" app lib
+rg -nP "\bcode:\s*(?:'[^']*[^\w'?!][^']*'|\"[^\"]*[^\w\"?!][^\"]*\"|['\"]\d|:['\"])" app lib
+rg -nP '\bfail!?[ (]\s*[A-Z]\w*(?:::[A-Z]\w*)*\s*(?:,|\)|$)' app lib
+```
+A code built at run time (`fail!(code_for(response))`) can't be found
+statically; the runtime check is the finder.
+
+**Fix.** Use a Symbol code and pass the sentence as the message; `raise` when
+you meant an exception:
+```ruby
+# before
+fail('card expired')
+fail(GatewayError, 'gateway down')
+skip('payment.declined')
+```
+
+<!-- doctest -->
+```ruby
+class Pay < Actionable::Action
+  step :charge
+  def charge = fail!(:card_expired, 'card expired') # was: fail('card expired')
+end
+
+result = Pay.run
+result.code    # => :card_expired
+result.message # => "card expired"
+```
+
+**Why.** `fail 'card expired'` is `Kernel#fail` habit; inside an action it
+recorded the sentence as a code and kept running.
+
+## New, opt-in: worth adopting
+
+| Since | Feature | One line | Reference |
+|---|---|---|---|
+| 1.5.2 | Savepoint control | `transactional model: :x, requires_new: false` joins an outer transaction instead of taking a savepoint. | [USAGE, Rails adapter](USAGE.md#rails-adapter) |
+| 1.6.0 | Typed `Actionable::RBS` | Typed `.run` keywords, `InputSchema`, output ivars and the real superclass chain for each action. | [USAGE, RBS for your actions](USAGE.md#rbs-for-your-actions) |
+| 1.7.0 | `honor_retry_metadata` | Declared `retry: true` / `retry: false` decides the job's disposition (ActiveJob: `retry_on Actionable::Job::RetryableFailure`). | [USAGE, Background jobs](USAGE.md#background-jobs) |
+| 1.7.0 | `after_commit` | Emails, webhooks and enqueues run only after the outermost transaction commits (ActiveRecord >= 7.2). | [USAGE, Rails adapter](USAGE.md#rails-adapter) |
+| 1.7.0 | RSpec matchers, typed | `perform_actionable` and the `allow_/stub_actionable_*` helpers now have RBS. | [USAGE, RSpec integration](USAGE.md#rspec-integration) |
+| 1.8.0 | `Actionable/VerbNotLast` cop | Lints misplaced plain verbs in CI, before the first run. | [USAGE, Where a plain verb may go](USAGE.md#where-a-plain-verb-may-go) |
+
+## If something else breaks
+
+**Bisect by version.** Pin each release in turn and run the failing spec; the
+first tag that fails names the section above to reread:
+```ruby
+gem 'actionable', git: 'https://github.com/Paymentbox-com/actionable', tag: 'v1.5.2' # then v1.6.0, v1.7.0, v1.8.0
+```
+Remember the field_struct floor at each step (0.11 for 1.5.2, 0.12 from 1.6.0).
+
+**A guard offense or a real bug?**
+
+- `DefinitionError` "... calls `fail` with more code after it ..." is the verb
+  guard. It goes away with `Actionable.verb_position_check = false`; a real bug
+  doesn't. The cop reports the same line.
+- `ArgumentError` "... code ... is not an identifier" is the code check, raised
+  at the `fail` / `skip` call itself. The backtrace's first app frame is the
+  line to change.
+- `DefinitionError` "... declares step(s) calling ... but does not implement
+  them" or "... set @result ..." are the 1.5.2 definition checks.
+- Anything else (a different result code, missing output, a hook that runs or
+  doesn't) is behaviour: find the version with the bisect above, then the entry
+  in that version's section. If none fits, it's a bug. Open an issue with the
+  action and the two versions.
