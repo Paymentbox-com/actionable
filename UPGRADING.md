@@ -30,7 +30,7 @@ output, and Rails apps that nest `transactional` actions.
 
 1. **Bump field_struct first.** actionable >= 1.6 requires `field_struct >=
    0.12` (1.5.2 needs `>= 0.11`). Upgrade it and follow field_struct's
-   [UPGRADING.md](https://github.com/Paymentbox-com/field_struct/blob/develop/UPGRADING.md)
+   [UPGRADING.md](https://github.com/Paymentbox-com/field_struct/blob/main/UPGRADING.md)
    until your suite is green.
 2. **Bump actionable** to `v1.8.0` in the Gemfile.
 3. **Fix verb-position offenses.** If you need a green baseline first, run the
@@ -323,7 +323,7 @@ rg -n "gem ['\"](field_struct|actionable)['\"]" Gemfile
 ```
 
 **Fix.** Pin `tag: 'v0.12.0'` (or later) and follow field_struct's
-[UPGRADING.md](https://github.com/Paymentbox-com/field_struct/blob/develop/UPGRADING.md)
+[UPGRADING.md](https://github.com/Paymentbox-com/field_struct/blob/main/UPGRADING.md)
 before bumping actionable.
 
 **Why.** Generated action RBS takes every field type from
