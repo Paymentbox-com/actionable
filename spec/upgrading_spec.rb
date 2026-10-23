@@ -172,8 +172,13 @@ RSpec.describe 'UPGRADING.md' do
     end
 
     it 'fails when [Unreleased] has upgrade entries the range does not reach' do
-      stale = upgrading.sub(UpgradingGuide::RANGE, '<!-- upgrading-range: 1.5.0..1.7.0 -->')
-      expect(problems.call(upgrading: stale)).to include(a_string_including('[Unreleased] has upgrade entries'))
+      # A fixture, not the live files: right after a release [Unreleased] is
+      # empty and this rule has nothing to bite on.
+      changelog = "## [Unreleased]\n\n### Changed\n\n- **Probe.** **Upgrade note:** act. " \
+                  "<!-- upgrading: probe -->\n\n## [1.8.0] - 2026-10-22\n\n### Changed\n\n- Done.\n"
+      stale = "<!-- upgrading-range: 1.5.0..1.8.0 -->\n"
+      expect(problems.call(changelog: changelog, upgrading: stale, version: '1.8.0'))
+        .to include(a_string_including('[Unreleased] has upgrade entries'))
     end
 
     it 'passes once the release bumps the version and dates [Unreleased]' do
