@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-10-22
+
+A guard against silently continuing runs, plus upgrade guidance. A plain
+`fail` / `fail_with` / `skip` / `succeed` must now be the last thing its step
+or hook does — checked once per action class on first run (Prism; turn it off
+with `Actionable.verb_position_check = false`) and by a shipped RuboCop cop,
+`Actionable/VerbNotLast`. `fail` / `skip` codes must be identifiers, so the
+`fail 'card expired'` Kernel habit raises instead of recording a code. Both can
+raise on code that used to run: read `UPGRADING.md`, which walks 1.5 → 1.8
+change by change. CI now also runs real ActiveJob/Sidekiq and ActiveRecord 7.1
+lanes. Still requires field_struct >= 0.12.
+
 ### Added
 
 - **A plain recording verb must end its step or hook method (owner rulings
