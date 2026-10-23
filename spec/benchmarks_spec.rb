@@ -17,7 +17,7 @@ RSpec.describe 'benchmarks/run.rb' do
     expect(out).to include('Ruby ', 'iterations: 5')
     ['trivial action', '5-step action, measure :none', '5-step action, measure :all',
      'input coercion (5 fields)', 'nested action, measure :none', 'nested action, measure :all',
-     'history to_json (5 steps)'].each do |label|
+     'history to_json (5 steps)', 'fail! action', 'skip! action'].each do |label|
       expect(out).to match(/^#{Regexp.escape(label)}\s+[\d.]+ µs/)
     end
   end

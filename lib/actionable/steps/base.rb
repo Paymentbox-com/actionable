@@ -43,6 +43,15 @@ module Actionable
         []
       end
 
+      # Instance methods whose bodies run as this step, for the recording-verb
+      # position check (owner ruling R5): not guards, not a case step's value
+      # source. None for the base; a nested action is checked on its own run.
+      #
+      # @return [Array<Symbol>]
+      def body_methods
+        []
+      end
+
       # @return [Symbol] a short tag identifying the step type, for introspection
       #   (+Actionable::Action.describe+). Concrete types override it.
       def kind

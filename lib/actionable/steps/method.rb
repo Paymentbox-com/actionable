@@ -25,6 +25,11 @@ module Actionable
         [name]
       end
 
+      # @return [Array<Symbol>] the instance method whose body is this step
+      def body_methods
+        [name]
+      end
+
       # @return [Symbol]
       def kind
         :method

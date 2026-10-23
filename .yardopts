@@ -4,6 +4,8 @@
 --exclude lib/actionable/rails/proxy_validator
 --exclude lib/actionable/railtie
 --exclude lib/actionable/rspec/coverage
+--exclude lib/actionable/rubocop
+--exclude lib/actionable/verb_position
 lib/**/*.rb
 -
 USAGE.md

@@ -82,6 +82,16 @@ RSpec.describe 'Documentation examples' do
       expect(blocks).not_to be_empty
     end
 
+    it "#{doc} examples put plain recording verbs last (owner ruling R5)" do
+      require 'prism'
+      offenses = blocks.flat_map do |block|
+        Actionable::VerbPosition.declared_step_offenses(Prism.parse(block.source).value)
+          .map { |offense| "#{doc}:#{block.first_code_line + offense.line - 1} #{offense.verb}" }
+      end
+
+      expect(offenses).to be_empty
+    end
+
     blocks.each_with_index do |block, position|
       it "#{doc} doctest block ##{position + 1} (line #{block.first_code_line})" do
         sandbox = Module.new

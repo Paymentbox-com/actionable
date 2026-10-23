@@ -2,6 +2,47 @@
 
 ## [Unreleased]
 
+### Added
+
+- **A plain recording verb must end its step or hook method (owner ruling
+  R5).** `fail :card_expired if card.expired?` followed by more code keeps
+  running — almost always a `fail!` missing its bang. On an action's first
+  run, every step method (case-step branch targets included) and lifecycle
+  hook method (`on_success` / `on_failure` / `on_skip` / `always`, and
+  `after_commit` with the Rails adapter) is parsed with Prism, and a plain
+  `fail` / `skip` / `succeed` (or `self.fail` …) that isn't the method's last
+  expression raises `DefinitionError` naming the action, method, `file:line`,
+  verb and fix. Branches, `return fail(...)`, a verb followed by `return`,
+  and blocks whose call is last are allowed; USAGE (Control flow, "Where a
+  plain verb may go") has the full table. Checked once per class: later runs
+  pay one instance-variable read. Skipped without Prism >= 1.0 (Ruby 3.2
+  without the `prism` gem; no new dependency) and for methods with no
+  parseable source (`eval`, `define_method`).
+- **`Actionable/VerbNotLast`, an opt-in RuboCop cop** with the same rules
+  (one shared analyzer). Not loaded by `require 'actionable'`; enable it with
+  `plugins: [{actionable: {require_path: actionable/rubocop}}]` (RuboCop >=
+  1.72, via the gem's lint_roller plugin) or `require: [actionable/rubocop]`.
+  It checks a class that declares `step` / `case_step`, and the methods that
+  class names in its declarations.
+- `rake bench` gains `fail! action` and `skip! action` scenarios.
+
+### Changed
+
+- **`fail` / `skip` codes must be identifiers.** A code that isn't a Symbol
+  or String matching `/\A[[:alpha:]_][[:alnum:]_]*[?!]?\z/` (`'card
+  expired'`, `:"not-found"`, `'payment.declined'`, a class) raises
+  `ArgumentError` at the call, suggesting `raise` for `Kernel#fail` habit.
+  Applies to `fail` / `fail!` / `fail_with` / `fail_with!` / `skip` / `skip!`.
+
+**Upgrading:** both checks raise on code that used to run.
+- `DefinitionError` "… calls `fail` with more code after it …" on an action's
+  first run: if the code after the verb should not run, use the bang verb
+  (`fail!`); if it should, move the verb to the end of the method (or
+  `return fail(...)`). Run the cop over your app to find them all up front.
+- `ArgumentError` "… code "…" is not an identifier": use a Symbol code and
+  pass the sentence as the message (`fail(:card_expired, 'card expired')`),
+  or `raise` if you meant an exception.
+
 ## [1.7.0] - 2026-10-22
 
 Lifecycle and adapter hardening. `always` hooks now run even after an outcome
