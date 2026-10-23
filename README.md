@@ -472,6 +472,14 @@ signature, a typed `input` (as `InputSchema`), the output instance variables
 your steps assign, and output accessors from the action's `input`/`output`
 schemas.
 
+**Adapter signatures are always declared.** `sig/` also types the Rails adapter
+(`transactional`, `transaction_config`, `after_commit`, `after_commit_hooks`) on
+`Actionable::Action`, the RSpec helpers, and `Actionable::Job`. RBS has no way to
+make a signature depend on a `require`, and `rbs` loads a gem's whole `sig/`
+directory, so a type checker sees those methods even in an app that never
+requires `actionable/rails` — where calling them raises `NoMethodError`. Outside
+Rails, don't rely on the type checker to catch a stray `transactional`.
+
 ## Claude Code skill
 
 The gem bundles a [Claude Code](https://claude.com/claude-code) skill
