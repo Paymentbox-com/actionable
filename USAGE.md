@@ -183,9 +183,9 @@ result.existing_id # => 42
 
 ### Where a plain verb may go
 
-`fail`, `skip` and `succeed` record an outcome **and keep running**, so in
-`fail :card_expired if card.expired?` followed by `notify`, the `notify` still
-runs (`fail!` was meant). The rule: **in a step or hook method, a plain
+`fail`, `fail_with`, `skip` and `succeed` record an outcome **and keep
+running**, so in `fail :card_expired if card.expired?` followed by `notify`,
+the `notify` still runs (`fail!` was meant). The rule: **in a step or hook method, a plain
 recording verb must be the method's last expression, or explicitly end it.**
 Bang verbs (`fail!`, `skip!`, `succeed!`, `fail_with!`) can go anywhere.
 
@@ -200,7 +200,7 @@ skipped where it can't be done: no Prism (Ruby 3.2 without the `prism` gem; it
 is a default gem from 3.3), or no readable source (a method from `eval` or
 `define_method`).
 
-| The verb call (`fail`, `skip`, `succeed`, or `self.fail` …) | |
+| The verb call (`fail`, `fail_with`, `skip`, `succeed`, or `self.fail` …) | |
 |---|---|
 | is the method's last statement (a modifier `fail :x if bad?` counts as the statement) | OK |
 | is the last statement of an `if` / `elsif` / `else` / `unless` / ternary / `case`-`when` / `case`-`in` / `rescue` / `ensure` branch, or the right side of `&&` / `and` / `\|\|` / `or`, whose construct is itself last | OK |
@@ -215,6 +215,22 @@ is a default gem from 3.3), or no readable source (a method from `eval` or
 
 Methods that aren't steps or hooks (helpers they call) are not checked.
 
+**Turning the first-run check off.** It is on by default. As an escape hatch
+while upgrading (an app with misplaced verbs you can't fix yet), switch it off
+for the whole process, e.g. in an initializer:
+
+```ruby
+Actionable.verb_position_check = false # Actionable.verb_position_check? reads it back
+```
+
+Off, `run` never parses a method's source and never loads Prism. **The
+`Actionable/VerbNotLast` cop is then the only guard**, so run it in CI until the
+switch is back on. A class that ran while the check was off is checked on its
+first run after it's turned back on. The switch doesn't cover the code check at
+the `fail` / `skip` call (sentence codes raise `ArgumentError`): that check is a
+per-call regex match, not a parse, costs about 0.4 µs, and catches a wrong
+result code rather than a style problem.
+
 **The RuboCop cop.** The gem ships `Actionable/VerbNotLast`, the same rules as
 a lint, *not* loaded by `require 'actionable'`. Opt in from `.rubocop.yml`:
 
@@ -225,9 +241,29 @@ plugins:
 ```
 
 (or `require: [actionable/rubocop]` on RuboCop < 1.72). The cop only sees one
-file: it checks a class that declares `step` / `case_step`, and the methods
-that class names in a step, case-step branch or hook declaration. Methods a
-parent class declares as steps are left to the first-run check.
+file: it checks a class that is an action and declares `step` / `case_step`,
+and the methods that class names in a step, case-step branch or hook
+declaration. Methods a parent class declares as steps are left to the
+first-run check.
+
+A class counts as an action when its superclass, as written, is in
+`ActionBaseClasses` (default `Actionable::Action` and `ApplicationAction`; a
+leading `::` is ignored), or is a class defined in the same file (`class Base
+< …` or `Base = Class.new(…)`, matched by its last name segment, any depth)
+whose own superclass does. Any other class is left alone, so a dry-transaction
+(`include Dry::Transaction` with its own `step`) gets no false positives, and
+neither does a class that reopens an action without naming its superclass
+(the first-run check still covers it). Name your app's own base classes:
+
+```yaml
+Actionable/VerbNotLast:
+  ActionBaseClasses:
+    - Actionable::Action
+    - ApplicationAction
+    - Billing::BaseAction
+```
+
+The list replaces the default, so keep the two defaults in it if you need them.
 
 ## Declared failures
 
@@ -808,8 +844,8 @@ cryptic `NoMethodError`:
   steps, case value sources and method branch targets, hook steps) must be
   implemented, or the run raises a `DefinitionError` naming the action and the
   missing method.
-- **A plain verb with code after it (at first run):** a `fail` / `skip` /
-  `succeed` that isn't its step or hook method's last expression raises a
+- **A plain verb with code after it (at first run):** a `fail` / `fail_with` /
+  `skip` / `succeed` that isn't its step or hook method's last expression raises a
   `DefinitionError` naming the action, method, `file:line` and verb. See
   [Where a plain verb may go](#where-a-plain-verb-may-go).
 - **Sentence codes (at the `fail` / `skip` call):** a code that isn't an

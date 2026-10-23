@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-# The rule table for where a non-bang recording verb (fail / skip / succeed)
-# may sit in a step or hook method (owner ruling R5). One row per rule: a
+# The rule table for where a non-bang recording verb (fail / fail_with / skip /
+# succeed) may sit in a step or hook method (owner rulings R5, R10). One row per rule: a
 # label, a method's source, and the verbs it must flag as [verb, line within
 # the snippet]. An empty list means the method is fine. The analyzer spec
 # (spec/actionable/verb_position_spec.rb) and the RuboCop cop spec both run
@@ -93,6 +93,12 @@ module VerbPositionRules
       end
     RUBY
     ['self.fail in tail position', "def a = self.fail(:x)\n", []],
+    ['fail_with as the last statement', <<~RUBY, []],
+      def a
+        shape = Shape.new(payload)
+        fail_with(shape, code: :invalid_shape) unless shape.valid?
+      end
+    RUBY
     ['a bang verb anywhere', <<~RUBY, []],
       def a
         fail! :x if bad?
@@ -145,6 +151,12 @@ module VerbPositionRules
   ].freeze
 
   OFFENSES = [
+    ['fail_with followed by more code', <<~RUBY, [[:fail_with, 2]]],
+      def a
+        fail_with(shape, code: :invalid_shape) unless shape.valid?
+        save
+      end
+    RUBY
     ['a modifier if followed by more code', <<~RUBY, [[:fail, 2]]],
       def a
         fail :x if bad?

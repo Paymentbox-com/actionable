@@ -1,3 +1,8 @@
 Actionable/VerbNotLast:
-  Description: 'A plain fail/skip/succeed must be the last expression of its step or hook method.'
+  Description: 'A plain fail/fail_with/skip/succeed must be the last expression of its step or hook method.'
   Enabled: true
+  # Subclasses of these (or of a class in the same file that reaches one) are
+  # checked; any other class, e.g. a dry-transaction with its own `step`, is not.
+  ActionBaseClasses:
+    - Actionable::Action
+    - ApplicationAction

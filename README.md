@@ -72,11 +72,13 @@ so an idempotent hit can return the existing record's data.
 
 Inside an action, `fail` is this verb, not Ruby's `Kernel#fail`: it never
 raises, and a sentence code (`fail 'card expired'`) raises `ArgumentError`. Use
-`raise` for exceptions. A plain `fail` / `skip` / `succeed` must be the last
+`raise` for exceptions. A plain `fail` / `fail_with` / `skip` / `succeed` must be the last
 expression of its step or hook method (`fail :x if bad?` followed by more code
 is a `fail!` missing its bang): an action that breaks this raises
 `DefinitionError` on its first run, and the opt-in `Actionable/VerbNotLast`
-RuboCop cop flags it in your editor. See
+RuboCop cop flags it in your editor. While upgrading an app that has misplaced
+verbs, `Actionable.verb_position_check = false` turns the first-run check off
+(the cop is then the only guard). See
 [USAGE, Control flow](USAGE.md#where-a-plain-verb-may-go).
 
 <!-- doctest -->

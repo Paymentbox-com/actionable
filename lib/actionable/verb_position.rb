@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
 module Actionable
-  # Where a non-bang recording verb (+fail+ / +skip+ / +succeed+) may sit in a
-  # step or hook method (owner ruling R5). Those verbs record an outcome and
+  # Where a non-bang recording verb (+fail+ / +fail_with+ / +skip+ /
+  # +succeed+) may sit in a step or hook method (owner rulings R5, R10). Those verbs record an outcome and
   # keep running, so +fail :card_expired if card.expired?+ followed by more
   # code is almost always a +fail!+ that forgot its bang. The rule: the verb
   # must be the method's last expression, or explicitly end it.
@@ -27,9 +27,11 @@ module Actionable
   #
   # @api private
   module VerbPosition
-    # The non-bang verbs that record an outcome without halting.
+    # The non-bang verbs that record an outcome without halting: every
+    # +Action+ verb that writes the result and returns. +adopt_failure!+ (the
+    # runner's nested-failure hand-off) halts, so it is not one.
     # @return [Array<Symbol>]
-    VERBS = %i[fail skip succeed].freeze
+    VERBS = %i[fail fail_with skip succeed].freeze
 
     # The class-body declarations whose named methods run as steps or hooks.
     # @return [Array<Symbol>]
@@ -40,13 +42,20 @@ module Actionable
     # @return [Array<Symbol>]
     CASE_BRANCHES = %i[on default].freeze
 
+    # The classes the RuboCop cop treats as action bases by default (its
+    # +ActionBaseClasses+ option): a class body is checked only when its
+    # superclass is one of these, or a class defined in the same file whose
+    # own superclass chain reaches one.
+    # @return [Array<String>]
+    ACTION_BASE_CLASSES = %w[Actionable::Action ApplicationAction].freeze
+
     # The node types that open a new method scope: never looked inside.
     # @return [Array<Symbol>]
     SCOPES = %i[def_node class_node module_node singleton_class_node].freeze
 
     # One misplaced verb call.
     class Offense
-      # @return [Symbol] the verb (+:fail+, +:skip+ or +:succeed+)
+      # @return [Symbol] the verb (one of {VERBS})
       attr_reader :verb
       # @return [Integer] the 1-based line of the call
       attr_reader :line
@@ -116,18 +125,27 @@ module Actionable
         file_offenses(path).fetch([method.name, line], [])
       end
 
-      # The step and hook methods an action-like class body declares, with
-      # their offenses, for the RuboCop cop. A class body counts once it
-      # declares a +step+ or +case_step+; the methods checked are the ones it
-      # names in a declaration ({DECLARATIONS}, +case_step+ branch targets),
-      # never a +case_step+'s value source. Covers +class X < Y+ and
+      # The step and hook methods an action class body declares, with their
+      # offenses, for the RuboCop cop. A class body counts when its superclass
+      # is an action base (owner ruling R10): one of +base_classes+, or a
+      # class defined in this file (+class X < Y+ or +X = Class.new(Y)+, any
+      # depth, matched by its last name segment) whose superclass is. So a
+      # dry-transaction class, which also declares +step+, is left alone. It
+      # must also declare a +step+ or +case_step+; the methods checked are the
+      # ones it names in a declaration ({DECLARATIONS}, +case_step+ branch
+      # targets), never a +case_step+'s value source. Covers +class X < Y+ and
       # +Class.new(Y) do ... end+.
       #
       # @param root [Prism::Node] a parsed file's root
+      # @param base_classes [Array<String>] the action base class names
       # @return [Array<Offense>]
-      def declared_step_offenses(root)
+      def declared_step_offenses(root, base_classes: ACTION_BASE_CLASSES)
+        bases = base_classes.map { |name| name.to_s.delete_prefix('::') }
+        parents = file_superclasses(root)
         found = [] # : Array[Offense]
-        each_class_body(root) do |statements|
+        each_class_body(root) do |statements, superclass|
+          next unless action_superclass?(superclass, bases, parents, [])
+
           names = declared_methods(statements)
           next if names.empty?
 
@@ -328,29 +346,85 @@ module Actionable
           location.start_character_offset, location.end_character_offset)
       end
 
-      # Every class body in the tree: +class X+ bodies and
-      # +Class.new(...) do ... end+ blocks.
+      # Every class body in the tree, with its superclass: +class X < Y+
+      # bodies and +Class.new(Y) do ... end+ blocks.
       #
       # @param root [Prism::Node]
       # @yieldparam statements [Prism::StatementsNode]
+      # @yieldparam superclass [Prism::Node, nil]
       # @return [void]
       def each_class_body(root)
         each_node(root) do |node|
-          body =
+          body, superclass =
             if node.type == :class_node
-              node.body
-            elsif class_new?(node)
-              node.block&.body
+              [node.body, node.superclass]
+            elsif class_new?(node) && node.block&.type == :block_node
+              [node.block.body, class_new_superclass(node)]
             end
-          yield body if body&.type == :statements_node
+          yield body, superclass if body&.type == :statements_node
         end
       end
 
-      # @param node [Prism::Node]
+      # The superclass each class defined in the file names, keyed by the
+      # class's last name segment (a name can be defined more than once).
+      #
+      # @param root [Prism::Node]
+      # @return [Hash{String=>Array<Prism::Node>}]
+      def file_superclasses(root)
+        parents = Hash.new { |hash, name| hash[name] = [] } # : Hash[String, Array[untyped]]
+        each_node(root) do |node|
+          if node.type == :class_node && node.superclass
+            parents[node.name.to_s] << node.superclass
+          elsif node.type == :constant_write_node && class_new?(node.value) && class_new_superclass(node.value)
+            parents[node.name.to_s] << class_new_superclass(node.value)
+          end
+        end
+        parents
+      end
+
+      # Whether +node+ names an action base, directly or through classes
+      # defined in the file. +seen+ guards against a superclass cycle.
+      #
+      # @param node [Prism::Node, nil]
+      # @param bases [Array<String>]
+      # @param parents [Hash{String=>Array<Prism::Node>}]
+      # @param seen [Array<String>]
       # @return [Boolean]
+      def action_superclass?(node, bases, parents, seen)
+        path = constant_name(node)
+        return false unless path
+        return true if bases.include?(path)
+
+        name = path.split('::').last.to_s
+        return false if seen.include?(name)
+
+        seen << name
+        parents.fetch(name, []).any? { |parent| action_superclass?(parent, bases, parents, seen) }
+      end
+
+      # @param node [Prism::Node, nil]
+      # @return [String, nil] the constant path +node+ spells, without a
+      #   leading +::+; +nil+ for anything else (+Class.new(base)+, +foo::Bar+)
+      def constant_name(node)
+        case node&.type
+        when :constant_read_node then node.name.to_s
+        when :constant_path_node then node.full_name.delete_prefix('::')
+        end
+      rescue ::Prism::ConstantPathNode::DynamicPartsInConstantPathError
+        nil
+      end
+
+      # @param node [Prism::Node, nil]
+      # @return [Boolean] whether +node+ is +Class.new(...)+, with or without a block
       def class_new?(node)
-        node.type == :call_node && node.name == :new && node.receiver&.type == :constant_read_node &&
-          node.receiver.name == :Class && node.block&.type == :block_node
+        node&.type == :call_node && node.name == :new && node.receiver&.type == :constant_read_node &&
+          node.receiver.name == :Class
+      end
+
+      # @param node [Prism::CallNode] a +Class.new(...)+ call
+      # @return [Prism::Node, nil] its superclass argument
+      def class_new_superclass(node)
+        node.arguments&.arguments&.first
       end
 
       # The method names a class body's declarations name, or none when it

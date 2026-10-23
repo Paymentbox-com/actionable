@@ -4,26 +4,35 @@
 
 ### Added
 
-- **A plain recording verb must end its step or hook method (owner ruling
-  R5).** `fail :card_expired if card.expired?` followed by more code keeps
+- **A plain recording verb must end its step or hook method (owner rulings
+  R5, R10).** `fail :card_expired if card.expired?` followed by more code keeps
   running — almost always a `fail!` missing its bang. On an action's first
   run, every step method (case-step branch targets included) and lifecycle
   hook method (`on_success` / `on_failure` / `on_skip` / `always`, and
   `after_commit` with the Rails adapter) is parsed with Prism, and a plain
-  `fail` / `skip` / `succeed` (or `self.fail` …) that isn't the method's last
-  expression raises `DefinitionError` naming the action, method, `file:line`,
+  `fail` / `fail_with` / `skip` / `succeed` (or `self.fail` …) that isn't the
+  method's last expression raises `DefinitionError` naming the action, method, `file:line`,
   verb and fix. Branches, `return fail(...)`, a verb followed by `return`,
   and blocks whose call is last are allowed; USAGE (Control flow, "Where a
   plain verb may go") has the full table. Checked once per class: later runs
   pay one instance-variable read. Skipped without Prism >= 1.0 (Ruby 3.2
   without the `prism` gem; no new dependency) and for methods with no
   parseable source (`eval`, `define_method`).
+- **`Actionable.verb_position_check = false`** turns that first-run check off
+  for the process (on by default; `Actionable.verb_position_check?` reads it).
+  Off, `run` never parses source or loads Prism. It is an escape hatch while
+  upgrading, and leaves the cop as the only guard. The identifier check on
+  `fail` / `skip` codes stays on: it's a per-call regex, not a parse.
 - **`Actionable/VerbNotLast`, an opt-in RuboCop cop** with the same rules
   (one shared analyzer). Not loaded by `require 'actionable'`; enable it with
   `plugins: [{actionable: {require_path: actionable/rubocop}}]` (RuboCop >=
   1.72, via the gem's lint_roller plugin) or `require: [actionable/rubocop]`.
-  It checks a class that declares `step` / `case_step`, and the methods that
-  class names in its declarations.
+  It checks a class whose superclass is an action base and that declares
+  `step` / `case_step`, and the methods that class names in its declarations.
+  An action base is one of the cop's `ActionBaseClasses` (default
+  `Actionable::Action`, `ApplicationAction`) or a class defined in the same
+  file whose superclass chain reaches one, so a dry-transaction class with
+  its own `step` gets no false positives (owner ruling R10).
 - `rake bench` gains `fail! action` and `skip! action` scenarios.
 
 ### Changed
@@ -39,6 +48,8 @@
   first run: if the code after the verb should not run, use the bang verb
   (`fail!`); if it should, move the verb to the end of the method (or
   `return fail(...)`). Run the cop over your app to find them all up front.
+  If you can't fix them all before deploying, set
+  `Actionable.verb_position_check = false` in an initializer until you have.
 - `ArgumentError` "… code "…" is not an identifier": use a Symbol code and
   pass the sentence as the message (`fail(:card_expired, 'card expired')`),
   or `raise` if you meant an exception.
