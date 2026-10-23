@@ -422,8 +422,11 @@ failed.errors.full_messages # => ["First name is required"]
    outcomes.
 7. **`fail` is not `raise` inside an action.** The gem's `fail` verb replaces
    `Kernel#fail` there, so `fail 'boom'` records a `Failure` with code
-   `:"boom"` and the run continues. Use `raise` to signal a bug; see
-   [USAGE, Control flow](../USAGE.md#control-flow).
+   `:boom` and the run continues (a sentence code raises `ArgumentError`). Use
+   `raise` to signal a bug. And a plain `fail` / `skip` / `succeed` must be
+   the last expression of its step or hook method, or the action raises
+   `DefinitionError` on its first run; see
+   [USAGE, Control flow](../USAGE.md#where-a-plain-verb-may-go).
 8. **Redeclaring a step overrides it.** A second `step :x` (in the class or a
    subclass) replaces the first's options and keeps its position, so the last
    declaration wins. See [USAGE, Steps](../USAGE.md#steps).

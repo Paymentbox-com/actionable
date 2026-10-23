@@ -806,6 +806,11 @@ module Actionable
       # types that call instance methods override this.
       def required_methods: () -> ::Array[Symbol]
 
+      # Instance methods whose bodies run as this step, for the recording-verb
+      # position check (owner ruling R5): not guards, not a case step's value
+      # source. None for the base; a nested action is checked on its own run.
+      def body_methods: () -> ::Array[Symbol]
+
       # _@return_ — a short tag identifying the step type, for introspection
       # (+Actionable::Action.describe+). Concrete types override it.
       def kind: () -> Symbol
@@ -888,7 +893,14 @@ module Actionable
       # target's required methods
       def required_methods: () -> ::Array[Symbol]
 
+      # _@return_ — every branch target's body methods (never the
+      # switch-value method, which only returns the value)
+      def body_methods: () -> ::Array[Symbol]
+
       def kind: () -> Symbol
+
+      # _@return_ — every branch's step, the default included
+      def branch_steps: () -> ::Array[Steps::Base]
 
       # _@param_ `value` — the switch value
       # 
@@ -980,6 +992,9 @@ module Actionable
       # _@return_ — the instance method this step calls
       def required_methods: () -> ::Array[Symbol]
 
+      # _@return_ — the instance method whose body is this step
+      def body_methods: () -> ::Array[Symbol]
+
       def kind: () -> Symbol
     end
   end
@@ -999,6 +1014,7 @@ module Actionable
     extend Actionable::Job::RetryMetadata
     GEM_FAILURE_CODES: ::Array[Symbol]
     CORE_METHOD_OWNERS: ::Array[Module]
+    CODE_FORMAT: Regexp
 
     # The ordered, deduplicated set of steps declared on this action.
     # A +Set+ keyed by step identity ([type, name]) so a redeclared step
@@ -1417,6 +1433,19 @@ module Actionable
     # _@param_ `instance`
     def self.ensure_steps_implemented!: (Action _instance) -> void
 
+    # First-run guard (owner ruling R5): in every step and hook method, a
+    # non-bang recording verb (+fail+ / +skip+ / +succeed+) must be the
+    # method's last expression, or explicitly end it, since anything after
+    # it still runs (+VerbPosition+ has the rules). Checked once per class,
+    # by parsing each method's source with Prism; skipped where that can't
+    # be done (no Prism, no readable source). A failing check is not cached,
+    # so it raises on every run until fixed.
+    def self.ensure_verbs_last!: () -> void
+
+    # The steps and hooks whose methods {.ensure_verbs_last!} checks. The
+    # Rails adapter adds its +after_commit+ hooks.
+    def self.verb_checked_steps: () -> ::Array[Steps::Base]
+
     # Whether +instance+ implements +method+ itself (public or private), not
     # merely inherits it from Ruby's core: steps are called with +__send__+,
     # so +step :puts+ or +always :exit+ must not reach +Kernel+.
@@ -1644,6 +1673,16 @@ module Actionable
     # 
     # _@return_ — its fields, for this action's schema
     def crossing_output: ((FieldStruct::Base | ::Hash[untyped, untyped] | Object) output) -> ::Hash[Symbol, Object]
+
+    # A +fail+ / +skip+ code must be an identifier-like Symbol or String
+    # ({CODE_FORMAT}): +fail 'card expired'+ is +Kernel#fail+ habit, and in an
+    # action it would record the sentence as a code and keep running (owner
+    # ruling R5).
+    # 
+    # _@param_ `kind`
+    # 
+    # _@param_ `code`
+    def ensure_code_identifier!: (Symbol kind, Object code) -> void
 
     # Strictness (decision D20): once an action declares any failure, every
     # code it fails with must be declared, so its declarations are its whole
@@ -2430,6 +2469,10 @@ module Actionable
       # 
       # _@param_ `instance`
       def ensure_steps_implemented!: (Action _instance) -> void
+
+      # Extend the recording-verb position check (owner ruling R5) to the
+      # +after_commit+ hooks.
+      def verb_checked_steps: () -> ::Array[Steps::Base]
 
       def ensure_after_commit_supported!: () -> void
     end

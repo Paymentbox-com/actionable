@@ -1,3 +1,9 @@
+# Dogfood the gem's own opt-in cop (Actionable/VerbNotLast); clients write
+# `require_path: actionable/rubocop`.
+plugins:
+  - actionable:
+      require_path: ./lib/actionable/rubocop
+
 AllCops:
   DisplayCopNames: true
   DisplayStyleGuide: true

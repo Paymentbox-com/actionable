@@ -221,4 +221,44 @@ RSpec.describe 'Actionable control flow' do
       expect(calls).to eq([])
     end
   end
+
+  describe 'codes must be identifiers (owner ruling R5)' do
+    # Runs one step that calls +verb+ with +args+.
+    def run_verb(verb, *args, **kwargs)
+      Class.new(Actionable::Action) do
+        step :work
+        define_method(:work) { __send__(verb, *args, **kwargs) }
+      end.run
+    end
+
+    {
+      fail: ['card expired', :'not-found', 'payment.declined', '404', '', SystemExit],
+      fail!: ['card expired'],
+      skip: ['nothing to do', :'a b'],
+      skip!: ['nothing to do']
+    }.each do |verb, codes|
+      codes.each do |code|
+        it "refuses #{verb}(#{code.inspect}), suggesting raise" do
+          expect { run_verb(verb, code) }.to raise_error(ArgumentError) { |error|
+            expect(error.message).to include(code.inspect, 'not an identifier', 'raise')
+            expect(error.message).not_to include('#<')
+          }
+        end
+      end
+    end
+
+    it 'refuses a sentence code given to fail_with' do
+      expect { run_verb(:fail_with, FieldStruct::Base.new, code: 'bad input') }.to raise_error(ArgumentError)
+    end
+
+    [:card_expired, 'card_expired', :ok?, :done!, :NotFound, :_private, :e404, :café].each do |code|
+      it "accepts the identifier code #{code.inspect}" do
+        expect(run_verb(:fail, code).code).to eq(code.to_sym)
+      end
+    end
+
+    it 'accepts an identifier skip code' do
+      expect(run_verb(:skip, 'nothing_to_do').code).to eq(:nothing_to_do)
+    end
+  end
 end

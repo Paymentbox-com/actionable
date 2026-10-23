@@ -83,14 +83,22 @@ When asked to build one:
   skipping with an undeclared one raises `DefinitionError`, the default
   `:skipped` included (nothing is exempt).
 - Plain verbs don't halt; last write wins. Bang verbs halt.
+- **A plain `fail` / `skip` / `succeed` must be the last expression of its step
+  or hook method** (or `return fail(...)`). `fail :x if bad?` followed by more
+  code raises `DefinitionError` on the action's first run — that's a `fail!`
+  missing its bang. The opt-in RuboCop cop `Actionable/VerbNotLast`
+  (`plugins: [{actionable: {require_path: actionable/rubocop}}]`) flags it.
+- `fail` / `skip` codes must be identifiers (`:card_expired`, `:ok?`); a
+  sentence raises `ArgumentError`.
 - To signal a real bug, `raise` — exceptions propagate, they aren't caught.
   **Never `fail 'message'` for that:** inside an action `fail` is the gem's
-  verb, not `Kernel#fail`, so it records a `Failure` with code `:"message"`
-  and the run keeps going (a later `succeed` erases it).
+  verb, not `Kernel#fail`: a sentence code raises `ArgumentError`, and a
+  one-word string (`fail 'boom'`) records a `Failure` with code `:boom` and
+  the run keeps going (a later `succeed` erases it).
 
 ```ruby
 def charge
-  fail 'gateway down'          # WRONG: no exception; records code :"gateway down", continues
+  fail 'gateway down'          # WRONG: not an exception; raises ArgumentError (not an identifier code)
   raise GatewayError, 'down'   # a bug / unexpected condition: propagates
   fail!(:gateway_down, 'down') # an expected failure outcome: records and halts
 end

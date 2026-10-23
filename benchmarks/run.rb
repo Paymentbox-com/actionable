@@ -72,6 +72,18 @@ module ActionableBench
     measure :all
   end
 
+  # One step that records a failure and halts: the cost of the fail path.
+  class Failing < Actionable::Action
+    step :work
+    def work = fail!(:declined, 'card declined')
+  end
+
+  # One step that records a skip and halts: the cost of the skip path.
+  class Skipping < Actionable::Action
+    step :work
+    def work = skip!(:nothing_to_do)
+  end
+
   MEASURED_RESULT = FiveStepsMeasured.run
 
   SCENARIOS = {
@@ -81,8 +93,13 @@ module ActionableBench
     'input coercion (5 fields)' => -> { Coerce.run(**COERCE_INPUT) },
     'nested action, measure :none' => -> { Parent.run },
     'nested action, measure :all' => -> { ParentMeasured.run },
-    'history to_json (5 steps)' => -> { MEASURED_RESULT.history.to_json }
+    'history to_json (5 steps)' => -> { MEASURED_RESULT.history.to_json },
+    'fail! action' => -> { Failing.run },
+    'skip! action' => -> { Skipping.run }
   }.freeze
+
+  # The scenarios that measure a non-success path, by the status they must end in.
+  EXPECTED_STATUS = {'fail! action' => :failure, 'skip! action' => :skipped}.freeze
 
   module_function
 
@@ -96,12 +113,15 @@ module ActionableBench
     (clock - started) * 1_000_000 / iterations
   end
 
-  # Time the happy path only: a scenario that quietly failed (say, an input
-  # that stopped coercing) would measure the wrong thing.
+  # Time the intended path only: a scenario that quietly ended differently
+  # (say, an input that stopped coercing) would measure the wrong thing.
   def check!
     SCENARIOS.each do |label, callable|
       value = callable.call
-      raise "#{label}: expected a success, got #{value.inspect}" if value.is_a?(Actionable::Result) && !value.success?
+      next unless value.is_a?(Actionable::Result)
+
+      expected = EXPECTED_STATUS.fetch(label, :success)
+      raise "#{label}: expected #{expected}, got #{value.inspect}" unless value.status == expected
     end
   end
 

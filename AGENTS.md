@@ -43,8 +43,15 @@ result.invoice        # => same, via convenience delegation
    and keep running; the bang versions *also stop* the pipeline (`halt!` stops without
    recording). Last write wins; with no call, the action auto-succeeds.
    **`fail` is not `raise` here:** inside an action it is the gem's verb, so
-   `fail 'boom'` records a `Failure` with code `:"boom"` and keeps running. Use
-   `raise` for a bug, `fail!(:code, 'msg')` to stop with a failure.
+   `fail 'boom'` records a `Failure` with code `:boom` and keeps running (a
+   sentence code like `'card expired'` raises `ArgumentError`). Use `raise` for
+   a bug, `fail!(:code, 'msg')` to stop with a failure.
+   **A plain verb must be the last expression of its step/hook method.**
+   `fail :x if bad?` followed by more code raises `DefinitionError` on the
+   action's first run: write `fail!` to stop there, or move the verb last
+   (`return fail(:x) if bad?` also works). Lint it with the opt-in
+   `Actionable/VerbNotLast` cop (`require_path: actionable/rubocop`). See
+   [USAGE, Control flow](USAGE.md#where-a-plain-verb-may-go).
 2. **Output is declared, not magic.** Only fields in `output do … end` appear on the
    result. Setting an undeclared `@foo` does nothing for the caller — declare it.
 3. **Genuine exceptions propagate.** A `raise` inside a step is *not* turned into a

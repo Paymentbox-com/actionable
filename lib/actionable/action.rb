@@ -25,6 +25,13 @@ module Actionable
     # @return [Array<Module>]
     CORE_METHOD_OWNERS = [Kernel, Object, BasicObject].freeze
 
+    # What a +fail+ / +skip+ code must look like: a Ruby identifier (letters,
+    # digits and underscores, not starting with a digit), optionally ending
+    # in +?+ or +!+. Refuses a sentence, which is +Kernel#fail+ habit
+    # (owner ruling R5).
+    # @return [Regexp]
+    CODE_FORMAT = /\A[[:alpha:]_][[:alnum:]_]*[?!]?\z/
+
     class << self
       # The ordered, deduplicated set of steps declared on this action.
       # A +Set+ keyed by step identity ([type, name]) so a redeclared step
@@ -554,6 +561,7 @@ module Actionable
         end
 
         ensure_steps_implemented!(instance)
+        ensure_verbs_last! unless @verbs_checked
         Runner.new(instance).run
       end
 
@@ -726,6 +734,40 @@ module Actionable
         raise DefinitionError,
           "#{name || "action"} declares step(s) calling #{missing.map(&:inspect).join(", ")} " \
           'but does not implement them'
+      end
+
+      # First-run guard (owner ruling R5): in every step and hook method, a
+      # non-bang recording verb (+fail+ / +skip+ / +succeed+) must be the
+      # method's last expression, or explicitly end it, since anything after
+      # it still runs (+VerbPosition+ has the rules). Checked once per class,
+      # by parsing each method's source with Prism; skipped where that can't
+      # be done (no Prism, no readable source). A failing check is not cached,
+      # so it raises on every run until fixed.
+      #
+      # @raise [DefinitionError] naming each offending method, file:line and verb
+      # @return [void]
+      def ensure_verbs_last!
+        problems = verb_checked_steps.flat_map(&:body_methods).uniq.flat_map do |method_name|
+          next [] unless method_defined?(method_name) || private_method_defined?(method_name)
+
+          method = instance_method(method_name)
+          VerbPosition.method_offenses(method).map do |offense|
+            "#{name || "action"}##{method_name} (#{method.source_location&.first}:#{offense.line}) calls " \
+              "`#{offense.verb}` with more code after it, which still runs: use #{offense.verb}! to stop here, " \
+              "or make it the method's last expression"
+          end
+        end
+        raise DefinitionError, "#{problems.join("\n")}\n(see USAGE, Control flow)" unless problems.empty?
+
+        @verbs_checked = true
+      end
+
+      # The steps and hooks whose methods {.ensure_verbs_last!} checks. The
+      # Rails adapter adds its +after_commit+ hooks.
+      #
+      # @return [Array<Steps::Base>]
+      def verb_checked_steps
+        steps.to_a + success_hooks.to_a + failure_hooks.to_a + skip_hooks.to_a + always_hooks.to_a
       end
 
       # Whether +instance+ implements +method+ itself (public or private), not
@@ -981,6 +1023,7 @@ module Actionable
     # @raise [DefinitionError] when the action declares skips but not +code+
     # @return [false] so a step can branch on the call (the run did not succeed here)
     def skip(code = :skipped, message = nil, **output)
+      ensure_code_identifier!(:skip, code)
       code = code.to_sym
       ensure_skip_declared!(code)
       ensure_output_declared!(:skips, code, output) if self.class.typed_outcomes?
@@ -1012,6 +1055,7 @@ module Actionable
     # @raise [DefinitionError] when the action declares failures but not +code+
     #   (the {GEM_FAILURE_CODES} are exempt)
     def declared_failure(code, message)
+      ensure_code_identifier!(:failure, code)
       code = code.to_sym
       ensure_failure_declared!(code)
       declaration = self.class.failure_declarations.fetch(code, {message: nil, metadata: {}})
@@ -1080,6 +1124,24 @@ module Actionable
       when Hash then output
       else {}
       end
+    end
+
+    # A +fail+ / +skip+ code must be an identifier-like Symbol or String
+    # ({CODE_FORMAT}): +fail 'card expired'+ is +Kernel#fail+ habit, and in an
+    # action it would record the sentence as a code and keep running (owner
+    # ruling R5).
+    #
+    # @param kind [:failure, :skip]
+    # @param code [Object]
+    # @raise [ArgumentError] when +code+ is not an identifier
+    # @return [void]
+    def ensure_code_identifier!(kind, code)
+      return if (code.is_a?(Symbol) || code.is_a?(String)) && CODE_FORMAT.match?(code)
+
+      raise ArgumentError,
+        "#{self.class.name || "action"}: #{kind} code #{code.inspect} is not an identifier; use a Symbol like " \
+        ':card_expired. Inside an action, fail records a failure, it is not Kernel#fail: to raise an ' \
+        'exception, use raise'
     end
 
     # Strictness (decision D20): once an action declares any failure, every

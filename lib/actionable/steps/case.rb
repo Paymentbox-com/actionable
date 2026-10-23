@@ -84,9 +84,13 @@ module Actionable
       # @return [Array<Symbol>] the switch-value method plus every branch
       #   target's required methods
       def required_methods
-        branch_steps = @branches.map(&:last)
-        branch_steps << @default_step if @default_step
         ([name] + branch_steps.flat_map(&:required_methods)).uniq
+      end
+
+      # @return [Array<Symbol>] every branch target's body methods (never the
+      #   switch-value method, which only returns the value)
+      def body_methods
+        branch_steps.flat_map(&:body_methods).uniq
       end
 
       # @return [Symbol]
@@ -95,6 +99,13 @@ module Actionable
       end
 
       private
+
+      # @return [Array<Steps::Base>] every branch's step, the default included
+      def branch_steps
+        steps = @branches.map(&:last)
+        steps << @default_step if @default_step
+        steps
+      end
 
       # @param value [Object] the switch value
       # @return [Steps::Base, nil] the first matching branch's step
