@@ -29,6 +29,18 @@
   reported verb, as for any verb-position offense.
   <!-- upgrading: verb-check-alias -->
 
+### Documentation
+
+- **UPGRADING.md, from a dry run against a large app (133 actions).** The guide
+  now says which six Finds must run on a green suite (silent behaviour changes)
+  and that the rest cover code the suite doesn't reach. The `describe` Find skips
+  `RSpec.describe` (1,552 hits before). The code Finds skip receivers and
+  non-Ruby files. The `@result` entry says a `Result` you build yourself is still
+  allowed, with `halt!`. A new section lists the class-level API unchanged since
+  1.5.1. The cop entry says to list every base class defined in its own file. The
+  opt-out goes in `spec_helper`, not an initializer. The effort estimate counts
+  suite runs, and there is a PCRE2 check. AGENTS.md and the skill follow.
+
 ## [1.8.1] - 2026-10-23
 
 Housekeeping. The `Actionable/VerbNotLast` cop resolves superclass names the way

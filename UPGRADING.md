@@ -14,8 +14,20 @@ caller can see, not just the breaking ones. Each entry has the same four parts:
 
 The `rg` patterns search `app lib` (code), `spec` and `sig`; point them at your
 own directories and drop any that don't exist. Patterns with `-P` need ripgrep
-built with PCRE2 (`rg --pcre2-version`). A pattern finds *candidates*; read
-each hit. Every pattern has been checked against the "before" snippet it
+built with PCRE2. Check first, in the shell that will run them, with
+`rg --pcre2-version`; an agent's `bash -c` may not see a shell function or alias
+that wraps `rg`. A pattern finds *candidates*; read each hit.
+
+**Which Finds to run.** Most changes raise or fail a spec, so the suite finds
+them; their Finds cover code the suite doesn't reach. Seven change behaviour
+without raising, so run their Finds even on a green suite: the
+[nested savepoint](#a-nested-transactional-action-takes-its-own-savepoint),
+[bang verbs in hooks](#a-bang-verb-inside-a-lifecycle-hook-sets-the-result),
+[nested output](#a-nested-action-no-longer-overwrites-parent-fields-it-didnt-set),
+[RSpec stubs](#rspec-stubs-absorb-only-the-fields-you-give-them),
+[redeclared steps](#redeclaring-a-step-or-hook-overrides-it-last-wins),
+[`always` after a halt](#always-hooks-run-even-after-an-outcome-hook-halts) and
+[`case_step` branch guards](#case_step-branch-guards-are-honoured). Every pattern has been checked against the "before" snippet it
 targets. [CHANGELOG.md](CHANGELOG.md) has the
 full list of changes, including internal ones.
 
@@ -46,10 +58,12 @@ output, and Rails apps that nest `transactional` actions.
 6. **Using `after_commit`?** It needs ActiveRecord >= 7.2. The rest of the
    Rails adapter is tested on 7.1.
 
-**Expected effort:** minutes for the version bumps; under an hour for most apps
-to fix what the cop and the code check report; longer only if you keep
-hand-written RBS for your actions or nest `transactional` actions inside your
-own transactions.
+**Expected effort:** the fixes take minutes to an hour for most apps (what the
+cop and the code check report). Longer only if you keep hand-written RBS for
+your actions or nest `transactional` actions inside your own transactions. On
+top of that come the full suite runs: a baseline, one after the field_struct
+bump, one after this one, and a final run with the check on. Budget 4× your
+suite's wall time.
 
 ## Straight from 1.5 to 1.8
 
@@ -60,7 +74,10 @@ run:
    bump until you do: `Bundler could not find compatible versions for gem
    "field_struct"`.
 2. Bump actionable to `v1.8.1`. Set `Actionable.verb_position_check = false`
-   in an initializer or `spec_helper` for now.
+   in `spec_helper` (or a `spec/support` file) for now, not in an initializer:
+   an initializer also switches the check off in production, and that is easy
+   to forget to undo. Use an initializer only if you must deploy before every
+   offense is fixed (see [the verb entry](#a-plain-verb-must-end-its-step-or-hook-method)).
 3. Run the suite. Work through the [1.5.2](#15x--152) and
    [1.7.0](#160--170) entries: they change runtime behaviour (savepoints,
    hook halts, nested output, redeclared steps, `always` hooks).
@@ -278,6 +295,19 @@ def find = @account = Account.find(input.id)
 ```
 
 **Why.** `@result` holds the run's result.
+
+Assigning an `Actionable::Result` (a `Failure`, `Skipped` or `Success`) is not
+refused, from a step or from a helper a step calls, and `halt!` is the
+documented way to stop after it ([USAGE](USAGE.md)'s verb table). So an app base
+class that builds a failure carrying ActiveModel errors keeps working:
+```ruby
+def fail_invalid!(record)
+  @result = Actionable::Failure.new(code: :invalid, message: 'Record is invalid', metadata: {}, output: {})
+  record.errors.each { |error| @result.errors.add(error.attribute, error.message) }
+  halt!
+end
+```
+Only a non-`Result` value raises.
 
 ### Failures and skips no longer carry a spurious `errors[:output]`
 <!-- upgrading: no-spurious-output-error -->
@@ -536,7 +566,7 @@ the whole hash with `eq` fails.
 
 **Find.**
 ```sh
-rg -nP '\.describe\b(?!_text)' spec
+rg -nP '(?<!RSpec)\.describe\b(?!_text)' spec
 ```
 
 **Fix.**
@@ -580,7 +610,16 @@ Actionable/VerbNotLast:
     - Billing::BaseAction # your own bases defined in other files
 ```
 then `bundle exec rubocop --only Actionable/VerbNotLast`. The cop sees one file
-at a time, so steps a parent class declares are left to the runtime check.
+at a time. It follows a subclass of a listed base only when both are in the
+same file, so **list every intermediate base defined in its own file**, by full
+name: with `ResponseReadyAction < ApplicationAction` and
+`Orders::BaseAction < ResponseReadyAction` in separate files, list both. To
+find candidates, count superclass names; the ones with many children are your
+bases:
+```sh
+rg -oNP --no-filename --type ruby '^\s*class\s+[\w:]+\s*<\s*\K[\w:]+' app lib | sort | uniq -c | sort -rn | head -20
+```
+Steps a parent class declares are left to the runtime check.
 Running the suite with the check on finds the rest. For a quick look before
 enabling the cop, these list the two commonest shapes (not definitive):
 ```sh
@@ -639,12 +678,14 @@ classes (`fail GatewayError, 'down'`) all raise. Applies to `fail`, `fail!`,
 `fail_with`, `fail_with!` (its `code:`), `skip` and `skip!`. **No opt-out:**
 `verb_position_check = false` doesn't cover it.
 
-**Find.** Three patterns: quoted codes, `code:` keywords, and class codes.
-Matches outside action classes (`Kernel#fail` in a model) are fine to leave:
+**Find.** Three patterns: quoted codes, `code:` keywords, and class codes. They
+skip calls on a receiver (`run.fail!(…)` on a model with its own `fail!`) and
+also `self.fail …`, which is rare. A bare `fail` outside an action class
+(`Kernel#fail` in a model or job) is fine to leave:
 ```sh
-rg -nP "\b(?:fail|skip)!?[ (]\s*(?:'[^']*[^\w'?!][^']*'|\"[^\"]*[^\w\"?!][^\"]*\"|['\"]\d|:['\"])" app lib
-rg -nP "\bcode:\s*(?:'[^']*[^\w'?!][^']*'|\"[^\"]*[^\w\"?!][^\"]*\"|['\"]\d|:['\"])" app lib
-rg -nP '\bfail!?[ (]\s*[A-Z]\w*(?:::[A-Z]\w*)*\s*(?:,|\)|$)' app lib
+rg -nP --type ruby "(?<![\w.])(?:fail|skip)!?[ (]\s*(?:'[^']*[^\w'?!][^']*'|\"[^\"]*[^\w\"?!][^\"]*\"|['\"]\d|:['\"])" app lib
+rg -nP --type ruby "\bcode:\s*(?:'[^']*[^\w'?!][^']*'|\"[^\"]*[^\w\"?!][^\"]*\"|['\"]\d|:['\"])" app lib
+rg -nP --type ruby '(?<![\w.])fail!?[ (]\s*[A-Z]\w*(?:::[A-Z]\w*)*\s*(?:,|\)|$)' app lib
 ```
 A code built at run time (`fail!(code_for(response))`) can't be found
 statically; the runtime check is the finder.
@@ -775,14 +816,26 @@ end
 alias_method :charge, :do_charge
 
 # after
+step :charge
 def do_charge
   fail! :late if late?
   @charged = true
 end
+alias_method :charge, :do_charge
 ```
 
 **Why.** The check looked the `def` up by the alias's name, found none, and
 skipped the step.
+
+## Class-level API an app base class may rely on
+
+Unchanged from 1.5.1 to 1.8.1, so a shared `ApplicationAction` that overrides
+or calls these needs no edit: `fails` / `skips` (the declarations),
+`declared_failures` / `declared_skips`, `allows_failure_code?` /
+`allows_skip_code?`, `failure_output_schema` / `skip_output_schema`, `halt!`,
+`fail_with!`, and the `Failure` / `Skipped` / `Success` constructors. `Result`
+only gained an `@api private` accessor. Anything marked `@api private` in the
+YARD docs can change in any release.
 
 ## New, opt-in: worth adopting
 
