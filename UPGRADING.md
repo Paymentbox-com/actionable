@@ -280,7 +280,7 @@ rg -nP '^\s*(?:step|case_step|on_success|on_failure|on_skip|always)\s+:(?:puts|p
 step :print
 # after
 step :print_report
-def print_report = ...
+def print_report = puts(report)
 ```
 
 **Why.** Steps are called with `__send__`, so `always :exit` could reach `Kernel#exit`.
