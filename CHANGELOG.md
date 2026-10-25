@@ -18,6 +18,13 @@
   Ruby unseen. The one it caught, a `def … = ...` placeholder in UPGRADING's
   core-method-name entry, is now real Ruby.
 
+### Documentation
+
+- USAGE "Results" says what `status` is and that a `Success`'s `code` is
+  `:success`; USAGE "Input" shows a FieldStruct class as an input field and how
+  an invalid one is reported (`errors` names only the field). Both doctested;
+  gaps found by the docs-site tutorial.
+
 ## [1.9.0] - 2026-10-24
 
 The gem is renamed **`actionable-rb`** so it can be published to rubygems.org,

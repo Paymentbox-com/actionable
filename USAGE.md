@@ -28,6 +28,19 @@ bad.ok?      # => false
 ```
 
 Every result carries `code`, `message`, `errors`, `output`, and `history`.
+`status` is the outcome as a Symbol (`:success`, `:failure` or `:skipped`);
+`code` is the specific reason. A `Success` defaults its `code` to `:success`, so
+branch on `code` for failures and skips, and on `status` (or the predicates)
+for the outcome:
+
+<!-- doctest -->
+```ruby
+Actionable::Success.new.code                 # => :success
+Actionable::Success.new.status               # => :success
+Actionable::Failure.new(code: :nope).status  # => :failure
+Actionable::Skipped.new(code: :later).status # => :skipped
+```
+
 Predicates: `success?`/`successful?`, `failure?`/`failed?`, `skipped?`, and `ok?`
 (≡ `!failure?`). `to_s`/`inspect` are compact, field-sorted, and deterministic.
 
@@ -561,6 +574,32 @@ A missing or uncoercible required input yields `Failure(:invalid_input)` without
 running any steps. `input` with no block reads the declared schema, like `output`. An already-built input instance can be passed instead of
 keyword arguments. With no `input` block, `.run`'s arguments go to the
 constructor (the free-form path).
+
+An input field can be a FieldStruct class. `.run` takes a Hash for it (coerced
+like any nested struct) or an instance. If the nested struct is invalid, the
+run fails with `:invalid_input`, and `errors` names only the field
+(`"is invalid"`): read the nested struct's own `errors` for the detail.
+
+<!-- doctest -->
+```ruby
+class Address < FieldStruct::Base
+  required :zip, :string, format: /\A\d{5}\z/
+end
+
+class Ship < Actionable::Action
+  input  { required :address, Address }
+  output { required :zip, :string }
+  step :go
+  def go = @zip = input.address.zip
+end
+
+Ship.run(address: { zip: '84101' }).output.zip          # => '84101'
+Ship.run(address: Address.new(zip: '84101')).success?   # => true
+bad = Ship.run(address: { zip: 'nope' })
+bad.code                                                # => :invalid_input
+bad.errors.to_h                                         # => { address: ['is invalid'] }
+Address.new(zip: 'nope').errors.to_h                    # => { zip: ['is invalid'] }
+```
 
 ### Discriminated input
 
