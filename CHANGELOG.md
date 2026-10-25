@@ -24,6 +24,7 @@
   `:success`; USAGE "Input" shows a FieldStruct class as an input field and how
   an invalid one is reported (`errors` names only the field). Both doctested;
   gaps found by the docs-site tutorial.
+- README installs from RubyGems (`gem 'actionable-rb'`); 1.9.0 is published there.
 
 ## [1.9.0] - 2026-10-24
 
