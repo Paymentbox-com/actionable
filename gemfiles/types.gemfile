@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
 # Report-only Steep lane (see the `types` job in .github/workflows/main.yml).
-# Steep 2.x needs rbs 4.x, which needs Ruby >= 3.3, while the main Gemfile
-# keeps rbs 3.x so `sigs:validate` and sord still run on the 3.2 lane.
+# Steep 2.x needs rbs 4.x, while the main Gemfile keeps rbs 3.x for
+# `sigs:validate` and sord.
 #
 #   BUNDLE_GEMFILE=gemfiles/types.gemfile bundle install
 #   BUNDLE_GEMFILE=gemfiles/types.gemfile bundle exec rbs collection install

@@ -15,9 +15,9 @@ jobs:
       # Test every version independently; one failure must not mask the rest.
       fail-fast: false
       matrix:
-        # The gemspec floor (>= 3.2) through the newest release.
+        # The gemspec floor (>= 3.3, the oldest Ruby a known client runs)
+        # through the newest release.
         ruby:
-          - '3.2'
           - '3.3'
           - '3.4'
           - '4.0'

@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Ruby 3.3 or newer is required** (`required_ruby_version >= 3.3.0`, was
+  `>= 3.2.0`). 3.3 is the oldest Ruby a known client runs, and CI is moving to
+  self-hosted Ubuntu 26.04 runners. The library code is unchanged; CI drops the
+  3.2 lane and RuboCop targets 3.3.
+  **Upgrade note:** on Ruby 3.2, stay on 1.9.x.
+  <!-- upgrading: ruby-floor-3-3 -->
+
 ## [1.9.0] - 2026-10-24
 
 The gem is renamed **`actionable-rb`** so it can be published to rubygems.org,

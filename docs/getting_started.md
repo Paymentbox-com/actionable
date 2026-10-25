@@ -47,7 +47,7 @@ gem 'actionable-rb' # then `require 'actionable'`; Bundler.require does it for y
 
 Upgrading an app that already uses Actionable? Follow [UPGRADING.md](../UPGRADING.md).
 
-Requires Ruby 3.2+. The core is pure Ruby (only `field_struct`). Two optional
+Requires Ruby 3.3+. The core is pure Ruby (only `field_struct`). Two optional
 adapters are separate requires — never loaded by the core:
 
 ```ruby
