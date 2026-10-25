@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-10-24
+
+The gem is renamed **`actionable-rb`** so it can be published to rubygems.org,
+where `actionable` belongs to an unrelated 2014 gem. Nothing in the library
+changed: `require 'actionable'`, the `Actionable` module and every API stay the
+same. Two lines in an app change: the Gemfile's `gem 'actionable'` becomes
+`gem 'actionable-rb'`, and a `.rubocop.yml` that loads the cop with `plugins:`
+renames its key to `actionable-rb`. Read `UPGRADING.md` "1.8.2 → 1.9.0".
+
 ### Changed
 
 - **The gem is renamed `actionable-rb`**, so it can be published to rubygems.org,
