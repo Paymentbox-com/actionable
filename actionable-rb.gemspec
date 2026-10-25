@@ -3,7 +3,7 @@
 require_relative 'lib/actionable/version'
 
 Gem::Specification.new do |spec|
-  spec.name = 'actionable'
+  spec.name = 'actionable-rb'
   spec.version = Actionable::VERSION
   spec.authors = ['Adrian Madrid']
   spec.email = ['amadrid@pmtbox.com']
@@ -19,12 +19,12 @@ Gem::Specification.new do |spec|
   spec.license = 'MIT'
   spec.required_ruby_version = '>= 3.2.0'
 
-  spec.metadata['allowed_push_host'] = 'https://rubygems.pkg.github.com/Paymentbox-com'
+  spec.metadata['allowed_push_host'] = 'https://rubygems.org'
   spec.metadata['homepage_uri'] = spec.homepage
   spec.metadata['source_code_uri'] = spec.homepage
   spec.metadata['changelog_uri'] = "#{spec.homepage}/blob/main/CHANGELOG.md"
   spec.metadata['rubygems_mfa_required'] = 'true'
-  # The opt-in RuboCop cop (`plugins: [{actionable: {require_path: actionable/rubocop}}]`).
+  # The opt-in RuboCop cop (`plugins: [{actionable-rb: {require_path: actionable/rubocop}}]`).
   spec.metadata['default_lint_roller_plugin'] = 'Actionable::RubocopPlugin'
 
   # Specify which files should be added to the gem when it is released.

@@ -132,7 +132,7 @@ can see since 1.5.x. Procedure:
    **Find** of each entry UPGRADING.md lists under "Which Finds to run" (they
    change behaviour without raising), even if nothing failed. Run the others for
    code the suite doesn't reach. Keep the hits per entry.
-4. **Enable the cop** (`plugins: [{actionable: {require_path: actionable/rubocop}}]`
+4. **Enable the cop** (`plugins: [{actionable-rb: {require_path: actionable/rubocop}}]`
    in `.rubocop.yml`; list in `ActionBaseClasses` the two defaults and every app
    base class defined in its own file, by full name, intermediate ones too) and run
    `bundle exec rubocop --only Actionable/VerbNotLast`.

@@ -1,8 +1,8 @@
 # Upgrading Actionable
 
-<!-- upgrading-range: 1.5.0..1.8.2 -->
+<!-- upgrading-range: 1.5.0..1.9.0 -->
 
-This guide takes an app from any **1.5.x** release to **1.8.2**, one version at
+This guide takes an app from any **1.5.x** release to **1.9.0**, one version at
 a time or [straight through](#straight-from-15-to-18). It lists every change a
 caller can see, not just the breaking ones. Each entry has the same four parts:
 
@@ -40,13 +40,15 @@ Agents: follow the numbered procedure in [AGENTS.md](AGENTS.md#upgrading)
 used to run), anyone who keeps hand-written RBS next to `Actionable::RBS`
 output, and Rails apps that nest `transactional` actions. **Already on 1.8.1?**
 Skip to [1.8.1 → 1.8.2](#181--182): one silent change (`case_step` branch
-guards) and two narrow ones.
+guards) and two narrow ones. **Already on 1.8.2?** Skip to
+[1.8.2 → 1.9.0](#182--190): the gem is renamed `actionable-rb`.
 
 1. **Bump field_struct first.** actionable >= 1.6 requires `field_struct >=
    0.12` (1.5.2 needs `>= 0.11`). Upgrade it and follow field_struct's
    [UPGRADING.md](https://github.com/Paymentbox-com/field_struct/blob/main/UPGRADING.md)
    until your suite is green.
-2. **Bump actionable** to `v1.8.2` in the Gemfile.
+2. **Bump actionable** to `v1.9.0` in the Gemfile, renaming the line to
+   `gem 'actionable-rb'` ([why](#the-gem-is-named-actionable-rb)).
 3. **Fix verb-position offenses.** If you need a green baseline first, run the
    suite once with `Actionable.verb_position_check = false`, then turn it back
    on. Enable the [`Actionable/VerbNotLast` cop](#a-plain-verb-must-end-its-step-or-hook-method)
@@ -75,7 +77,7 @@ run:
 1. Bump field_struct to >= 0.12 (step 1 above). Bundler refuses the actionable
    bump until you do: `Bundler could not find compatible versions for gem
    "field_struct"`.
-2. Bump actionable to `v1.8.2`. Set `Actionable.verb_position_check = false`
+2. Bump actionable to `v1.9.0` as `gem 'actionable-rb'`. Set `Actionable.verb_position_check = false`
    in `spec_helper` (or a `spec/support` file) for now, not in an initializer:
    an initializer also switches the check off in production, and that is easy
    to forget to undo. Use an initializer only if you must deploy before every
@@ -90,7 +92,9 @@ run:
    [adapter signatures](#adapter-signatures-now-ship-in-sig).
 6. Work through the [1.8.2](#181--182) entries: a `case_step` branch guard
    now takes effect, and that doesn't raise, so run its Find.
-7. Run the suite with the check on. Anything still failing:
+7. If `.rubocop.yml` loads the cop with `plugins:`, its key is
+   [`actionable-rb:`](#the-gem-is-named-actionable-rb) from 1.9.0.
+8. Run the suite with the check on. Anything still failing:
    [bisect by version](#if-something-else-breaks).
 
 ## Symptom index
@@ -117,6 +121,7 @@ run:
 | A guarded `case_step` branch no longer runs | 1.8.2 | [Branch guards](#case_step-branch-guards-are-honoured) |
 | `ArgumentError: … both name …Output in the generated RBS` | 1.8.2 | [Output class names](#actionablerbs-refuses-codes-that-share-an-output-class-name) |
 | ``DefinitionError: … calls `fail` …`` for an aliased step | 1.8.2 | [Aliased step](#the-verb-check-reads-an-aliased-steps-original-def) |
+| `Could not find gem 'actionable' in …` from Bundler, or RuboCop ``Failed to load plugin `actionable` `` | 1.9.0 | [Gem renamed](#the-gem-is-named-actionable-rb) |
 
 ## 1.5.x → 1.5.2
 
@@ -604,7 +609,7 @@ included). It is checked once per class, on the first run.
 `.rubocop.yml` (RuboCop >= 1.72; `require: [actionable/rubocop]` on older):
 ```yaml
 plugins:
-  - actionable:
+  - actionable:      # `actionable-rb:` from 1.9.0, see 1.8.2 → 1.9.0
       require_path: actionable/rubocop
 
 Actionable/VerbNotLast:
@@ -849,6 +854,62 @@ alias_method :charge, :do_charge
 **Why.** The check looked the `def` up by the alias's name, found none, and
 skipped the step.
 
+## 1.8.2 → 1.9.0
+
+The gem is renamed. Nothing in the library changed.
+
+| Change | Who is affected | What you see | Why |
+|---|---|---|---|
+| [The gem is named `actionable-rb`](#the-gem-is-named-actionable-rb) | Every app (the Gemfile line), and apps that load the cop with `plugins:` | `bundle install` fails: "Could not find gem 'actionable' in …"; RuboCop: "Failed to load plugin `actionable`" | The `actionable` name on rubygems.org belongs to an unrelated 2014 gem |
+
+**From 1.8.2:**
+1. In the Gemfile, change `gem 'actionable'` to `gem 'actionable-rb'` and the
+   tag to `v1.9.0`, then `bundle install`.
+2. If `.rubocop.yml` loads the cop with `plugins:`, rename its key to
+   `actionable-rb`.
+3. Run the suite. No code changes: `require 'actionable'` and every constant
+   stay the same.
+
+### The gem is named `actionable-rb`
+<!-- upgrading: gem-renamed-actionable-rb -->
+
+**Symptom.** `bundle install` (or `bundle update actionable`) stops with
+`Could not find gem 'actionable' in https://github.com/Paymentbox-com/actionable`
+(Bundler matches a git source by the gemspec's name). With the cop loaded by
+`plugins:`, `rubocop` stops with ``Failed to load plugin `actionable` because the
+corresponding plugin class could not be determined``.
+
+**Find.**
+```sh
+rg -n "gem ['\"]actionable['\"]" Gemfile gemfiles
+rg -n -A1 '^\s*-\s*actionable:\s*$' .rubocop.yml
+```
+
+**Fix.**
+```ruby
+# Gemfile, before
+gem 'actionable', git: 'https://github.com/Paymentbox-com/actionable', tag: 'v1.8.2'
+# after
+gem 'actionable-rb', git: 'https://github.com/Paymentbox-com/actionable', tag: 'v1.9.0'
+```
+```yaml
+# .rubocop.yml, before
+plugins:
+  - actionable:
+      require_path: actionable/rubocop
+# after
+plugins:
+  - actionable-rb:
+      require_path: actionable/rubocop
+```
+Keep `require 'actionable'` wherever you have it. A Gemfile that relies on
+`Bundler.require` needs no `require:` option: the gem ships an
+`actionable-rb.rb` that loads the library. The older `require:
+[actionable/rubocop]` form in `.rubocop.yml` keeps working unchanged.
+
+**Why.** To publish on rubygems.org, the gem needs a name nobody else holds;
+`actionable` there is an unrelated project from 2014.
+
 ## Class-level API an app base class may rely on
 
 Unchanged from 1.5.1 to 1.8.1, so a shared `ApplicationAction` that overrides
@@ -877,6 +938,7 @@ first tag that fails names the section above to reread:
 ```ruby
 gem 'actionable', git: 'https://github.com/Paymentbox-com/actionable', tag: 'v1.5.2' # then v1.6.0, v1.7.0, v1.8.0
 ```
+From `v1.9.0` the gem is `actionable-rb`, so that line says `gem 'actionable-rb'`.
 Remember the field_struct floor at each step (0.11 for 1.5.2, 0.12 from 1.6.0).
 
 **A guard offense or a real bug?**

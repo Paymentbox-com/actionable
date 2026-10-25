@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **The gem is renamed `actionable-rb`**, so it can be published to rubygems.org,
+  where `actionable` belongs to an unrelated 2014 gem. `require 'actionable'`,
+  the `Actionable` module and every API are unchanged. A new
+  `lib/actionable-rb.rb` lets `Bundler.require` load it by the gem name, and the
+  gemspec now pushes to rubygems.org instead of GitHub Packages.
+  **Upgrade note:** the Gemfile line becomes `gem 'actionable-rb'`, and a
+  `.rubocop.yml` that loads the cop with `plugins:` must use the `actionable-rb`
+  key. <!-- upgrading: gem-renamed-actionable-rb -->
+
 ## [1.8.2] - 2026-10-23
 
 Three fixes found by a mutation-driven review, plus upgrade-guide answers from

@@ -87,7 +87,7 @@ When asked to build one:
   expression of its step or hook method** (or `return fail(...)`). `fail :x if bad?` followed by more
   code raises `DefinitionError` on the action's first run — that's a `fail!`
   missing its bang. The opt-in RuboCop cop `Actionable/VerbNotLast`
-  (`plugins: [{actionable: {require_path: actionable/rubocop}}]`) flags it.
+  (`plugins: [{actionable-rb: {require_path: actionable/rubocop}}]`) flags it.
   `Actionable.verb_position_check = false` turns the first-run check off (an
   upgrade escape hatch; the cop is then the only guard). Don't reach for it to
   silence an offense: fix the verb.

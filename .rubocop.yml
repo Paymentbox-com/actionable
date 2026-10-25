@@ -1,7 +1,7 @@
 # Dogfood the gem's own opt-in cop (Actionable/VerbNotLast); clients write
 # `require_path: actionable/rubocop`.
 plugins:
-  - actionable:
+  - actionable-rb:
       require_path: ./lib/actionable/rubocop
 
 AllCops:
@@ -229,3 +229,8 @@ Style/YodaExpression:
 
 Security/Eval:
   Enabled: false
+
+# lib/actionable-rb.rb is named after the gem so Bundler.require finds it.
+Naming/FileName:
+  Exclude:
+    - 'lib/actionable-rb.rb'

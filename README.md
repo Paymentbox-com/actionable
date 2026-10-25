@@ -12,15 +12,20 @@ run returns a single value object — a `Success`, `Failure`, or `Skipped` — w
 
 ## Installation
 
-Actionable isn't on rubygems.org yet (the `actionable` gem there is an
-unrelated 2014 project), and neither is its `field_struct` dependency. Install
-both from GitHub, pinned to a release tag:
+The gem is named **`actionable-rb`** (the `actionable` gem on rubygems.org is
+an unrelated 2014 project). You still `require 'actionable'` and use the
+`Actionable` module; `Bundler.require` loads it from the gem name. Until both
+gems are on rubygems.org, install them from GitHub, pinned to a release tag:
 
 ```ruby
 # Gemfile
-gem 'field_struct', git: 'https://github.com/Paymentbox-com/field_struct', tag: 'v0.12.0'
+gem 'field_struct', git: 'https://github.com/Paymentbox-com/field_struct', tag: 'v0.15.0'
 gem 'actionable',   git: 'https://github.com/Paymentbox-com/actionable',   tag: 'v1.8.2'
 ```
+
+Bundler matches a git source by the gem's name, and tags up to `v1.8.2` still
+name it `actionable`. From `v1.9.0` the line must say `gem 'actionable-rb'`
+(see [UPGRADING.md](UPGRADING.md)).
 
 Requires Ruby 3.2+. Upgrading from an earlier release? See [UPGRADING.md](UPGRADING.md).
 
