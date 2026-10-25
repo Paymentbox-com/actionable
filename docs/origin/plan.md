@@ -125,6 +125,12 @@ push host is `https://rubygems.pkg.github.com/Paymentbox-com` (changed from the
 old `acima-credit` host). Authorship/email: Adrian Madrid, amadrid@pmtbox.com.
 Versioning restarts at **v1.0.0** to signal the break.
 
+*Amended 2026-10-24 (owner rulings R17, R20):* the gem is published to
+rubygems.org as **`actionable-rb`**, because `actionable` there belongs to an
+unrelated 2014 gem. The push host is `https://rubygems.org`. `require
+'actionable'` and the `Actionable` module are unchanged; `lib/actionable-rb.rb`
+lets `Bundler.require` load the gem by its name.
+
 ### D2. Step DSL
 
 ```ruby

@@ -2,7 +2,7 @@
 
 <!-- upgrading-range: 1.5.0..1.9.0 -->
 
-This guide takes an app from any **1.5.x** release to **1.8.2**, one version at
+This guide takes an app from any **1.5.x** release to **1.9.0**, one version at
 a time or [straight through](#straight-from-15-to-18). It lists every change a
 caller can see, not just the breaking ones. Each entry has the same four parts:
 
@@ -47,7 +47,8 @@ guards) and two narrow ones. **Already on 1.8.2?** Skip to
    0.12` (1.5.2 needs `>= 0.11`). Upgrade it and follow field_struct's
    [UPGRADING.md](https://github.com/Paymentbox-com/field_struct/blob/main/UPGRADING.md)
    until your suite is green.
-2. **Bump actionable** to `v1.8.2` in the Gemfile.
+2. **Bump actionable** to `v1.9.0` in the Gemfile, renaming the line to
+   `gem 'actionable-rb'` ([why](#the-gem-is-named-actionable-rb)).
 3. **Fix verb-position offenses.** If you need a green baseline first, run the
    suite once with `Actionable.verb_position_check = false`, then turn it back
    on. Enable the [`Actionable/VerbNotLast` cop](#a-plain-verb-must-end-its-step-or-hook-method)
@@ -76,7 +77,7 @@ run:
 1. Bump field_struct to >= 0.12 (step 1 above). Bundler refuses the actionable
    bump until you do: `Bundler could not find compatible versions for gem
    "field_struct"`.
-2. Bump actionable to `v1.8.2`. Set `Actionable.verb_position_check = false`
+2. Bump actionable to `v1.9.0` as `gem 'actionable-rb'`. Set `Actionable.verb_position_check = false`
    in `spec_helper` (or a `spec/support` file) for now, not in an initializer:
    an initializer also switches the check off in production, and that is easy
    to forget to undo. Use an initializer only if you must deploy before every
@@ -91,7 +92,9 @@ run:
    [adapter signatures](#adapter-signatures-now-ship-in-sig).
 6. Work through the [1.8.2](#181--182) entries: a `case_step` branch guard
    now takes effect, and that doesn't raise, so run its Find.
-7. Run the suite with the check on. Anything still failing:
+7. If `.rubocop.yml` loads the cop with `plugins:`, its key is
+   [`actionable-rb:`](#the-gem-is-named-actionable-rb) from 1.9.0.
+8. Run the suite with the check on. Anything still failing:
    [bisect by version](#if-something-else-breaks).
 
 ## Symptom index
@@ -118,6 +121,7 @@ run:
 | A guarded `case_step` branch no longer runs | 1.8.2 | [Branch guards](#case_step-branch-guards-are-honoured) |
 | `ArgumentError: … both name …Output in the generated RBS` | 1.8.2 | [Output class names](#actionablerbs-refuses-codes-that-share-an-output-class-name) |
 | ``DefinitionError: … calls `fail` …`` for an aliased step | 1.8.2 | [Aliased step](#the-verb-check-reads-an-aliased-steps-original-def) |
+| `Could not find gem 'actionable' in …` from Bundler, or RuboCop ``Failed to load plugin `actionable` `` | 1.9.0 | [Gem renamed](#the-gem-is-named-actionable-rb) |
 
 ## 1.5.x → 1.5.2
 
@@ -605,7 +609,7 @@ included). It is checked once per class, on the first run.
 `.rubocop.yml` (RuboCop >= 1.72; `require: [actionable/rubocop]` on older):
 ```yaml
 plugins:
-  - actionable:
+  - actionable:      # `actionable-rb:` from 1.9.0, see 1.8.2 → 1.9.0
       require_path: actionable/rubocop
 
 Actionable/VerbNotLast:

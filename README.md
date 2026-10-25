@@ -19,12 +19,13 @@ gems are on rubygems.org, install them from GitHub, pinned to a release tag:
 
 ```ruby
 # Gemfile
-gem 'field_struct',  git: 'https://github.com/Paymentbox-com/field_struct', tag: 'v0.15.0'
-gem 'actionable-rb', git: 'https://github.com/Paymentbox-com/actionable',   tag: 'v1.8.2'
+gem 'field_struct', git: 'https://github.com/Paymentbox-com/field_struct', tag: 'v0.15.0'
+gem 'actionable',   git: 'https://github.com/Paymentbox-com/actionable',   tag: 'v1.8.2'
 ```
 
-Tags up to `v1.8.2` still name the gem `actionable`; from the next release the
-Gemfile line must say `actionable-rb` (see [UPGRADING.md](UPGRADING.md)).
+Bundler matches a git source by the gem's name, and tags up to `v1.8.2` still
+name it `actionable`. From `v1.9.0` the line must say `gem 'actionable-rb'`
+(see [UPGRADING.md](UPGRADING.md)).
 
 Requires Ruby 3.2+. Upgrading from an earlier release? See [UPGRADING.md](UPGRADING.md).
 
