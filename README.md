@@ -27,7 +27,7 @@ Bundler matches a git source by the gem's name: tags up to `v1.8.2` name it
 `actionable`, so an app moving from those renames its Gemfile line (see
 [UPGRADING.md](UPGRADING.md)).
 
-Requires Ruby 3.2+. Upgrading from an earlier release? See [UPGRADING.md](UPGRADING.md).
+Requires Ruby 3.3+. Upgrading from an earlier release? See [UPGRADING.md](UPGRADING.md).
 
 ## Quick start
 
