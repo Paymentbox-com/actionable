@@ -1,6 +1,6 @@
 # Upgrading Actionable
 
-<!-- upgrading-range: 1.5.0..1.9.0 -->
+<!-- upgrading-range: 1.5.0..1.10.0 -->
 
 This guide takes an app from any **1.5.x** release to **1.9.0**, one version at
 a time or [straight through](#straight-from-15-to-18). It lists every change a
@@ -41,7 +41,8 @@ used to run), anyone who keeps hand-written RBS next to `Actionable::RBS`
 output, and Rails apps that nest `transactional` actions. **Already on 1.8.1?**
 Skip to [1.8.1 → 1.8.2](#181--182): one silent change (`case_step` branch
 guards) and two narrow ones. **Already on 1.8.2?** Skip to
-[1.8.2 → 1.9.0](#182--190): the gem is renamed `actionable-rb`.
+[1.8.2 → 1.9.0](#182--190): the gem is renamed `actionable-rb`. **On 1.9.0?**
+[1.9.0 → 1.10.0](#190--1100): Ruby 3.3+ only.
 
 1. **Bump field_struct first.** actionable >= 1.6 requires `field_struct >=
    0.12` (1.5.2 needs `>= 0.11`). Upgrade it and follow field_struct's
@@ -279,7 +280,7 @@ rg -nP '^\s*(?:step|case_step|on_success|on_failure|on_skip|always)\s+:(?:puts|p
 step :print
 # after
 step :print_report
-def print_report = ...
+def print_report = puts(report)
 ```
 
 **Why.** Steps are called with `__send__`, so `always :exit` could reach `Kernel#exit`.
@@ -909,6 +910,36 @@ Keep `require 'actionable'` wherever you have it. A Gemfile that relies on
 
 **Why.** To publish on rubygems.org, the gem needs a name nobody else holds;
 `actionable` there is an unrelated project from 2014.
+
+## 1.9.0 → 1.10.0
+
+Ruby 3.3 or newer is now required. Nothing else changes for callers.
+
+| Change | Who is affected | What you see | Why |
+|---|---|---|---|
+| [Ruby 3.3 or newer is required](#ruby-33-or-newer-is-required) | Apps on Ruby 3.2 | Bundler refuses the bump: `actionable-rb-1.10.0 requires ruby version >= 3.3.0` | 3.3 is the oldest Ruby a known client runs; CI moves to self-hosted runners |
+
+**From 1.9.0:**
+1. Check `ruby -v` (or `.ruby-version`) is 3.3 or newer. If not, stay on 1.9.x.
+2. Bump the tag to `v1.10.0` and run the suite.
+
+### Ruby 3.3 or newer is required
+<!-- upgrading: ruby-floor-3-3 -->
+
+**Symptom.** On Ruby 3.2, `bundle install` / `bundle update` stops with
+`actionable-rb-1.10.0 requires ruby version >= 3.3.0, which is incompatible with the current version`.
+
+**Find.**
+```sh
+rg -n '^\s*ruby\b|^[0-9]' .ruby-version Gemfile .tool-versions mise.toml 2>/dev/null
+```
+
+**Fix.** Upgrade the app to Ruby 3.3 or newer first, or stay on `v1.9.0`. The
+library's behaviour is identical in 1.10.0. field_struct 0.16 needs Ruby 3.3
+too.
+
+**Why.** 3.3 is the oldest Ruby a known client runs. CI moves to self-hosted
+Ubuntu 26.04 runners, and testing fewer Rubies keeps it fast.
 
 ## Class-level API an app base class may rely on
 
