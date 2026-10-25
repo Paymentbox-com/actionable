@@ -239,7 +239,7 @@ a lint, *not* loaded by `require 'actionable'`. Opt in from `.rubocop.yml`:
 
 ```yaml
 plugins:
-  - actionable:
+  - actionable-rb:
       require_path: actionable/rubocop
 ```
 

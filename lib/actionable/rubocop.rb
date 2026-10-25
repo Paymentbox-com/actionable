@@ -5,7 +5,7 @@
 # a project's +.rubocop.yml+:
 #
 #   plugins:
-#     - actionable:
+#     - actionable-rb:
 #         require_path: actionable/rubocop
 #
 # or, on RuboCop < 1.72, +require: [actionable/rubocop]+. RuboCop depends on

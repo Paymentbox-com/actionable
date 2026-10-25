@@ -42,7 +42,7 @@ options, and macros see [`USAGE.md`](../USAGE.md); for the feature tour see
 
 ```ruby
 # Gemfile
-gem 'actionable'
+gem 'actionable-rb' # then `require 'actionable'`; Bundler.require does it for you
 ```
 
 Upgrading an app that already uses Actionable? Follow [UPGRADING.md](../UPGRADING.md).

@@ -2,7 +2,7 @@
 
 source 'https://rubygems.org'
 
-# Specify your gem's dependencies in actionable.gemspec
+# Specify your gem's dependencies in actionable-rb.gemspec
 gemspec
 
 # Pull field_struct from GitHub rather than RubyGems (overrides the

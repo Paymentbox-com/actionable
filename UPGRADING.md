@@ -1,6 +1,6 @@
 # Upgrading Actionable
 
-<!-- upgrading-range: 1.5.0..1.8.2 -->
+<!-- upgrading-range: 1.5.0..1.9.0 -->
 
 This guide takes an app from any **1.5.x** release to **1.8.2**, one version at
 a time or [straight through](#straight-from-15-to-18). It lists every change a
@@ -40,7 +40,8 @@ Agents: follow the numbered procedure in [AGENTS.md](AGENTS.md#upgrading)
 used to run), anyone who keeps hand-written RBS next to `Actionable::RBS`
 output, and Rails apps that nest `transactional` actions. **Already on 1.8.1?**
 Skip to [1.8.1 → 1.8.2](#181--182): one silent change (`case_step` branch
-guards) and two narrow ones.
+guards) and two narrow ones. **Already on 1.8.2?** Skip to
+[1.8.2 → 1.9.0](#182--190): the gem is renamed `actionable-rb`.
 
 1. **Bump field_struct first.** actionable >= 1.6 requires `field_struct >=
    0.12` (1.5.2 needs `>= 0.11`). Upgrade it and follow field_struct's
@@ -849,6 +850,62 @@ alias_method :charge, :do_charge
 **Why.** The check looked the `def` up by the alias's name, found none, and
 skipped the step.
 
+## 1.8.2 → 1.9.0
+
+The gem is renamed. Nothing in the library changed.
+
+| Change | Who is affected | What you see | Why |
+|---|---|---|---|
+| [The gem is named `actionable-rb`](#the-gem-is-named-actionable-rb) | Every app (the Gemfile line), and apps that load the cop with `plugins:` | `bundle install` fails: "Could not find gem 'actionable' in …"; RuboCop: "Failed to load plugin `actionable`" | The `actionable` name on rubygems.org belongs to an unrelated 2014 gem |
+
+**From 1.8.2:**
+1. In the Gemfile, change `gem 'actionable'` to `gem 'actionable-rb'` and the
+   tag to `v1.9.0`, then `bundle install`.
+2. If `.rubocop.yml` loads the cop with `plugins:`, rename its key to
+   `actionable-rb`.
+3. Run the suite. No code changes: `require 'actionable'` and every constant
+   stay the same.
+
+### The gem is named `actionable-rb`
+<!-- upgrading: gem-renamed-actionable-rb -->
+
+**Symptom.** `bundle install` (or `bundle update actionable`) stops with
+`Could not find gem 'actionable' in https://github.com/Paymentbox-com/actionable`
+(Bundler matches a git source by the gemspec's name). With the cop loaded by
+`plugins:`, `rubocop` stops with ``Failed to load plugin `actionable` because the
+corresponding plugin class could not be determined``.
+
+**Find.**
+```sh
+rg -n "gem ['\"]actionable['\"]" Gemfile gemfiles
+rg -n -A1 '^\s*-\s*actionable:\s*$' .rubocop.yml
+```
+
+**Fix.**
+```ruby
+# Gemfile, before
+gem 'actionable', git: 'https://github.com/Paymentbox-com/actionable', tag: 'v1.8.2'
+# after
+gem 'actionable-rb', git: 'https://github.com/Paymentbox-com/actionable', tag: 'v1.9.0'
+```
+```yaml
+# .rubocop.yml, before
+plugins:
+  - actionable:
+      require_path: actionable/rubocop
+# after
+plugins:
+  - actionable-rb:
+      require_path: actionable/rubocop
+```
+Keep `require 'actionable'` wherever you have it. A Gemfile that relies on
+`Bundler.require` needs no `require:` option: the gem ships an
+`actionable-rb.rb` that loads the library. The older `require:
+[actionable/rubocop]` form in `.rubocop.yml` keeps working unchanged.
+
+**Why.** To publish on rubygems.org, the gem needs a name nobody else holds;
+`actionable` there is an unrelated project from 2014.
+
 ## Class-level API an app base class may rely on
 
 Unchanged from 1.5.1 to 1.8.1, so a shared `ApplicationAction` that overrides
@@ -877,6 +934,7 @@ first tag that fails names the section above to reread:
 ```ruby
 gem 'actionable', git: 'https://github.com/Paymentbox-com/actionable', tag: 'v1.5.2' # then v1.6.0, v1.7.0, v1.8.0
 ```
+From `v1.9.0` the gem is `actionable-rb`, so that line says `gem 'actionable-rb'`.
 Remember the field_struct floor at each step (0.11 for 1.5.2, 0.12 from 1.6.0).
 
 **A guard offense or a real bug?**
