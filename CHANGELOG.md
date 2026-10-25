@@ -11,6 +11,13 @@
   **Upgrade note:** on Ruby 3.2, stay on 1.9.x.
   <!-- upgrading: ruby-floor-3-3 -->
 
+### Fixed
+
+- A spec now parses every ```ruby block in README, USAGE, UPGRADING, AGENTS,
+  the skill and `docs/`, doctest or not, so an example can't rot into invalid
+  Ruby unseen. The one it caught, a `def … = ...` placeholder in UPGRADING's
+  core-method-name entry, is now real Ruby.
+
 ## [1.9.0] - 2026-10-24
 
 The gem is renamed **`actionable-rb`** so it can be published to rubygems.org,
