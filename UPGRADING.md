@@ -2,7 +2,7 @@
 
 <!-- upgrading-range: 1.5.0..1.10.0 -->
 
-This guide takes an app from any **1.5.x** release to **1.9.0**, one version at
+This guide takes an app from any **1.5.x** release to **1.10.0**, one version at
 a time or [straight through](#straight-from-15-to-18). It lists every change a
 caller can see, not just the breaking ones. Each entry has the same four parts:
 
@@ -48,7 +48,7 @@ guards) and two narrow ones. **Already on 1.8.2?** Skip to
    0.12` (1.5.2 needs `>= 0.11`). Upgrade it and follow field_struct's
    [UPGRADING.md](https://github.com/Paymentbox-com/field_struct/blob/main/UPGRADING.md)
    until your suite is green.
-2. **Bump actionable** to `v1.9.0` in the Gemfile, renaming the line to
+2. **Bump actionable** to `1.10.0` in the Gemfile, renaming the line to
    `gem 'actionable-rb'` ([why](#the-gem-is-named-actionable-rb)).
 3. **Fix verb-position offenses.** If you need a green baseline first, run the
    suite once with `Actionable.verb_position_check = false`, then turn it back
@@ -78,7 +78,7 @@ run:
 1. Bump field_struct to >= 0.12 (step 1 above). Bundler refuses the actionable
    bump until you do: `Bundler could not find compatible versions for gem
    "field_struct"`.
-2. Bump actionable to `v1.9.0` as `gem 'actionable-rb'`. Set `Actionable.verb_position_check = false`
+2. Bump actionable to `1.10.0` as `gem 'actionable-rb'`. Set `Actionable.verb_position_check = false`
    in `spec_helper` (or a `spec/support` file) for now, not in an initializer:
    an initializer also switches the check off in production, and that is easy
    to forget to undo. Use an initializer only if you must deploy before every
