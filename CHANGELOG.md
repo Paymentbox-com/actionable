@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-10-25
+
+Ruby 3.3 or newer is now required; the library itself is unchanged, so on
+Ruby 3.3+ this is a drop-in bump from 1.9.0 (`UPGRADING.md` "1.9.0 → 1.10.0").
+The rest is docs: every Ruby block in the docs is now parsed by a spec, USAGE
+explains `Result#status` vs `code` and struct-typed input errors, and the README
+installs from RubyGems. CI runs on our own self-hosted runners.
+
 ### Changed
 
 - **Ruby 3.3 or newer is required** (`required_ruby_version >= 3.3.0`, was
