@@ -14,18 +14,18 @@ run returns a single value object — a `Success`, `Failure`, or `Skipped` — w
 
 The gem is named **`actionable-rb`** (the `actionable` gem on rubygems.org is
 an unrelated 2014 project). You still `require 'actionable'` and use the
-`Actionable` module; `Bundler.require` loads it from the gem name. Until both
-gems are on rubygems.org, install them from GitHub, pinned to a release tag:
+`Actionable` module; `Bundler.require` loads it from the gem name.
+Add it to your Gemfile from [RubyGems](https://rubygems.org/gems/actionable-rb)
+(it pulls in `field_struct`):
 
 ```ruby
 # Gemfile
-gem 'field_struct',  git: 'https://github.com/Paymentbox-com/field_struct', tag: 'v0.15.0'
-gem 'actionable-rb', git: 'https://github.com/Paymentbox-com/actionable',   tag: 'v1.9.0'
+gem 'actionable-rb'
 ```
 
-Bundler matches a git source by the gem's name: tags up to `v1.8.2` name it
-`actionable`, so an app moving from those renames its Gemfile line (see
-[UPGRADING.md](UPGRADING.md)).
+or run `bundle add actionable-rb`. An app that installed it from GitHub as
+`actionable` (tags up to `v1.8.2`) renames its Gemfile line; see
+[UPGRADING.md](UPGRADING.md).
 
 Requires Ruby 3.3+. Upgrading from an earlier release? See [UPGRADING.md](UPGRADING.md).
 
